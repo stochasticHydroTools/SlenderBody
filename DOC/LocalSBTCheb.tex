@@ -1,0 +1,89 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx,epstopdf,subfigure,mathtools,mathrsfs} 
+\usepackage[normalem]{ulem}
+\PassOptionsToPackage{usenames,dvipsnames}{xcolor}
+\usepackage[usenames,dvipsnames]{xcolor}
+\newcommand{\cmt}[1]{\color{blue}#1\normalcolor}
+\newcommand{\norm}[1]{\left\lVert #1 \right\rVert} 
+\newcommand{\mat}[1]{\mathbf{#1}}
+% notation
+\newcommand{\bm}[1]{\mbox{\boldmath $ #1 $}}    % bold math mode
+\renewcommand{\vec}[1]{\bm{#1}}                 % vector notation
+\def\cddot{% two dots stacked vertically
+  \mathbin{\vcenter{\baselineskip.67ex
+    \hbox{\onedot}\hbox{\onedot}}%
+  }}
+  \usepackage{hyperref}
+\hypersetup{
+    colorlinks=false,
+    pdfborder={0 0 0},
+}
+
+% Set the margins for 1" around
+\setlength{\topmargin}{-0.5in}
+\setlength{\oddsidemargin}{0.1in}
+\setlength{\evensidemargin}{0.0in}
+\setlength{\textwidth}{6.4in}
+\setlength{\textheight}{8.9in}
+
+\title{Weak formulation for local slender body theory}
+\author{Ondrej Maxian and Aleks Donev}
+
+\begin{document}
+
+\maketitle
+\section{Method formulation}
+\input{SBTTheory.tex}
+
+\newpage
+\section{Results}
+In this section, we compare the output of our algorithm directly with that of Floren for a fiber with initial tangent vector
+\begin{equation}
+\label{eq:Xst0}
+\bm{X}_s(s,t=0) = \frac{1}{\sqrt{2}}\begin{pmatrix} \cos{\left(s^3 (s-L)^3\right)}\\[2 pt] \sin{\left(s^3(s-L)^3\right)}\\[2 pt] 1 \end{pmatrix}. 
+\end{equation}
+This choice of tangent vector satisfies the boundary conditions $\displaystyle \bm{X}_{ss}\left(s=0,L\right)=\bm{X}_{sss}\left(s=0,L\right)=\bm{0}$ and the inextensibility constraint. Because there is no analytical solution for its configuration, we integrate Eq.\ \eqref{eq:Xst0} forward in $s$ with $\bm{X}(s=0,t=0)=\bm{0}$ to arrive at a configuration of the form $(x(s),y(s),s/\sqrt{2})$. The 2D projection of the fiber (and therefore the form of the functions $x(s)$ and $y(s)$) is shown in Fig.\ \ref{fig:3Dfibt0} as a blue curve. We also show in Fig.\ \ref{fig:3Dfibt0} the fiber configuration at $t=0.01$ for $N=8$ for both our code and Floren's code ($\tilde{N}=12$ - Floren uses a type 2 grid, so all of his data is marked with a tilde). Note the differences at the boundaries; we will establish which is more accurate in subsequent sections. 
+
+In general, we will use an $L^2$ function norm to compute the differences between configurations throughout this section. Given two configurations $\bm{X}$ and $\bm{Y}$, the $L^2$ norm of their difference is defined as
+\begin{equation}
+\label{eq:Errort}
+E[\bm{X},\bm{Y}](t) = \left(\int_0^L \norm{\bm{X}(t)-\bm{Y}(t)}^2 \, ds\right)^{1/2} = \left( \sum_{i=1}^{1000} \norm{\bm{X}(s_i,t)-\bm{Y}(s_i,t)}^2 \, w_i  \right)^{1/2}. 
+\end{equation}
+The final term denotes the fact that we upsample each configuration to a common type 2 grid of $1000$ points. 
+
+\begin{figure}
+\centering 
+\includegraphics[width=70mm]{FiberInitial.eps}
+\caption{Fiber configuration for code comparison (2D projection). The black line shows the initial configuration at $t=0$. The initial $z$ coordinate is simply $z(s)=s/\sqrt{2}$. The final position of the fiber for $N=8, \tilde{N}=12$ points is shown as a dashed red line (for Floren's data) and a dashed/dotted blue line (for our data). Details: Floren's data has $\tilde{N}=12$, $\Delta t =10^{-6}$, our data has $N=8$, $\Delta t=10^{-4}$ (forward Euler update).}
+\label{fig:3Dfibt0}
+\end{figure}
+
+\subsection{Convergence}
+\label{sec:conv}
+
+\subsubsection{Fiber tension at $t=0$}
+We compare the values of $\bm{\lambda}$ with $(T\bm{X}_s)_s$ at $t=0$. The latter quantity is obtained by mutiplying the analytically computed (from Eq.\ \eqref{eq:Xst0}) $\bm{X}_s$ by Floren's provided values of tension $T(t=0)$ at each point, and then applying the spectral differentiation matrix. We measure the error of each against the ``exact solution'' of Floren's tensile force for $\tilde{N}=24$. Fig.\ \ref{fig:tension} shows that $\bm{\lambda}$ is indeed converging to $(T\bm{X}_s)_s$. Indeed, the $L^2$ error in $\bm{\lambda}$ for $N=8$ is 2.81, whereas for $N=20$ the $L^2$ error in $\bm{\lambda}$ is $8.3 \times 10^{-3}$. 
+\begin{figure}
+\centering
+\includegraphics[width=50mm]{TensionX.eps}
+\includegraphics[width=50mm]{TensionY.eps}
+\includegraphics[width=50mm]{TensionZ.eps}
+\caption{Measuring the convergence of $\bm{\lambda}$ against $(T\bm{X}_s)_s$. Each direction in the force $(x,y,z)$ is a column from left to right. The dashed blue line shows $\bm{\lambda}$ for $N=8$, which has an $L^2$ error of 2.81. For comparison, Floren's tensile force for $\tilde{N}=12$ is shown as a dashed-dotted red line. It has an $L^2$ error of 1.22. $\bm{\lambda}$ for $N=20$ is shown as a dotted green line, it has $L^2$ error $8.3 \times 10^{-3}$ and is completely indistinguishable from the ``exact'' solution of Floren for $\tilde{N}=24$. }
+\label{fig:tension}
+\end{figure}
+
+\subsection{Spatial error}
+\label{sec:space}
+\input{SBTSpatial.tex}
+
+\subsection{Temporal error}
+\label{sec:temp}
+\input{SBTTemporal.tex}
+
+\bibliographystyle{plain}
+
+\bibliography{SlenderBib}
+
+\end{document}
