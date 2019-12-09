@@ -260,12 +260,13 @@ The function $\tilde{\bm{X}}$ can be used to compute $\bm{f}^E$ in a way consist
 \end{equation}
 So that we have defined the bending force on the type 1 grid, $\bm{f}^E=\bm{L}\bm{X}$. Noitice that $\bm{L}$ is a \textit{constant} matrix (not a function of $\bm{X}$). 
 
-\subsection{Choosing the normal vectors}
-The correct choice of normal vectors that will never fail is based on Euler angles $\theta$ and $\phi$. Since $\V{X}_s \cdot \V{X}_s=1$, it must be that
+\subsection{Evolving the tangent vector $\V{X}_s$}
+
+A good choice of normal vectors that has a clear physical meaning is based on the Euler angles $\theta$ and $\phi$ for the unit tangent vector $\V{X}_s$,
 \begin{equation}
 \V{X}_s(\theta(s,t),\phi(s,t)) = \begin{pmatrix} \cos{\theta} \cos{\phi}\\[2 pt] \sin{\theta} \cos{\phi} \\[2 pt] \sin{\phi} \end{pmatrix}.
 \end{equation}
-The choice of normal vectors that is always orthonormal on the unit sphere is
+The choice of normal vectors that is always orthonormal to $\V{X}_s$ on the unit sphere is
 \begin{equation}
 \V{n}_1 =  \begin{pmatrix} -\sin{\theta}\\[2 pt] \cos{\theta}\\[2 pt]0 \end{pmatrix} \qquad \V{n}_2 =  \begin{pmatrix} -\cos{\theta} \sin{\phi}\\[2 pt] -\sin{\theta} \sin{\phi} \\[2 pt] \cos{\phi} \end{pmatrix}. 
 \end{equation}
@@ -279,4 +280,8 @@ Notice that, by the right-handedness of the coordinate system
 \label{eq:Xsupdate}
 \V{X}_{st} = g_1(s)\V{n}_1 + g_2(s) \V{n}_2 = \left(g_1(s)\V{n_2}-g_2(s)\V{n}_1\right) \times \V{X}_s:=\V{\Omega}\left(\V{X}_s, \V{\alpha}\right) \times \V{X}_s. 
 \end{equation}
-Therefore, $\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=g_1(s)\V{n_2}-g_2(s)\V{n}_1$ can be viewed as a rotational velocity for $\V{X}_s$ on the unit sphere. The notation here indicates that $\V{\alpha}$ determines $g_1$ and $g_2$ and therefore $\V{\Omega}$. 
+Therefore, $\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=g_1(s)\V{n_2}-g_2(s)\V{n}_1$ can be viewed as a rotational velocity for $\V{X}_s$ on the unit sphere. The notation here indicates that $\V{\alpha}$ determines $g_1$ and $g_2$ and therefore $\V{\Omega}$. We will use this to update the configuration in our temporal integration schemes by rotating the tangent vector $\V{X}_s$ and then computing $\V{X}$ using \eqref{eq:XfromXs}; this strictly enforces inextensibility.
+
+\subsection{Thermal Fluctuations}
+
+Let us first summarize the equations of motion in the form most suitable to stochastic evolution on a space of inextensible worm-like chains. 
