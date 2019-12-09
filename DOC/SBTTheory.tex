@@ -267,6 +267,7 @@ The correct choice of normal vectors that will never fail is based on Euler angl
 \end{equation}
 The choice of normal vectors that is always orthonormal on the unit sphere is
 \begin{equation}
+\label{eq:nangles}
 \V{n}_1 =  \begin{pmatrix} -\sin{\theta}\\[2 pt] \cos{\theta}\\[2 pt]0 \end{pmatrix} \qquad \V{n}_2 =  \begin{pmatrix} -\cos{\theta} \sin{\phi}\\[2 pt] -\sin{\theta} \sin{\phi} \\[2 pt] \cos{\phi} \end{pmatrix}. 
 \end{equation}
 The position of the fiber $\V{X}$ can be recovered by 
@@ -279,4 +280,6 @@ Notice that, by the right-handedness of the coordinate system
 \label{eq:Xsupdate}
 \V{X}_{st} = g_1(s)\V{n}_1 + g_2(s) \V{n}_2 = \left(g_1(s)\V{n_2}-g_2(s)\V{n}_1\right) \times \V{X}_s:=\V{\Omega}\left(\V{X}_s, \V{\alpha}\right) \times \V{X}_s. 
 \end{equation}
-Therefore, $\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=g_1(s)\V{n_2}-g_2(s)\V{n}_1$ can be viewed as a rotational velocity for $\V{X}_s$ on the unit sphere. The notation here indicates that $\V{\alpha}$ determines $g_1$ and $g_2$ and therefore $\V{\Omega}$. 
+Therefore, $\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=g_1(s)\V{n_2}-g_2(s)\V{n}_1$ can be viewed as a rotational velocity for $\V{X}_s$ on the unit sphere. The notation here indicates that $\V{\alpha}$ determines $g_1$ and $g_2$ and therefore $\V{\Omega}$.
+
+This theory is of course predicated on the smoothness of $\V{n}_1(s)$ and $\V{n}_2(s)$. In Eq.\ \eqref{eq:nangles}, it is clear that this only holds if $\theta$ is single-valued at $\phi=\pi/2$. Otherwise the signs of $\V{n}_1$ and $\V{n}_2$ can oscillate. We therefore set $\theta \left(\phi=\pm \pi/2\right)=0$ (numerically: \texttt{theta(abs((abs(phi)-pi/2)) < 1e-12) =0}). 
