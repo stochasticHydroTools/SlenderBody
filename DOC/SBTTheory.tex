@@ -98,7 +98,7 @@ We would like to show that this process is equivalent to the assumption that $\b
 \label{eq:tsalm}
 \int_{s}^L  \bm{\lambda}(s') \, ds' = -T(s)\bm{X}_s(s),
 \end{equation}
-for some scalar function $T$. Differentiating both sides of Eq.\ \eqref{eq:tsalm} with respect to $s$, we obtain 
+for some scalar function $T$ with $T(s=L)=0$. Differentiating both sides of Eq.\ \eqref{eq:tsalm} with respect to $s$, we obtain 
 \begin{equation}
 \label{eq:lamval}
 \bm{\lambda}(s) = \left(T(s)\bm{X}_s(s)\right)_s, 
@@ -110,11 +110,7 @@ Now, returning to the third constraint in Eq.\ \eqref{eq:noworkcont}, $\int_0^L 
 \label{eq:BCT}
 T(L)\bm{X}_s(L) - T(0)\bm{X}_s(0)=\bm{0}. 
 \end{equation}
-Now, let $c=\bm{X}_s(L) \cdot \bm{X}_s(0)$. Then we can take the inner product of $\bm{X}_s(L)$ and $\bm{X}_s(0)$ with Eq.\ \eqref{eq:BCT} to obtain
-\begin{gather}
-T(L) - cT(0)=0 \qquad cT(L)-T(0)=0. 
-\end{gather}
-If $|c|\neq1$, then we obtain $T(0)=T(L)=0$, which is exactly the boundary condition for the line tension equation in Tornberg and Shelley. If $|c|=1$,  $T(0)=T(L)=$ constant, which can be set to 0 since $T$ only appears differentiated in the equations. And so in all cases we recover the boundary condition $T(s=0, L)=0$ of Tornberg and Shelley \cite{ts04}. 
+Since $T(L)=0$, Eq.\ \eqref{eq:BCT} implies that $T(0)=0$ as well, since neither of the tangent vectors is identically 0. So we obtain $T(0)=T(L)=0$, which is exactly the boundary condition for the line tension equation in Tornberg and Shelley.
 
 \subsection{$L^2$ weak formulation}
 \label{sec:numinex}
@@ -263,3 +259,24 @@ The function $\tilde{\bm{X}}$ can be used to compute $\bm{f}^E$ in a way consist
 \bm{f}^E=\bm{R}\tilde{\bm{f}}^E=\bm{R}\tilde{\bm{D}}^4 \tilde{\bm{X}} = \bm{R}\tilde{\bm{D}}^4 \bm{E}\bm{X}:=\bm{L}\bm{X}.
 \end{equation}
 So that we have defined the bending force on the type 1 grid, $\bm{f}^E=\bm{L}\bm{X}$. Noitice that $\bm{L}$ is a \textit{constant} matrix (not a function of $\bm{X}$). 
+
+\subsection{Choosing the normal vectors}
+The correct choice of normal vectors that will never fail is based on Euler angles $\theta$ and $\phi$. Since $\V{X}_s \cdot \V{X}_s=1$, it must be that
+\begin{equation}
+\V{X}_s(\theta(s,t),\phi(s,t)) = \begin{pmatrix} \cos{\theta} \cos{\phi}\\[2 pt] \sin{\theta} \cos{\phi} \\[2 pt] \sin{\phi} \end{pmatrix}.
+\end{equation}
+The choice of normal vectors that is always orthonormal on the unit sphere is
+\begin{equation}
+\V{n}_1 =  \begin{pmatrix} -\sin{\theta}\\[2 pt] \cos{\theta}\\[2 pt]0 \end{pmatrix} \qquad \V{n}_2 =  \begin{pmatrix} -\cos{\theta} \sin{\phi}\\[2 pt] -\sin{\theta} \sin{\phi} \\[2 pt] \cos{\phi} \end{pmatrix}. 
+\end{equation}
+The position of the fiber $\V{X}$ can be recovered by 
+\begin{equation}
+\label{eq:XfromXs}
+\V{X}(s)= \V{X}(0)+\int_0^s \V{X}_s(\theta(s),\phi(s)) \, ds. 
+\end{equation}
+Notice that, by the right-handedness of the coordinate system
+\begin{equation}
+\label{eq:Xsupdate}
+\V{X}_{st} = g_1(s)\V{n}_1 + g_2(s) \V{n}_2 = \left(g_1(s)\V{n_2}-g_2(s)\V{n}_1\right) \times \V{X}_s:=\V{\Omega}\left(\V{X}_s, \V{\alpha}\right) \times \V{X}_s. 
+\end{equation}
+Therefore, $\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=g_1(s)\V{n_2}-g_2(s)\V{n}_1$ can be viewed as a rotational velocity for $\V{X}_s$ on the unit sphere. The notation here indicates that $\V{\alpha}$ determines $g_1$ and $g_2$ and therefore $\V{\Omega}$. 

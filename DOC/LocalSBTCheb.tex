@@ -6,11 +6,32 @@
 \PassOptionsToPackage{usenames,dvipsnames}{xcolor}
 \usepackage[usenames,dvipsnames]{xcolor}
 \newcommand{\cmt}[1]{\color{blue}#1\normalcolor}
-\newcommand{\norm}[1]{\left\lVert #1 \right\rVert} 
-\newcommand{\mat}[1]{\mathbf{#1}}
-% notation
-\newcommand{\bm}[1]{\mbox{\boldmath $ #1 $}}    % bold math mode
-\renewcommand{\vec}[1]{\bm{#1}}                 % vector notation
+\global\long\def\V#1{\boldsymbol{#1}} 
+\global\long\def\M#1{\boldsymbol{#1}} 
+\global\long\def\Set#1{\mathbb{#1}} 
+
+\global\long\def\D#1{\Delta#1} 
+\global\long\def\d#1{\delta#1} 
+
+\global\long\def\norm#1{\left\Vert #1\right\Vert }
+\global\long\def\abs#1{\left|#1\right|}
+\global\long\def\bm#1{\V#1}
+
+\global\long\def\grad{\M{\nabla}}
+\global\long\def\av#1{\left\langle #1\right\rangle }
+
+\global\long\def\sM#1{\M{\mathcal{#1}}}
+\global\long\def\dprime{\prime\prime}
+
+\global\long\def\im{\iota}
+\global\long\def\Xsth{ \frac{\partial \V{X}_s}{\partial \theta} }
+\global\long\def\Xsp{ \frac{\partial \V{X}_s}{\partial \phi} }
+\global\long\def\tht{ \frac{\partial \theta}{\partial t} }
+\global\long\def\pt{ \frac{\partial \phi}{\partial t} }
+\global\long\def\ths{ \frac{\partial \theta}{\partial s} }
+\global\long\def\ps{ \frac{\partial \phi}{\partial s} }
+\global\long\def\follows{\quad\Rightarrow\quad}
+\global\long\def\eqd{\overset{d}{=}}
 \def\cddot{% two dots stacked vertically
   \mathbin{\vcenter{\baselineskip.67ex
     \hbox{\onedot}\hbox{\onedot}}%
@@ -55,7 +76,7 @@ The final term denotes the fact that we upsample each configuration to a common 
 
 \begin{figure}
 \centering 
-\includegraphics[width=70mm]{FiberInitial.eps}
+\includegraphics[width=70mm]{Local/FiberInitial.eps}
 \caption{Fiber configuration for code comparison (2D projection). The black line shows the initial configuration at $t=0$. The initial $z$ coordinate is simply $z(s)=s/\sqrt{2}$. The final position of the fiber for $N=8, \tilde{N}=12$ points is shown as a dashed red line (for Floren's data) and a dashed/dotted blue line (for our data). Details: Floren's data has $\tilde{N}=12$, $\Delta t =10^{-6}$, our data has $N=8$, $\Delta t=10^{-4}$ (forward Euler update).}
 \label{fig:3Dfibt0}
 \end{figure}
@@ -67,9 +88,9 @@ The final term denotes the fact that we upsample each configuration to a common 
 We compare the values of $\bm{\lambda}$ with $(T\bm{X}_s)_s$ at $t=0$. The latter quantity is obtained by mutiplying the analytically computed (from Eq.\ \eqref{eq:Xst0}) $\bm{X}_s$ by Floren's provided values of tension $T(t=0)$ at each point, and then applying the spectral differentiation matrix. We measure the error of each against the ``exact solution'' of Floren's tensile force for $\tilde{N}=24$. Fig.\ \ref{fig:tension} shows that $\bm{\lambda}$ is indeed converging to $(T\bm{X}_s)_s$. Indeed, the $L^2$ error in $\bm{\lambda}$ for $N=8$ is 2.81, whereas for $N=20$ the $L^2$ error in $\bm{\lambda}$ is $8.3 \times 10^{-3}$. 
 \begin{figure}
 \centering
-\includegraphics[width=50mm]{TensionX.eps}
-\includegraphics[width=50mm]{TensionY.eps}
-\includegraphics[width=50mm]{TensionZ.eps}
+\includegraphics[width=50mm]{Local/TensionX.eps}
+\includegraphics[width=50mm]{Local/TensionY.eps}
+\includegraphics[width=50mm]{Local/TensionZ.eps}
 \caption{Measuring the convergence of $\bm{\lambda}$ against $(T\bm{X}_s)_s$. Each direction in the force $(x,y,z)$ is a column from left to right. The dashed blue line shows $\bm{\lambda}$ for $N=8$, which has an $L^2$ error of 2.81. For comparison, Floren's tensile force for $\tilde{N}=12$ is shown as a dashed-dotted red line. It has an $L^2$ error of 1.22. $\bm{\lambda}$ for $N=20$ is shown as a dotted green line, it has $L^2$ error $8.3 \times 10^{-3}$ and is completely indistinguishable from the ``exact'' solution of Floren for $\tilde{N}=24$. }
 \label{fig:tension}
 \end{figure}

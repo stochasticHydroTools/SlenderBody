@@ -8,10 +8,10 @@ Given the large spatial error, it remains to be seen what timestep Floren has to
 \centering 
 \subfigure[``Error'' wrt $\tilde{N}=24$]{
 \label{fig:FN12}
-\includegraphics[width=70mm]{FlorenTemporalN12.eps}}
+\includegraphics[width=70mm]{Local/FlorenTemporalN12.eps}}
 \subfigure[``Error'' wrt $\tilde{N}=12$]{
 \label{fig:FN12temp}
-\includegraphics[width=70mm]{FlorenN12Temporal.eps}}
+\includegraphics[width=70mm]{Local/FlorenN12Temporal.eps}}
 \caption{(a) $L^2$ errors over time when comparing to Floren's ``exact'' solution with $\tilde{N}=24$, $\Delta t=10^{-6}$ to his solutions when $\tilde{N}=12$. (b) $L^2$ \textit{temporal} errors in Floren's algorithm for $\tilde{N}=12$ using $\tilde{N}=12$ $\Delta t = 10^{-6}$ as the ``exact'' solution. Timesteps are color coded as blue circles ($10^{-2}$), red squares ($10^{-3}$), dashed green lines ($10^{-4}$), dashed-dotted pink lines ($10^{-5}$), and solid black lines ($10^{-6}$). } 
 \label{fig:Flortemp}
 \end{figure}
@@ -31,13 +31,13 @@ Next, we take the solution from SSP RK3 with $\Delta t =10^{-6}$ and treat this 
 \centering 
 \subfigure[SSP RK3]{
 \label{fig:RK3N8}
-\includegraphics[width=70mm]{RK3N8.eps}}
+\includegraphics[width=70mm]{Local/RK3N8.eps}}
 \subfigure[Forward Euler]{
 \label{fig:FEN8}
-\includegraphics[width=70mm]{FEErrorN8.eps}}
+\includegraphics[width=70mm]{Local/FEErrorN8.eps}}
 %\subfigure[Our explicit scheme]{
 %\label{fig:UsEx}
-%\includegraphics[width=70mm]{UsTemporalSpatial.eps}}
+%\includegraphics[width=70mm]{Local/UsTemporalSpatial.eps}}
 \caption{Temporal accuracy for a fixed spatial discretization $N=8$. (a) $L^2$ error for SSP RK3 on $N=8$ (with respect to successive refinements in $\Delta t$ by a factor of 2). The error for $\Delta t =10^{-4}$ (blue line) is approximately 8 times the error for $\Delta t = 10^{-4}/2$ (dashed/dotted red line) and 64 times the error for $\Delta t =10^{-4}/4$. The scheme is therefore third-order accurate. (b) Accuracy of the forward Euler method when compared to the ``exact solution'' from SSP RK3. $\Delta t = 5 \times 10^{-4}$ (blue line) is clearly inaccurate; it is likely too close to the stability limit. $\Delta t=10^{-4}$ (dashed/dotted red), $\Delta t =10^{-5}$ (dashed yellow), and $\Delta t =10^{-6}$ (dotted purple) demonstrate first order convergence starting at an $L^2$ error of $10^{-4}$. We conclude that the first-order method is sufficient since temporal error is less than spatial error for any $\Delta t \leq 2 \times 10^{-4}$.} 
 \end{figure}
 
@@ -52,7 +52,7 @@ Shown in Fig.\ \ref{fig:UsEx} is the overall accuracy of our scheme under spatio
 
 \begin{figure}
 \centering 
-\includegraphics[width=70mm]{UsTemporalSpatial.eps}
+\includegraphics[width=70mm]{Local/UsTemporalSpatial.eps}
 \caption{Overall spatio-temporal accuracy of our scheme. Timestep is the first stable power of 10 using forward Euler integration for a given spatial discretization. Recall that the relative error in displacement is approximately 10 times the $L^2$ error. } 
 \label{fig:UsEx}
 \end{figure}
@@ -64,23 +64,22 @@ We recall that we can define $\bm{f}^E = \bm{L}\bm{X}$ on the type 1 grid. With 
 \label{eq:tup}
 \bm{X}^{n+1} = \bm{X}^{n} + \Delta t  \bm{K} \bm{\alpha} \\[2 pt]
 \label{eq:BEeqn}
-\bm{K}\bm{\alpha}= \bm{M}^n\left(\bm{\lambda}+\left(\bm{f}^E\right)^{n+1}\right)+\bm{U}_0^{n+1}\\[2 pt]
+\bm{K}\bm{\alpha}= \bm{M}^n\left(\bm{\lambda}+\left(\bm{f}^E\right)^{n+1}\right)+\bm{U}_0^{n}\\[2 pt]
 \bm{K}^* \bm{\lambda}=\begin{pmatrix} \bm{0}\\[2 pt] -\bm{I}^*\left(\bm{f}^E\right)^{n+1}\end{pmatrix}
 \end{gather}
-Now suppose that $\bm{U}_0$ is a time-dependent linear function of $\bm{X}$ (in our experiments it will be). Then we write (by abuse of notation) $\bm{U}_0^{n+1} = \bm{U}_0^{n+1}\bm{X}^{n+1}$. 
-Eq.\ \eqref{eq:tup} can then be used to rewrite these equations in block form as
+Now suppose that $\bm{U}_0$ is a time-dependent function of $\bm{X}$ (not necessarily linear). Then Eq.\ \eqref{eq:tup} can then be used to rewrite these equations in block form as
 \begin{equation}
 \label{eq:impsolve}
 \bm{A}\bm{y}=
     \begin{pmatrix}
-    -\bm{M} &\bm{K}-\Delta t \bm{MLK}-\Delta t \bm{U}_0^{n+1}\bm{K} \\[4 pt]
+    -\bm{M} &\bm{K}-\Delta t \bm{MLK} \\[4 pt]
    \bm{K}^* &\begin{pmatrix} \bm{0}\\[2 pt]\Delta t \bm{I}^*\bm{LK}\end{pmatrix} 
     \end{pmatrix}^n
     \begin{pmatrix} 
     \bm{\lambda}\\[4 pt]
     \bm{\alpha}\\[4 pt]
     \end{pmatrix} =  \begin{pmatrix} 
-   \bm{ML}\bm{X}^n+\bm{U}_0^{n+1}\bm{X}^n\\[4 pt]
+   \bm{ML}\bm{X}^n+\bm{U}_0(\bm{X}^n)\\[4 pt]
     \begin{pmatrix} \bm{0}\\[4 pt]
     -\bm{I}^*\bm{L}\bm{X}^n \end{pmatrix}
     \end{pmatrix}. 
@@ -99,10 +98,10 @@ Considering $N=4$ and $N=8$, we see that the forward Euler method is limited by 
 %\centering 
 %\subfigure[Temporal Errors]{
 %\label{fig:tempImp}
-%\includegraphics[width=70mm]{ImplicitRK3Er.eps}}
+%\includegraphics[width=70mm]{Local/ImplicitRK3Er.eps}}
 %\subfigure[Spatio-temporal Errors]{
 %\label{fig:STImp}
-%\includegraphics[width=70mm]{ImplicitFlorenEr.eps}}
+%\includegraphics[width=70mm]{Local/ImplicitFlorenEr.eps}}
 %\caption{Effect of implicit time-stepping on spatio-temporal error. (a) $L^2$ error over time when comparing with the explicit RK3 solution (known to be accurate to 10 digits). The time integrator is first order, and we can get an $L^2$ error of $\approx 2 \times 10^{-3}$ by taking $\Delta t =10^{-3}$, previously impossible due to stability. Color scheme is the same as Fig. \ref{fig:Flortemp}. (b) Total $L^2$ error using Floren's maximally refined solution as the exact solution. Any timestep $\leq 10^{-4}$ isolates the $10^{-3}$ spatial error. $\Delta t =10^{-3}$ gives an ideal balance of spatial and temporal error.} 
 %\end{figure}
 
@@ -124,32 +123,38 @@ $N$ & Spatial Er & FE $\Delta t$ &  FE Temp Er & BE $\Delta t$ & BE Temp Er & CN
 We combine Crank-Nicolson with a linear multi-step method to obtain a second-order scheme with one solver per timestep. Specifically, we set
 \begin{equation}
 \label{eq:LMM}
-\bm{X}^{n+1/2. *} = \frac{3}{2}\bm{X}^n - \frac{1}{2}\bm{X}^{n-1}.
+\bm{X}^{n+1/2, *} = \frac{3}{2}\bm{X}^n - \frac{1}{2}\bm{X}^{n-1}.
 \end{equation}
 We then solve 
 \begin{equation}
 \label{eq:CNsolve}
 \bm{A}\bm{y}=
     \begin{pmatrix}
-    -\bm{M} &\bm{K}-\frac{1}{2}\Delta t \bm{MLK} -\frac{1}{2}\Delta t \bm{U}_0^{n+1}\bm{K}\\[4 pt]
+    -\bm{M} &\bm{K}-\frac{1}{2}\Delta t \bm{MLK}\\[4 pt]
    \bm{K}^* &\begin{pmatrix} \bm{0}\\[2 pt]\frac{1}{2}\Delta t \bm{I}^*\bm{LK}\end{pmatrix} 
     \end{pmatrix}^{n+1/2, *}
     \begin{pmatrix} 
     \bm{\lambda}\\[4 pt]
     \bm{\alpha}\\[4 pt]
     \end{pmatrix} =  \begin{pmatrix} 
-   \bm{ML}\bm{X}^n+\frac{1}{2}\left(\bm{U}_0^{n}+\bm{U}_0^{n+1}\right)\bm{X}^n\\[4 pt]
+   \bm{ML}\bm{X}^n+\bm{U}_0(\bm{X}^{n+1/2, *})\\[4 pt]
     \begin{pmatrix} \bm{0}\\[4 pt]
     -\bm{I}^*\bm{L}\bm{X}^n \end{pmatrix}
     \end{pmatrix}.
 \end{equation}
-Eq.\ \eqref{eq:CNsolve} is now the system to be solved at every timestep, with the operators $\bm{M}$ and $\bm{K}$ evaluated using Eq.\ \eqref{eq:LMM}. Because we saw that backward Euler gave little to no savings over forward Euler, our goal in this section is to determine whether a \textit{second-order} implicit scheme (which requires one solve per timestep) gives a savings over an explicit one. 
+Eq.\ \eqref{eq:CNsolve} is now the system to be solved at every timestep, with the operators $\bm{M}$ and $\bm{K}$ evaluated using Eq.\ \eqref{eq:LMM}. One we have computed $\V{\alpha}$, we use a discrete form of Eq.\ \eqref{eq:Xsupdate} to update the tangent vectors. Our goal is to rotate $\V{X}_s^n$ on the unit sphere by the vector $\V{\Omega}^{n+1/2} =  \V{\Omega}\left(\V{X}^{n+1/2,*},\V{\alpha}^{n+1/2}\right)$. Using the Rodrigues rotation formula with $\Omega = \norm{\V{\Omega}}$, we compute the rotated $\V{X}_s$ as
+\begin{equation}
+\V{X}_s^{n+1} = \V{X}_s^n \cos{\left(\Omega^{n+1/2}\D t\right)} + \left(\hat{\V{\Omega}}^{n+1/2} \times \V{X}_s^n \right)  \sin{\left(\Omega^{n+1/2}\D t\right)}+\hat{\V{\Omega}}^{n+1/2}\left(\hat{\V{\Omega}}^{n+1/2} \cdot \V{X}_s^n\right)\left(1-\cos{\left(\Omega^{n+1/2}\D t\right)}\right).
+\end{equation}
+We then compute $\V{X}^{n+1}$ via Chebyshev integration. Note that now $\displaystyle{\frac{\V{X}^{n+1}-\V{X}^n}{\Delta t} = \M{K}\V{\alpha}}$ is true to second order in $\Delta t$, rather than exactly. 
+
+Because we saw that backward Euler gave little to no savings over forward Euler, our goal in this section is to determine whether a \textit{second-order} implicit scheme (which requires one solve per timestep) gives a savings over an explicit one. 
  
 Fig.\ \ref{fig:FECN} shows that the Crank-Nicolson scheme is second-order accurate and gives a much lower temporal error for $\Delta t \leq 10^{-3}$ than backward Euler for $N=8$. Furthermore, we see in Table \ref{tab:imp} that the Crank-Nicolson temporal update can give a temporal error comparable to the spatial error for much larger timesteps than forward/backward Euler. In particular, for $N=4, 8, 12$, and 16, we see a savings from Crank-Nicolson (over forward Euler) that is a factor of 1, 10, 20, and 50. This comes at no extra cost (other than a possibly dangerous extrapolation step), since we are doing a $(5N+1)^2$ least squares solve once per timestep in all cases. 
 
 \begin{figure}
 \centering 
-\includegraphics[width=70mm]{FECN.eps}
+\includegraphics[width=70mm]{Local/FECN.eps}
 \caption{Comparing the temporal error from backward Euler (red circles) and Crank-Nicolson (blue squares) for $N=8$. Shown is the maximum $L^2$ error (wrt the RK3 explicit solution accurate to 10 digits) over time for different $\Delta t$. First order convergence is observed for backward Euler, and second-order convergence is observed for Crank-Nicolson. Table \ref{tab:imp} has more details on the savings that can be obtained for different $N$.  } 
 \label{fig:FECN}
 \end{figure}

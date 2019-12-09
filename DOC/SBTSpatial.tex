@@ -11,10 +11,10 @@ Note also that the absolute accuracy of Floren's solution for $\tilde{N}=12$ is 
 \centering 
 \subfigure[$L^2$ norm]{
 \label{fig:L2}
-\includegraphics[width=70mm]{SimonsL2Compare.eps}}
+\includegraphics[width=70mm]{Local/SimonsL2Compare.eps}}
 \subfigure[Error by position]{
 \label{fig:poser12}
-\includegraphics[width=70mm]{ErrorbyPosition.eps}}
+\includegraphics[width=70mm]{Local/ErrorbyPosition.eps}}
 \caption{Errors from 3D fiber simulation. (a) $L^2$ norm over time for $N=8$ (solid blue), $N=20$ (dashed yellow). The norm is defined in Eq.\ \eqref{eq:Errort}. The $L^2$ error in Floren's data for $\tilde{N}=12$ is shown as a dashed-dotted red line. (b) The absolute error in the positions along the fiber (at $t=0.01$) for $N=8$, $N=20$ (same color scheme as (a)). The spatial errors are isolated by using an SSP RK3 scheme for our method and using the lowest timestep provided for Floren's method.} 
 \end{figure}
 
@@ -26,7 +26,7 @@ To measure the inextensibility error, we take the fiber positions $\bm{X}$, upsa
 
 \begin{figure}
 \centering
-\includegraphics[width=70mm]{Inextensibility.eps}
+\includegraphics[width=70mm]{Local/Inextensibility.eps}
 \caption{Error in enforcing the inextensibility constraint, $\textrm{max}\left|\norm{\bm{X}_s}-1\right|$ for $N=8$, $\tilde{N}=12$ (red lines) and $N=20$, $\tilde{N}=24$ (blue lines). Solid lines show the results from Floren's code with the penalty parameter, while dashed lines show the results for our algorithm with constrained motion. }
 \label{fig:inext}
 \end{figure}
@@ -39,9 +39,9 @@ Fig.\ \ref{fig:BCs} shows the error in the boundary conditions as a function of 
 \begin{figure}
 \centering 
 \subfigure[$\norm{\bm{X}_{ss}(s=0)}$]{
-\includegraphics[width=70mm]{BCErrorXss.eps}}
+\includegraphics[width=70mm]{Local/BCErrorXss.eps}}
 \subfigure[$\norm{\bm{X}_{sss}(s=0)}$]{
-\includegraphics[width=70mm]{BCErrorXsss.eps}}
+\includegraphics[width=70mm]{Local/BCErrorXsss.eps}}
 \caption{Spectral convergence of boundary conditions (a) $\norm{\bm{X}_{ss}(s=0)}_2$, (b) $\norm{\bm{X}_{sss}(s=0)}_2$, both of which should be 0. Shown are solutions for $N=8$ (dashed green), $N=12$ (dashed-dotted pink), $N=16$ (dotted blue), and $N=20$ (solid black), all simulated with RK3 so that the temporal integration is accurate to 10 digits. Values at the boundaries are obtained by differentiation on the $N$ grid, then upsampling to a type 2 grid (that includes the endpoints). }
 \label{fig:BCs} 
 \end{figure}
