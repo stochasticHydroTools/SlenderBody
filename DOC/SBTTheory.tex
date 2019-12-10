@@ -120,12 +120,12 @@ While the pointwise formulation is useful to show equivalence with Tornberg and 
 We begin by writing the unknown functions $g_1$ and $g_2$ in terms of basis functions for $L^2:[0,L]$, 
 \begin{equation}
 \label{eq:basis}
-g_j(s) = \sum_k \alpha_{jk} g_k(s)
+g_j(s) = \sum_k \alpha_{jk} \phi_k(s)
 \end{equation}
-for $j=1, 2$, with $g_k(s)$ sufficiently smooth scalar-valued basis functions on $s \in [0,L]$. Then a semi-continuum representation of Eq.\ \eqref{eq:defk} is given by 
+for $j=1, 2$, with $\phi_k(s)$ sufficiently smooth scalar-valued basis functions on $s \in [0,L]$. Then a semi-continuum representation of Eq.\ \eqref{eq:defk} is given by 
 \begin{equation}
 \label{eq:du}
-   \bm{u}(s)=\frac{\partial \bm{X}}{\partial t}(s) =\bm{U} + \int_0^s \sum_{j=1}^2\sum_k \alpha_{jk} g_k(s') \bm{n}_j(s') \, ds':=(\bm{K}\bm{\alpha})(s),
+   \bm{u}(s)=\frac{\partial \bm{X}}{\partial t}(s) =\bm{U} + \int_0^s \sum_{j=1}^2\sum_k \alpha_{jk} \phi_k(s') \bm{n}_j(s') \, ds':=(\bm{K}\bm{\alpha})(s),
 \end{equation}
 where as before $\bm{U}$ is a constant translation and $\bm{\alpha}=(\alpha_{jk},\bm{U})$. We will use a collocation discretization of Eq.\ \eqref{eq:du}, so that the dynamical equation is
 \begin{equation}
@@ -137,12 +137,12 @@ Note that Galerkin approaches are also possible.
 The dynamical equation, Eq.\ \eqref{eq:veleq}, is supplemented by enforcing Eq.\ \eqref{eq:noworkcont} in an $L^2$ weak sense. We begin by substituting the representation of $g_j$ in Eq.\ \eqref{eq:basis} into the power equation, Eq.\ \eqref{eq:15}, to obtain 
 \begin{equation}
 \label{eq:26}
-\mathcal{P} = \langle\bm{K}\bm{\alpha},\bm{\lambda}\rangle=\bm{U} \cdot \int_0^L \bm{\lambda}(s) \, ds + \int_0^L \left(\int_0^{s'} \sum_{j=1}^2\sum_{k} \alpha_{jk} g_k(s) \bm{n}_j(s) \, ds\right)\cdot \bm{\lambda}(s') \, ds' =\langle \bm{\alpha},\bm{K}^*\bm{\lambda}\rangle =0. 
+\mathcal{P} = \langle\bm{K}\bm{\alpha},\bm{\lambda}\rangle=\bm{U} \cdot \int_0^L \bm{\lambda}(s) \, ds + \int_0^L \left(\int_0^{s'} \sum_{j=1}^2\sum_{k} \alpha_{jk} \phi_k(s) \bm{n}_j(s) \, ds\right)\cdot \bm{\lambda}(s') \, ds' =\langle \bm{\alpha},\bm{K}^*\bm{\lambda}\rangle =0. 
 \end{equation}
 We therefore have an $L^2$ weak formulation of the no work constraint in Eq.\ \eqref{eq:noworkcont}. In order for Eq.\ \eqref{eq:26} to hold for all $\bm{\alpha}$, we must have that 
 \begin{equation}
 \label{eq:noworkcontL2}
-\bm{K}^* \bm{\lambda}:=\begin{pmatrix} \int_0^L \left(\int_0^{s'} g_k(s) \bm{n}_1(s) \, ds\right)\cdot \bm{\lambda}(s') \, ds'\\[2 pt] \int_0^L \left(\int_0^{s'} g_k(s) \bm{n}_2(s) \, ds\right)\cdot \bm{\lambda}(s') \, ds'\\[2 pt] \int_0^L \bm{\lambda}(s') ds' \end{pmatrix} = \begin{pmatrix} 0 \\[2 pt] 0\\[2 pt] \bm{0}\end{pmatrix}. 
+\bm{K}^* \bm{\lambda}:=\begin{pmatrix} \int_0^L \left(\int_0^{s'} \phi_k(s) \bm{n}_1(s) \, ds\right)\cdot \bm{\lambda}(s') \, ds'\\[2 pt] \int_0^L \left(\int_0^{s'} \phi_k(s) \bm{n}_2(s) \, ds\right)\cdot \bm{\lambda}(s') \, ds'\\[2 pt] \int_0^L \bm{\lambda}(s') ds' \end{pmatrix} = \begin{pmatrix} 0 \\[2 pt] 0\\[2 pt] \bm{0}\end{pmatrix}. 
 \end{equation}
 
 A saddle-point system can now be written for $\bm{\lambda}$ and $\bm{\alpha}$ by combining Eqs.\ \eqref{eq:veleq} and \eqref{eq:noworkcontL2}, 
@@ -221,13 +221,13 @@ where $n_2^p(s)$ is some nonzero function of $s$. So if $\left(\left(\bm{K}\bm{\
 \iffalse
 As in the continuous case, since this equation must hold for every feasible motion $\bm{U}$ and $\bm{\alpha}$, each term in Eq.\ \eqref{eq:power} must be zero. Let us focus on the last term for now. Discretizing the integral using some quadrature rule at $s_i$ with weights $w_i$,
 \begin{align}
-    \mathcal{P}_2 &= \sum_{i=1}^{N} \sum_{j=1}^2\sum_{k=0}^{N-2} \alpha_{jk}\bm{D}^+\left(g_k \bm{n}_j\right)(s_i) \cdot \bm{\lambda}(s_i) w_i \\[4 pt]
-& = \sum_{k=0}^{N-2} \sum_{j=1}^2 \alpha_{jk} \sum_{i=1}^{N} \bm{D}^+\left(g_k \bm{n_j}\right)(s_i) \cdot \bm{\lambda}(s_i) w_i=0, 
+    \mathcal{P}_2 &= \sum_{i=1}^{N} \sum_{j=1}^2\sum_{k=0}^{N-2} \alpha_{jk}\bm{D}^+\left(\phi_k \bm{n}_j\right)(s_i) \cdot \bm{\lambda}(s_i) w_i \\[4 pt]
+& = \sum_{k=0}^{N-2} \sum_{j=1}^2 \alpha_{jk} \sum_{i=1}^{N} \bm{D}^+\left(\phi_k \bm{n_j}\right)(s_i) \cdot \bm{\lambda}(s_i) w_i=0, 
 \end{align}
 which must hold for any $\alpha_{jk}$. In particular, it must hold for $\alpha_{jk}=\delta_{1j} \alpha_k$ and $\alpha_{jk}=\delta_{2j} \alpha_k$, and so we have that \textit{for each} $j$ \textit{and} $k$, 
 \begin{equation}
 \label{eq:kstardisc}
-    \sum_{i=1}^{N}\bm{D}^+\left(\bm{n}_j g_k\right)(s_i) \, \cdot \bm{\lambda}(s_i) w_i:=\bm{K}^*\bm{\lambda}=0.
+    \sum_{i=1}^{N}\bm{D}^+\left(\bm{n}_j \phi_k\right)(s_i) \, \cdot \bm{\lambda}(s_i) w_i:=\bm{K}^*\bm{\lambda}=0.
 \end{equation}
 Eq.\ \eqref{eq:kstardisc} defines the bulk of the adjoint condition on $\bm{\lambda}$. It still remains to enforce the first part of Eq.\ \eqref{eq:power}. 
 
@@ -295,7 +295,7 @@ Let us summarize the equations of motion in the $L_2$ weak form, which appears t
 
 In order to avoid constraints, we will write here the evolution for the unit tangent vector along the fiber $\V{X}_s(\theta(s,t),\phi(s,t)) = \left( \cos{\theta} \cos{\phi},\, \sin{\theta} \cos{\phi},\,  \sin{\phi} \right)$ instead of $\V{X}$, but the inextensibility constraint will be implicit in the dynamical equations which arise from enforcing it with a tension Lagrange multiplier. Recall that we can complete $\V{X}_s$ to an orthonormal triad with the two orthogonal vectors $\V{n}_1(s)$ and $\V{n}_2(s)$ given in \eqref{eq:nangles}. While one could use the spherical angles $\theta(s,t)$ and $\phi(s,t)$ to describe the configuration this poses a problem at special points (e.g., the North pole) and is not very natural, so we instead think of $\V{X}_s(s,t)$ as being a curve on the unit sphere $S_2$ that evolves in time. The actual configuration $\V{X}(s,t)$, which enters in the equations also, is computed by integration of $\V{X}_s(s,t)$ using \eqref{eq:XfromXs}.
 
-Recall that the process begins by choosing a set of basis functions $\phi_k(s)$ for $L_2:[0,s]$, which in the discrete formulation we take to be Chebyshev polynomials but this is not required. [Temporary Note: Ondrej's notation in the main notes is conflicted because basis functions are denoted with $g_k$ which is used for something else; this will be fixed shortly.] The dynamics of the fiber tangent vector is given by
+Recall that the process begins by choosing a set of basis functions $\phi_k(s)$ for $L_2:[0,s]$, which in the discrete formulation we take to be Chebyshev polynomials but this is not required. The dynamics of the fiber tangent vector is given by
 \begin{equation}
 \label{eq:Xsupdate_fluct}
 \V{X}_{st} = \left( \M{K} \V{\alpha}\right)(s) = \V{\Omega}(s,t) \times \V{X}_s, 
