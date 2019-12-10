@@ -289,11 +289,26 @@ This theory is of course predicated on the smoothness of $\V{n}_1(s)$ and $\V{n}
 
 \subsection{Thermal Fluctuations}
 
-Let us summarize the equations of motion in the weak form most suitable to stochastic evolution on a space of inextensible worm-like chains. We add here Brownian noise following \cite{FluctuatingFibers_Saintillan_PNAS,FluctuatingFibers_Saintillan_PF}. Recall that the process begins by choosing a set of basis functions $g_k(s)$ for $L_2:[0,s]$, which in the discrete formulation we take to be Chebyshev polynomials but this is not required. In this part we focus on a single fiber and we will ignore the translational motion of the fiber, which means we will set $\V{U}= \frac{\partial\V{X}}{\partial t}(s=0) = \V{0}$ as this is the easy part.
+This section was written by Aleks.
 
-In order to avoid constraints, we will write here the evolution for the tangent vector along the fiber $\V{X}_s(\theta(s,t),\phi(s,t)) = \left( \cos{\theta} \cos{\phi},\, \sin{\theta} \cos{\phi},\,  \sin{\phi} \right)$ instead of $\V{X}$, but the inextensibility constraint will be implicit in the dynamical equations which arise from enforcing it with a tension Lagrange multiplier.
+Let us summarize the equations of motion in the $L_2$ weak form, which appears to be most suitable to stochastic evolution on a space of inextensible worm-like chains. We add here Brownian noise following \cite{FluctuatingFibers_Saintillan_PNAS,FluctuatingFibers_Saintillan_PF}. Although this and all other prior work we know of was not careful about subtleties of multiplicative noise and infinite-dimensional Fokker-Planck equations, I believe ``the physicists" have the right form for the noise covariance and are (most likely) only missing some stochastic drift terms. In this section, we focus on a single fiber and we will ignore the translational motion of the fiber, which means we will set $\V{U}= {\partial\V{X}}/{\partial t}(s=0,t) = \V{0}$ as this is the easy part.
 
-First, the Lagrange multiplier $\lambda(s)$ and direction of motion $\bm{\alpha}=(\alpha_{1k},\alpha_{2k})$ (here $k$ is an index counting the basis functions) in the tangent to the manifold of inextensible fibers are computed by solving the saddle-point system
+In order to avoid constraints, we will write here the evolution for the unit tangent vector along the fiber $\V{X}_s(\theta(s,t),\phi(s,t)) = \left( \cos{\theta} \cos{\phi},\, \sin{\theta} \cos{\phi},\,  \sin{\phi} \right)$ instead of $\V{X}$, but the inextensibility constraint will be implicit in the dynamical equations which arise from enforcing it with a tension Lagrange multiplier. Recall that we can complete $\V{X}_s$ to an orthonormal triad with the two orthogonal vectors $\V{n}_1(s)$ and $\V{n}_2(s)$ given in \eqref{eq:nangles}. While one could use the spherical angles $\theta(s,t)$ and $\phi(s,t)$ to describe the configuration this poses a problem at special points (e.g., the North pole) and is not very natural, so we instead think of $\V{X}_s(s,t)$ as being a curve on the unit sphere $S_2$ that evolves in time. The actual configuration $\V{X}(s,t)$, which enters in the equations also, is computed by integration of $\V{X}_s(s,t)$ using \eqref{eq:XfromXs}.
+
+Recall that the process begins by choosing a set of basis functions $\phi_k(s)$ for $L_2:[0,s]$, which in the discrete formulation we take to be Chebyshev polynomials but this is not required. [Temporary Note: Ondrej's notation in the main notes is conflicted because basis functions are denoted with $g_k$ which is used for something else; this will be fixed shortly.] The dynamics of the fiber tangent vector is given by
+\begin{equation}
+\label{eq:Xsupdate_fluct}
+\V{X}_{st} = \left( \M{K} \V{\alpha}\right)(s) = \V{\Omega}(s,t) \times \V{X}_s, 
+\end{equation}
+where
+\begin{equation}
+\label{eq:Omega_fluct}
+\V{\Omega}(s,t) = \V{\Omega}\left(\theta(s,t),\phi(s,t), \V{\alpha}(t)\right) = 
+	\sum_k \left[ \alpha_{1k}(t) \phi_k(s) \V{n_2}(s) - \alpha_{2k}(t) \phi_k(s) \V{n}_1(s) + \dots \right],
+\end{equation}
+where the dots indicate missing stochastic drift terms that we don't yet have any idea about except that they should be proportional to $k_B T$.
+
+The direction of motion $\bm{\alpha}(t)=(\alpha_{1k}(t),\alpha_{2k}(t))$ (here $k$ is an index counting the basis functions) in the tangent to the manifold of inextensible fibers, as well as the constraint force density $\V{\lambda}(s,t)$, are computed by solving the saddle-point system
 \begin{equation}
 \label{eq:saddleL2_fluct}
 \begin{pmatrix}
@@ -307,25 +322,16 @@ First, the Lagrange multiplier $\lambda(s)$ and direction of motion $\bm{\alpha}
 \bm{M}\bm{L}\bm{X} + \sqrt{2 k_B T} \bm{M}^{\frac{1}{2}} \V{\zeta} \\[4 pt]
 \bm{0}\end{pmatrix},
 \end{equation}
-where $\V{\zeta}(s,t)$ is white noise in space and time. In the semi-continuum weak formulation, $\bm{\alpha}$ is an infinite dimensional vector of countably-many expansion coefficients, while $\lambda(s)$ is a function or distribution. Recall here that $\bm{L}\V{X}=-E \V{X}_{ssss}$ but taking into account the boundary conditions $\V{X}_{ss}=\V{X}_{sss}=0$ at both free ends (how does one handle this in the context of fluctuating fibers?!?). 
-
-For the local drag model $\bm{M}=\bm{\Lambda}/(8\pi\mu)$, an explicit formula for the Brownian force density can be written (personal communication with David Saintillan):
+where $\V{\zeta}(s,t)$ is white noise in space and time. The specific form of the basis functions enters in the operator $\bm{K}$ defined via \eqref{eq:Xsupdate_fluct}, and its $L_2$ adjoint $\bm{K}^*$. Note that for the local drag model $\bm{M}=\bm{\Lambda}/(8\pi\mu)$, an explicit formula for the Brownian force density can be written (personal communication with David Saintillan):
 \begin{equation}
-\V{f}^B(s,t) = \sqrt{\frac{2 k_B T}{8\pi\mu}} \left(\bm{\Lambda}^{\frac{1}{2}} \V{\zeta}\right)(s,t) = \left( c_1(s) \M{I} + c_2(s) \V{X}_s \V{X}_s \right) \V{\zeta}(s,t),
+\V{f}^B(s,t) = \sqrt{\frac{2 k_B T}{8\pi\mu}} \left(\bm{\Lambda}^{\frac{1}{2}} \V{\zeta}\right)(s,t) =  
+	\sqrt{\frac{2 k_B T}{8\pi\mu}} \left( c_1(s) \M{I} + c_2(s) \V{X}_s \V{X}_s \right) \V{\zeta}(s,t),
 \end{equation}
-where the form of $c_1(s)$ and $c_2(s)$ can be computed by computing the covariance of $\V{f}^B$ and comparing it against \eqref{eq:c_t_general}. But this form should not be required in the formulation of the algorithm, which should also work even when the mobility includes non-local parts (which should be symmetric positive-definite also though this is not obvious just by looking at \eqref{eq:intsbt}).
+where the form of $c_1(s)$ and $c_2(s)$ can be computed by computing the covariance of $\V{f}^B$ and comparing it against \eqref{eq:c_t_general}. But this form should not be required in the formulation of the algorithm, which should also work even when the mobility includes non-local parts (which should be symmetric positive-definite, though this is not obvious just by looking at \eqref{eq:intsbt}).
 
-The dynamics of the fiber tangent vector is then given by 
-\begin{equation}
-\label{eq:Xsupdate_fluct}
-\V{X}_{st} = \V{\Omega}\left(\V{X}_s, \V{\alpha}\right) \times \V{X}_s, 
-\end{equation}
-where
-\begin{equation}
-\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=\sum_k \alpha_{2k} g_k(s) \V{n_2}(s) - g_2(s)\V{n}_1
-\end{equation}
+Recall that $\bm{L}\V{X}=-E \V{X}_{ssss}$, taking into account the boundary conditions $\V{X}_{ss}=\V{X}_{sss}=0$ at both free ends. It is not clear how to handle the BCs in the context of fluctuating fibers. Should we put BCs somehow in the set of basis functions or should we enforce them as linear constraints on $\V{\alpha}$ as we (sort of) do in the numerical method? My feeling is that probably to get a working \emph{discrete} stochastic formulation in the end we will need to switch to a Galerkin formulation instead of the collocation approach, that is, we would want to replace \eqref{eq:veleq} with its Galerkin projection onto the space spanned by the basis functions. In this case we would enforce the BCs in the Galerkin formulation directly when integrating by parts, which imposes them weakly and not strictly, as seems the right thing to do. It is not clear, however, whether we also need to switch to Galerkin at the semi-formal level of the continuum $L_s$ formulation as well.
 
+What we want from the equilibrium stochastic dynamics is that it be time-reversible with respect to a specific ``worm-like chain" invariant measure. This invariant measure for the tangent vector $\V{X}_s(s)$ is formed by the set of Brownian motions on $[0,L]$ on the unit $S_2$ sphere, where the diffusion coefficient of the Brownian motion is proportional to $k_B T / E$ (note that this means we cannot set $E=0$ and still make sense of this measure). This is more or less all we know, and now our goal is to figure out what to put in for the dots in \eqref{eq:Omega_fluct} to make this be so. The expectation is (but this should also be studied) is that if there is an additional conservative force density $\V{f}^{(c)}=-\delta{E^{(c)}}/\delta{\V{X}}$ other than bending, the dynamics would be time-reversible with respect to the same measure but weighted by the Boltzmann factor $\exp\left(-E^{(c)}\left[\V{X}\right]/\left(k_B T\right)\right)$.
 
-
-
+One approach would be to represent Brownian motion on the unit $S_2$ sphere in some basis (say KL expansion), then truncate to get a smooth $\V{X}_s(s)$, and work with this as a function. Or maybe everything should be discretized to turn into a finite-dimensional Langevin equation (but observe this equation is very complicated in the end). These are still wide open questions that require some thought and discussion with Eric and Miranda.
 
