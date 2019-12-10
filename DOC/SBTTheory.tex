@@ -18,6 +18,7 @@ where $\bm{f}$ is the force per length on the fiber. The first term on the right
 \end{equation}
 Notice that, because the fiber is inextensible, $\bm{X}_s$ is assumed to be a unit vector, and $\bm{X}_s \bm{X}_s$ is an outer product. Using the $\mathcal{O}(\log{\epsilon^2})$ term of $\bm{\Lambda}$ in place of $\bm{M}$ is synonymous with the \textit{local drag model}. In addition, note that the definition of $\bm{\Lambda}$ in Eq.\ \eqref{eq:localsbt} gives a slender body theory that is $\mathcal{O}(\epsilon^2)$ accurate for \textit{ellipsoidal fibers}, that is, fibers whose radius is given by $r(s)=2\epsilon \sqrt{s(L-s)}$, where $s\in[0,L]$. For cylindrical fibers, this form of SBT is $\mathcal{O}(1)$ accurate, and a different form of $\bm{\Lambda}$ must be used to give the same asymptotic accuracy. In particular, for a general radius $r(s)=a(s)\epsilon L$, the local term is given by  
 \begin{align}
+\label{eq:c_t_general}
 \bm{\Lambda} =\left(c\left(\frac{2s}{L}-1\right)(\bm{I}+\bm{X}_s\bm{X}_s) +  (\bm{I}-3\bm{X}_s\bm{X}_s)\right)\bm{f}(s)
 \end{align}
 where
@@ -276,16 +277,55 @@ The position of the fiber $\V{X}$ can be recovered by
 \label{eq:XfromXs}
 \V{X}(s)= \V{X}(0)+\int_0^s \V{X}_s(\theta(s),\phi(s)) \, ds. 
 \end{equation}
-Notice that, by the right-handedness of the coordinate system
+
+By the right-handedness of the coordinate system
 \begin{equation}
 \label{eq:Xsupdate}
 \V{X}_{st} = g_1(s)\V{n}_1 + g_2(s) \V{n}_2 = \left(g_1(s)\V{n_2}-g_2(s)\V{n}_1\right) \times \V{X}_s:=\V{\Omega}\left(\V{X}_s, \V{\alpha}\right) \times \V{X}_s. 
 \end{equation}
-<<<<<<< HEAD
 Therefore, $\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=g_1(s)\V{n_2}-g_2(s)\V{n}_1$ can be viewed as a rotational velocity for $\V{X}_s$ on the unit sphere. The notation here indicates that $\V{\alpha}$ determines $g_1$ and $g_2$ and therefore $\V{\Omega}$. We will use this to update the configuration in our temporal integration schemes by rotating the tangent vector $\V{X}_s$ and then computing $\V{X}$ using \eqref{eq:XfromXs}; this strictly enforces inextensibility.
 
 This theory is of course predicated on the smoothness of $\V{n}_1(s)$ and $\V{n}_2(s)$. In Eq.\ \eqref{eq:nangles}, it is clear that this only holds if $\theta$ is single-valued at $\phi=\pi/2$. Otherwise the signs of $\V{n}_1$ and $\V{n}_2$ can oscillate. We therefore set $\theta \left(\phi=\pm \pi/2\right)=0$ (numerically: \texttt{theta(abs((abs(phi)-pi/2)) < 1e-12) =0}). 
 
 \subsection{Thermal Fluctuations}
 
-Let us first summarize the equations of motion in the form most suitable to stochastic evolution on a space of inextensible worm-like chains. 
+Let us summarize the equations of motion in the weak form most suitable to stochastic evolution on a space of inextensible worm-like chains. We add here Brownian noise following \cite{FluctuatingFibers_Saintillan_PNAS,FluctuatingFibers_Saintillan_PF}. Recall that the process begins by choosing a set of basis functions $g_k(s)$ for $L_2:[0,s]$, which in the discrete formulation we take to be Chebyshev polynomials but this is not required. In this part we focus on a single fiber and we will ignore the translational motion of the fiber, which means we will set $\V{U}= \frac{\partial\V{X}}{\partial t}(s=0) = \V{0}$ as this is the easy part.
+
+In order to avoid constraints, we will write here the evolution for the tangent vector along the fiber $\V{X}_s(\theta(s,t),\phi(s,t)) = \left( \cos{\theta} \cos{\phi},\, \sin{\theta} \cos{\phi},\,  \sin{\phi} \right)$ instead of $\V{X}$, but the inextensibility constraint will be implicit in the dynamical equations which arise from enforcing it with a tension Lagrange multiplier.
+
+First, the Lagrange multiplier $\lambda(s)$ and direction of motion $\bm{\alpha}=(\alpha_{1k},\alpha_{2k})$ (here $k$ is an index counting the basis functions) in the tangent to the manifold of inextensible fibers are computed by solving the saddle-point system
+\begin{equation}
+\label{eq:saddleL2_fluct}
+\begin{pmatrix}
+-\bm{M} & \bm{K}\\[4 pt]
+\bm{K}^* & \bm{0}
+\end{pmatrix}
+\begin{pmatrix} 
+\bm{\lambda}\\[4 pt]
+\bm{\alpha}\\[4 pt]
+\end{pmatrix} =  \begin{pmatrix} 
+\bm{M}\bm{L}\bm{X} + \sqrt{2 k_B T} \bm{M}^{\frac{1}{2}} \V{\zeta} \\[4 pt]
+\bm{0}\end{pmatrix},
+\end{equation}
+where $\V{\zeta}(s,t)$ is white noise in space and time. In the semi-continuum weak formulation, $\bm{\alpha}$ is an infinite dimensional vector of countably-many expansion coefficients, while $\lambda(s)$ is a function or distribution. Recall here that $\bm{L}\V{X}=-E \V{X}_{ssss}$ but taking into account the boundary conditions $\V{X}_{ss}=\V{X}_{sss}=0$ at both free ends (how does one handle this in the context of fluctuating fibers?!?). 
+
+For the local drag model $\bm{M}=\bm{\Lambda}/(8\pi\mu)$, an explicit formula for the Brownian force density can be written (personal communication with David Saintillan):
+\begin{equation}
+\V{f}^B(s,t) = \sqrt{\frac{2 k_B T}{8\pi\mu}} \left(\bm{\Lambda}^{\frac{1}{2}} \V{\zeta}\right)(s,t) = \left( c_1(s) \M{I} + c_2(s) \V{X}_s \V{X}_s \right) \V{\zeta}(s,t),
+\end{equation}
+where the form of $c_1(s)$ and $c_2(s)$ can be computed by computing the covariance of $\V{f}^B$ and comparing it against \eqref{eq:c_t_general}. But this form should not be required in the formulation of the algorithm, which should also work even when the mobility includes non-local parts (which should be symmetric positive-definite also though this is not obvious just by looking at \eqref{eq:intsbt}).
+
+The dynamics of the fiber tangent vector is then given by 
+\begin{equation}
+\label{eq:Xsupdate_fluct}
+\V{X}_{st} = \V{\Omega}\left(\V{X}_s, \V{\alpha}\right) \times \V{X}_s, 
+\end{equation}
+where
+\begin{equation}
+\V{\Omega}\left(\V{X}_s, \V{\alpha}\right)=\sum_k \alpha_{2k} g_k(s) \V{n_2}(s) - g_2(s)\V{n}_1
+\end{equation}
+
+
+
+
+
