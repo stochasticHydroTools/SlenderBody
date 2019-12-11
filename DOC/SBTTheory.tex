@@ -162,11 +162,11 @@ A saddle-point system can now be written for $\bm{\lambda}$ and $\bm{\alpha}$ by
 
 Now, we can eliminate $\bm{\lambda}$ by a Schur complement approach. Applying the formal (psuedo)inverse of $\bm{M}$ to both sides of Eq.\ \eqref{eq:veleq} and then applying $\bm{K}^*$ to both sides, we obtain
 \begin{equation}
-\left(\left(\bm{K}^*\bm{M}^{-1} \bm{K}\right)\bm{g}\right)(s) = \bm{K}^*\left(\bm{f}^E+\bm{M}^{-1}\bm{U}_0\right)=\bm{K}^*\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right),
+\left(\left(\bm{K}^*\bm{M}^{-1} \bm{K}\right)\bm{\alpha}\right)(s) = \bm{K}^*\left(\bm{f}^E+\bm{M}^{-1}\bm{U}_0\right)=\bm{K}^*\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right),
 \end{equation}
 where we have used Eq.\ \eqref{eq:noworkcontL2} to eliminate $\bm{\lambda}$. If we now apply the (pseudo)inverse of the operator $\bm{K}^*\bm{M}^{-1}\bm{K}$, then apply $\bm{K}$ on the left to both sides, we obtain a solution for the velocity of the fiber centerline of the form
 \begin{equation}
-\frac{\partial \bm{X}}{\partial t}(s) = \left(\bm{K}\bm{g}\right)(s) = \left(\bm{K}\left(\bm{K}^*\bm{M}^{-1}\bm{K}\right)^{-1}\bm{K}^*\right)\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right):
+\frac{\partial \bm{X}}{\partial t}(s) = \left(\bm{K}\bm{\alpha}\right)(s) = \left(\bm{K}\left(\bm{K}^*\bm{M}^{-1}\bm{K}\right)^{-1}\bm{K}^*\right)\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right):
 =\bm{N}\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right). 
 \end{equation}
 
