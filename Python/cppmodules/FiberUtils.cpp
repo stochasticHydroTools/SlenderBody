@@ -8,7 +8,12 @@
 // Right now it only has the computation of the finite part integral
 // density g in it.
 
-
+// C++ function to compute the relevant density g(s_i,s_j) for the finite part integration.
+// Inputs: N = number of points on fiber, X, Y, Z = N vectors of Chebyshev points on the
+// fiber. Xs, Xss, fprime = 3 vectors that are the tangent vector Xs, Xss, and f' at iPt.
+// fx, fy, fz = N vectors with the force densities, s = arclength coordinates on the
+// fiber centerline, iPt = the point we are building for.
+// Ouputs the density g as a 3*N vector, to be reformatted in the Python. 
 std::vector <double> FPDensity(int N, std::vector <double> X,std::vector <double> Y,std::vector <double> Z,
                 std::vector <double> Xs,std::vector <double> Xss,std::vector<double> fprime,
                 std::vector <double> fx,std::vector <double> fy,std::vector <double> fz,
@@ -43,7 +48,7 @@ std::vector <double> FPDensity(int N, std::vector <double> X,std::vector <double
     
 // Module for python
 PYBIND11_MODULE(FiberUtils, m) {
-    m.doc() = "The C++ functions for cross linking"; // optional module docstring
+    m.doc() = "The C++ function for finite part integral"; // optional module docstring
 
     m.def("FPDensity", &FPDensity, "Density g for finite part integral");
 }

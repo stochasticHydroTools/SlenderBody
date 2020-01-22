@@ -132,28 +132,24 @@ class EwaldSplitter(object):
         forces = forces at those points, g = the strain in the coordinate system.
         """
         velNear = np.zeros((pts.T).shape);
-        # Sort points into bins   
+        # Sort points into bins
+        ptbins = self.binsbyP(pts,self._nxBin,self._nyBin,self._nzBin,g);
         bfirst, pnext = self.binPoints(Npts,pts,self._nxBin,self._nyBin,self._nzBin,g);
-        # Go bin by bin to compute the velocity. Can parallelize all 3 of these
-        # loops as necessary.
-        for iBin in xrange(self._nxBin):
-            for jBin in xrange(self._nyBin):
-                for kBin in xrange(self._nzBin):
-                    tbin=np.int_([[iBin, jBin, kBin]]);
-                    sN = EwaldSplitter.neighborBins(tbin,self._nxBin,self._nyBin,self._nzBin);
-                    iPt = bfirst[sN[0]];
-                    while (iPt != -1):
-                        for iSn in xrange(len(sN)):
-                            jPt = bfirst[sN[iSn]];
-                            while (jPt !=-1):
-                                # Find nearest periodic image (might need to speed this up)
-                                rvec = self.calcShifted(pts[iPt,:]-pts[jPt,:],g);
-                                # Only actually do the computation when necessary
-                                if (rvec[0]*rvec[0]+rvec[1]*rvec[1]+\
-                                    rvec[2]*rvec[2] < self._rcut*self._rcut):
-                                    velNear[:,iPt]+=ewc.RPYNKer(rvec,forces[jPt,:],self._mu,self._xi,self._a);
-                                jPt = pnext[jPt];
-                        iPt = pnext[iPt];
+        # Go point by point to compute the velocity. Can parallelize this
+        # outer loop as necessary.
+        for iPt in xrange(Npts): # loop over points
+            tbin=[ptbins[iPt,:]];
+            sN = EwaldSplitter.neighborBins(tbin,self._nxBin,self._nyBin,self._nzBin);
+            for iSn in xrange(len(sN)): # loop over neighboring bins
+                jPt = bfirst[sN[iSn]];
+                while (jPt !=-1):
+                    # Find nearest periodic image (might need to speed this up)
+                    rvec = self.calcShifted(pts[iPt,:]-pts[jPt,:],g);
+                    # Only actually do the computation when necessary
+                    if (rvec[0]*rvec[0]+rvec[1]*rvec[1]+\
+                        rvec[2]*rvec[2] < self._rcut*self._rcut):
+                        velNear[:,iPt]+=ewc.RPYNKer(rvec,forces[jPt,:],self._mu,self._xi,self._a);
+                    jPt = pnext[jPt];
         return velNear.T;
     
     def binPoints(self,Npts,pts,nxBin,nyBin,nzBin,g):
