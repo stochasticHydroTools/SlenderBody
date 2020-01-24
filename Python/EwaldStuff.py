@@ -1,6 +1,7 @@
 import finufftpy as fi
 import numpy as np
 from scipy import special
+from scipy.spatial import cKDTree
 import EwaldUtils as ewc
 
 class EwaldSplitter(object):
@@ -22,24 +23,6 @@ class EwaldSplitter(object):
         self._a = a;
         self._mu = mu; 
         self.calcrcut();
-        # Figure out how many bins for the near field calculations
-        self._nxBin, self._nyBin, self._nzBin = self.calcnBins(self._rcut);
-        # Testing stuff
-        #np.random.seed(1);
-        #pts = (np.random.rand(1000,3)-0.5)*7.2;
-        #forces = np.random.rand(1000,3);
-        #EwaldSplitter.writeArray(pts,'points.txt','w');
-        #EwaldSplitter.writeArray(forces,'forces.txt','w');
-        #print 'Cutoff distance is %f' %self._rcut;
-        #start=time.time();
-        #g = 0;
-        #velNear = self.EwaldNearVel(1000,pts,forces,g); 
-        #velFar = self.EwaldFarVel(1000,pts,forces,g);
-        #end=time.time();
-        #el = end-start;
-        #print 'Time elapsed: %f' % el
-        #EwaldSplitter.writeArray(velNear,'nearvels.txt','w');
-        #EwaldSplitter.writeArray(velFar,'farvels.txt','w');
 
     def calcrcut(self):
         """
@@ -130,10 +113,14 @@ class EwaldSplitter(object):
         Near field velocity. 
         Inputs: Npts = the number of blobs, ptsxyz = the list of points,
         forces = forces at those points, g = the strain in the coordinate system.
+        This version uses binning and is SLOW!
         """
         velNear = np.zeros((pts.T).shape);
         # Sort points into bins
+        rwsafety = self._rcut*(1+0.5*g*g+0.5*np.sqrt(g*g*(g*g+4.0)));
+        self._nxBin, self._nyBin, self._nzBin = self.calcnBins(rwsafety);
         ptbins = self.binsbyP(pts,self._nxBin,self._nyBin,self._nzBin,g);
+        print 'Number of bins (%d, %d, %d)' %(self._nxBin, self._nyBin, self._nzBin);
         bfirst, pnext = self.binPoints(Npts,pts,self._nxBin,self._nyBin,self._nzBin,g);
         # Go point by point to compute the velocity. Can parallelize this
         # outer loop as necessary.
@@ -151,6 +138,55 @@ class EwaldSplitter(object):
                         velNear[:,iPt]+=ewc.RPYNKer(rvec,forces[jPt,:],self._mu,self._xi,self._a);
                     jPt = pnext[jPt];
         return velNear.T;
+        
+        
+    def EwaldNearVelkD(self,Npts,ptsxyz,forces,g):
+        """
+        Near field velocity. 
+        Inputs: Npts = the number of blobs, ptsxyz = the list of points,
+        forces = forces at those points, g = the strain in the coordinate system.
+        This method uses the kD tree to compute a list of the neighbors.
+        """
+        # Compute the coordinates in the transformed basis
+        ptsprime = EwaldSplitter.primecoords(ptsxyz,g);
+        # Sort points into kD tree using safety factor
+        rwsafety = self._rcut*(1+0.5*g*g+0.5*np.sqrt(g*g*(g*g+4.0)));
+        # Mod the points so they are on the right bounds [0,Lx] x [0,Ly] x [0,Lz]
+        Lens = np.array([self._Lx,self._Ly,self._Lz]);
+        ptsprime = np.mod(ptsprime,Lens);
+        self._nearTree = cKDTree(ptsprime,boxsize=Lens);
+        # Find all pairs (returns an array of the pairs)
+        pairpts = self._nearTree.query_pairs(rwsafety,output_type='ndarray');
+        Npairs = len(pairpts);
+        # Call the C+ function which takes as input the pairs of points, number of points and gives
+        # you the near field
+        velNear = ewc.RPYNKerPairs(Npts,Npairs,pairpts[:,0],pairpts[:,1],ptsxyz[:,0],ptsxyz[:,1],ptsxyz[:,2],\
+                forces[:,0],forces[:,1],forces[:,2],self._mu,self._xi,self._a,self._Lx, self._Ly,\
+                self._Lz, g, self._rcut);
+        return np.reshape(velNear,(Npts,3));
+        
+
+    
+    def EwaldNearVelQuad(self,Npts,pts,forces,g):
+        """
+        Near field velocity. 
+        Inputs: Npts = the number of blobs, ptsxyz = the list of points,
+        forces = forces at those points, g = the strain in the coordinate system.
+        This is the dumb quadratic method.
+        """
+        velNear = np.zeros((pts.T).shape);
+        # Go point by point to compute the velocity. Can parallelize this
+        # outer loop as necessary.
+        for iPt in xrange(Npts): # loop over points
+            for jPt in xrange(Npts):
+                # Find nearest periodic image (might need to speed this up)
+                rvec = self.calcShifted(pts[iPt,:]-pts[jPt,:],g);
+                # Only actually do the computation when necessary
+                if (rvec[0]*rvec[0]+rvec[1]*rvec[1]+\
+                    rvec[2]*rvec[2] < self._rcut*self._rcut):
+                    velNear[:,iPt]+=ewc.RPYNKer(rvec,forces[jPt,:],self._mu,self._xi,self._a);
+        return velNear.T;
+
     
     def binPoints(self,Npts,pts,nxBin,nyBin,nzBin,g):
         """ 

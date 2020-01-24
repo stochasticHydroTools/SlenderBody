@@ -139,6 +139,75 @@ std::vector<double> RPYNKer(std::vector<double> &rvec, std::vector<double> force
     return unear;
 }
 
+// Compute shifted coordinates of a vector rvec. The goal is to shift a vector
+// rvec periodically until it's on [-Lx/2,Lx/2] x [-Ly/2, Ly/2] x [-Lz/2, Lz/2].
+// This must be done carefully, however, since the periodicity is not standard
+// (slanted grid).
+// Inputs: rvec = 3 vector to shift, g = slantedness of grid, Lx, Ly, Lz = periodic
+// lengths in each direction.
+// Output: the shifted vector rvec
+std::vector <double> calcShifted(std::vector<double> rvec, double g, double Lx, double Ly, double Lz){
+    double s1 = round(rvec[1]/Ly);
+    // Shift in (y',z') directions
+    rvec[0]-= g*Ly*s1;
+    rvec[1]-= Ly*s1;
+    rvec[2]-= Lz*round(rvec[2]/Lz);
+    // Shift in x direction
+    rvec[0]-= Lx*round(rvec[0]/Lx);
+    return rvec;
+}
+
+
+// The near field kernel, multiplies M_near * f for paris of points
+// Inputs: number of points N , number of pairs Npairs, iPts = one point in the pair
+// jPts = the other point in the pair, xpts, ypts, zpts = the x, y, and z coordinates
+// of the points in Cartesian coordinates. forcesX, forcesY, forcesZ = values of the forces
+// mu = viscosity, a = hydro radius, Lx, Ly, Lz = periodic lenghts, g = strain in coordinate
+// system, and rcut = truncation distance for the near field. 
+std::vector<double> RPYNKerPairs(int N, int Npairs,std::vector<int> iPts, std::vector<int> jPts,
+             std::vector<double> xpts, std::vector<double> ypts,
+             std::vector<double> zpts, std::vector<double> forcesX,std::vector<double> forcesY,
+             std::vector<double> forcesZ,double mu, double xi, double a,
+             double Lx, double Ly, double Lz, double g, double rcut){
+    std::vector <double> unear(N*3);
+    // Self
+    double outFront = 1.0/(6.0*M_PI*mu*a);
+    double F0 = Fnear(0.0,xi,a);
+    for (int iPt=0; iPt < N; iPt++){
+        unear[3*iPt]=outFront*F0*forcesX[iPt];
+        unear[3*iPt+1]=outFront*F0*forcesY[iPt];
+        unear[3*iPt+2]=outFront*F0*forcesZ[iPt];
+    }
+    // Pairs
+    std::vector<double> rvec(3);
+    int iPt, jPt;
+    double rdotfj, rdotfi, F, G, co2i, co2j, r;
+    for (int iPair=0; iPair < Npairs; iPair++){
+        iPt = iPts[iPair];
+        jPt = jPts[iPair];
+        rvec[0]=xpts[iPt]-xpts[jPt];
+        rvec[1]=ypts[iPt]-ypts[jPt];
+        rvec[2]=zpts[iPt]-zpts[jPt];
+        rvec = calcShifted(rvec,g,Lx,Ly,Lz);
+        r = normalize(rvec);
+        if (r < rcut){ // only do the computation below truncation
+            rdotfj = rvec[0]*forcesX[jPt]+rvec[1]*forcesY[jPt]+rvec[2]*forcesZ[jPt];
+            rdotfi = rvec[0]*forcesX[iPt]+rvec[1]*forcesY[iPt]+rvec[2]*forcesZ[iPt];
+            F = Fnear(r, xi, a);
+            G = Gnear(r, xi, a);
+            co2i = rdotfj*G-rdotfj*F;
+            co2j = rdotfi*G-rdotfi*F;
+            unear[3*iPt]+=outFront*(F*forcesX[jPt]+co2i*rvec[0]);
+            unear[3*iPt+1]+=outFront*(F*forcesY[jPt]+co2i*rvec[1]);
+            unear[3*iPt+2]+=outFront*(F*forcesZ[jPt]+co2i*rvec[2]);
+            unear[3*jPt]+=outFront*(F*forcesX[iPt]+co2j*rvec[0]);
+            unear[3*jPt+1]+=outFront*(F*forcesY[iPt]+co2j*rvec[1]);
+            unear[3*jPt+2]+=outFront*(F*forcesZ[iPt]+co2j*rvec[2]);
+        } // end doing the computation
+    } // end looping over pairs
+    return unear;
+}
+
 // Multiply M_RPY*f
 // Inputs: 3 vector r (not normalized), 3 vector force,
 // mu = viscosity, xi = Ewald parameter, a = blob radius,
@@ -192,23 +261,6 @@ std::vector<double> RPYSBTKernel(int Ntarg, std::vector<double> xtarg, std::vect
     return utargs;
 }
 
-// Compute shifted coordinates of a vector rvec. The goal is to shift a vector
-// rvec periodically until it's on [-Lx/2,Lx/2] x [-Ly/2, Ly/2] x [-Lz/2, Lz/2].
-// This must be done carefully, however, since the periodicity is not standard
-// (slanted grid).
-// Inputs: rvec = 3 vector to shift, g = slantedness of grid, Lx, Ly, Lz = periodic
-// lengths in each direction.
-// Output: the shifted vector rvec
-std::vector <double> calcShifted(std::vector<double> rvec, double g, double Lx, double Ly, double Lz){
-    double s1 = round(rvec[1]/Ly);
-    // Shift in (y',z') directions
-    rvec[0]-= g*Ly*s1;
-    rvec[1]-= Ly*s1;
-    rvec[2]-= Lz*round(rvec[2]/Lz);
-    // Shift in x direction
-    rvec[0]-= Lx*round(rvec[0]/Lx);
-    return rvec;
-    }
 
     
 // Module for python
@@ -221,4 +273,5 @@ PYBIND11_MODULE(EwaldUtils, m) {
     m.def("RPYTot", &RPYTot, "Total kernel for the RPY tensor");
     m.def("RPYSBTKernel", &RPYSBTKernel, "RPY/SBT quadrature");
     m.def("calcShifted", &calcShifted, "Shift in primed variables to [-L/2, L/2]^3");
+    m.def("RPYNKerPairs", &RPYNKerPairs, "RPY near sum done in pairs");
 }
