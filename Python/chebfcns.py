@@ -1,7 +1,6 @@
 import numpy as np
 from numpy import pi
 from numpy import cos
-from scipy.sparse import diags
 
 """
     This file is a list of Chebyshev related functions
@@ -9,16 +8,27 @@ from scipy.sparse import diags
     code
 """
 
-def chebpts(N,dom,kind=2):
+def chebPts(N,dom,kind,numPanels=1):
     """
     Chebyshev points on the interval dom of kind kind. 
     Second kind Chebyshev points include the endpoints, 
-    Inputs: number of points and size of domain (a 1 x 2) 
-    array, and kind of points. 
-    Outputs: the Chebyshev points x and the weights w. 
+    Inputs: number of points and size of domain (a 1 x 2
+    array), and kind of points.
+    Outputs: the Chebyshev points x.
+    """
+    x = cos(theta(N,kind,numPanels));
+    # Rescale
+    x = float(dom[1]-dom[0])/2*(x+1)+dom[0];
+    return x;
+
+def chebWts(N,dom,kind):
+    """
+    Chebyshev integration weights on the interval dom of kind kind. 
+    Inputs: number of points, and size of domain (1 x 2 array),
+    kind of points (only 1 and 2 supported). 
+    Outputs: the weights as an N array
     """
     if kind==1:
-        th=th1(N);
         m=2.0 / np.concatenate(([1],1-np.arange(2,N,2)**2));
         if np.mod(N,2):
             c=np.concatenate((m,-m[(N+1)/2-1:0:-1]));
@@ -28,156 +38,122 @@ def chebpts(N,dom,kind=2):
         c=c*v;
         w = np.real(np.fft.ifft(c));
     elif kind==2:
-        th=th2(N);
         c=2.0/np.concatenate(([1],1-np.arange(2,N,2)**2));
         c=np.concatenate((c,c[N//2-1:0:-1]));
         w = np.real(np.fft.ifft(c));
         w[0]/=2;
         w=np.concatenate((w,[w[0]]))
-    x = cos(th);
-    # Rescale
-    x = float(dom[1]-dom[0])/2*(x+1)+dom[0];
+    else:
+        raise ValueError('Invalid kind of points for Chebyshev weights: 1 or 2 supported')
     w *= float(dom[1]-dom[0])/2;
-    return x, w
+    return w;
 
-def RSMat(Ntarg,Nsrc,typtarg=1,typsrc=2,start=None,end=None):
+def theta(N,type,numPanels):
     """
-    Resampling matrix. This function computes the resampling matrix from 
-    Nsrc points of type typsrc to Ntarg points of type typtarg. 
+    Theta values for a Chebyshev grid with N pts and 
+    type "type" (1, 2, or 'u' for uniform points).
+    Multiple panels are allowed; although only type 1
+    points are supported with multiple panels.
     """
-    if typsrc==2:
-        ths=th2(Nsrc);
-    elif typsrc==1:
-        ths=th1(Nsrc);
-    if typtarg==1:
-        tht=th1(Ntarg);
-    elif typtarg==2:
-        tht=th2(Ntarg);
-    elif typtarg=='u':
-        tht=thu(Ntarg);
-    elif typtarg==232:
-        tht=th2pan1(Ntarg);
-    elif typtarg=='cl':
-        tht=thu(Ntarg,start,end);
-    Lsrc = Lmat(Nsrc,ths);
-    Ltarg = Lmat(Nsrc,tht);
-    RS = np.dot(Ltarg,np.linalg.inv(Lsrc));
-    return RS
-    
+    if (type==2):
+        th=np.flipud(pi*np.arange(N))/(N-1);
+    elif (type==1):
+        th=np.flipud((2.0*np.arange(N)+1))*pi/(2*N);
+    elif (type=='u'):
+        xu = np.linspace(-1.0,1.0,N);
+        th=np.arccos(xu);
+    else:
+        raise ValueError('Invalid Chebyshev grid type; 1, 2 or uniform are supported');
+    if (numPanels > 1):
+        if (type!=1):
+            raise ValueError('Cannot have more than 1 panel with anything but type 1 grid')
+        x=cos(th);
+        panSize = 2.0/numPanels;
+        panStarts = np.arange(numPanels)*panSize-1;
+        EachPan = (x+1)*panSize/2.0;
+        allpans = np.reshape(np.array([panStarts]).T+EachPan,numPanels*N);
+        th = np.arccos(allpans);
+    return th;
+
+def CoeffstoValuesMatrix(Ncoefs,Ntarg,typetarg,nPantarg=1):
+    """ 
+    The matrix that maps Ncoefs coefficients to Ntarg values on a typetarg grid.
+    Optional argument is to have multiple panels on the target.
+    """
+    thtarg = theta(Ntarg,typetarg,nPantarg);
+    CtoVMat = cos(np.outer(thtarg,np.arange(Ncoefs)));
+    return CtoVMat;
+
 def diffMat(numDs,dom,Ntarg,Nsrc,typtarg,typsrc):
     """
-    Differentiation matrix. Inputs are the number of sources 
-    and the type of grid typsrc. The differentiation matrix is
+    Differentiation matrix. Inputs are the number of source points
+    and the type of source grid typsrc. The differentiation matrix is
     computed (numDs derivatives) at Ntarg target points on a grid
     of type typtarg. The answer is scaled by the domain size, which
-    comes from dom. 
+    comes from dom (a 2 array).
     The differentiation matrix is returned.
     """
-    if typsrc==2:
-        ths=th2(Nsrc);
-    elif typsrc==1:
-        ths=th1(Nsrc);
-    if typtarg==1:
-        tht=th1(Ntarg);
-    elif typtarg==2:
-        tht=th2(Ntarg);
-    Lsrc = Lmat(Nsrc,ths);
-    Ltarg = Lmat(Nsrc,tht);
+    CtoV_src = CoeffstoValuesMatrix(Nsrc,Nsrc,typsrc); #square matrix
+    CtoV_targ = CoeffstoValuesMatrix(Nsrc,Ntarg,typtarg); # rectangular matrix Ntarg x Nsrc
     # Compute coefficients in the basis
-    CfromD=np.linalg.inv(Lsrc);
+    VtoC_src=np.linalg.inv(CtoV_src);
     # Differentiate the Chebyshev series numDs times
-    for iD in range(numDs):
-        CfromD=coeffDiff(CfromD,Nsrc);
+    for iD in xrange(numDs):
+        VtoC_src=diffCoefficients(VtoC_src,Nsrc);
     # Multiply by the matrix of values at the targets
-    dMat = np.dot(Ltarg,CfromD);
-    J = float(dom[1]-dom[0])/2;
-    return dMat/(J**numDs);
-        
-def coeffDiff(coefs,N):
+    NderivMat = np.dot(CtoV_targ,VtoC_src);
+    Jacobian = 0.5*(dom[1]-dom[0]);
+    return NderivMat/(Jacobian**numDs);
+
+def diffCoefficients(coefs,N):
     """
     Differentiate Chebyshev coefficients using the recursive
-    formula. Input: coefficints (an N x ?) array, N = number of
+    formula. Input: coefficients (an N x ?) array, N = number of
     coefficients
     Outputs: coefficients of the derivative series.
     """
-    Dcos = 0*coefs;
+    Dcos = np.zeros(coefs.shape);
     Dcos[N-2,:]=2.0*(N-1)*coefs[N-1,:];
     for a in range(N-3,-1,-1):
         Dcos[a,:]=Dcos[a+2,:]+2.0*(a+1)*coefs[a+1,:];
-    Dcos[0,:]=Dcos[0,:]/2;
+    Dcos[0,:]=0.5*Dcos[0,:];
     return Dcos;
 
-def intMat(f,N,dom):
+def intCoefficients(incoefs,N,dom):
     """
     Function that applies the Chebyshev integration matrix to the series of
-    coefficients on domain dom.
+    N coefficients incoefs on domain dom.
+    There is an unknown constant since this is indefinite integration
+    that we set to zero here.
     """
-    fint=0*f;
-    # just a convention to make the unknown constant 0
-    fint[1,:]=f[0,:]-0.5*f[2,:];
+    intcoefs = np.zeros(incoefs.shape);
+    intcoefs[1,:]=incoefs[0,:]-0.5*incoefs[2,:];
     for j in range(2,N-1):
-        fint[j,:]=1.0/(2*j)*(f[j-1,:]-f[j+1,:]);
-    fint[N-1,:]=1.0/(2*(N-1))*f[N-2,:];
-    fint*=float(dom[1]-dom[0])/2;
-    return fint;
+        intcoefs[j,:]=1.0/(2*j)*(incoefs[j-1,:]-incoefs[j+1,:]);
+    intcoefs[N-1,:]=1.0/(2*(N-1))*incoefs[N-2,:];
+    intcoefs*=0.5*(dom[1]-dom[0]);
+    return intcoefs;
 
-def th2(N):
+def ResamplingMatrix(Ntarg,Nsrc,typtarg,typsrc,nPantarg=1,nPansrc=1):
     """
-    Theta values for a type 2 Chebyshev grid with N pts
+    Resampling matrix. This function computes the resampling matrix from 
+    Nsrc points of type typsrc to Ntarg points of type typtarg. 
+    Number of panels for source and target are keyword arguments.
     """
-    th=np.flipud(pi*np.arange(N))/(N-1);
-    return th;
+    CtoV_src = CoeffstoValuesMatrix(Nsrc,Nsrc,typsrc,nPansrc);
+    CtoV_targ = CoeffstoValuesMatrix(Nsrc,Ntarg,typtarg,nPantarg);
+    ResamplingMat = np.dot(CtoV_targ,np.linalg.inv(CtoV_src));
+    return ResamplingMat
 
-def th1(N):
-    """
-    Theta values for a type 1 Chebyshev grid with N pts
-    """
-    th=np.flipud((2.0*np.arange(N)+1))*pi/(2*N);
-    return th;
-
-def thu(N,start=-1.0,end=1.0):
-    """
-    Theta values for a uniform grid with N pts
-    """
-    xu = np.linspace(start,end,N);
-    thu=np.arccos(xu);
-    return thu;
-
-def th2pan1(N):
-    """
-    Theta values for 2 panels of type 1 N points each
-    """
-    x1p = (np.cos(th1(N))+1)/2.0;
-    th2p2 = np.arccos(np.concatenate((x1p-1,x1p)));
-    return th2p2;
-
-def Lmat(N,th):
-    """ 
-    The matrix that maps coefficients to values for N 
-    points. The other input are the theta values.
-    """
-    L = cos(np.outer(th,np.arange(N)));
-    return L;
-
-def coeffs(N,th,data):
-    """
-    Compute the coefficients of the Chebyshev series
-    from the data. 
-    Inputs = angles theta (N vector), number of points N, 
-    and the data to compute the series of (an N x ? vector).
-    Output: the coefficients (as an N x ? vector).
-    """
-    cos = np.linalg.solve(Lmat(N,th),data);
-    return cos;
-
-def evalSeries(coeffs,th,N):
+def evalSeries(coeffs,th):
     """
     Evaluate some number of Chebyshev series at an angle theta.
-    Inputs: coeffs = coefficients of the series (array may
-    columns, but has N rows). th = angle theta to evaluate the 
-    series at, N = number of series coefficients.
+    Inputs: coeffs = coefficients of the series (array may have
+    multiple columns, but has N rows). th = angle theta to evaluate 
+    the series at (can be complex). 
     Output: value(s) of the Chebyshev series at th
     """
+    N,_= coeffs.shape;
     polys = np.reshape(np.cos(np.arange(N)*th),(1,N));
     vals = np.dot(polys,coeffs);
     return vals;

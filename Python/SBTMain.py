@@ -1,24 +1,23 @@
 from math import pi
-from Fiber import Fiber
-from Fluid import Fluid
-from ExForces import ExForces
-from FibInitializer import makeCurvedFiber, makeFallingFibers, makeRandomFibers
+from fiberCollection import fiberCollection
+from FiberDiscretization import FiberDiscretization
+from DiscretizedFiber import DiscretizedFiber
+from Domain import Domain
+from FibInitializer import makeCurvedFiber, makeFallingFibers
 import chebfcns as cf
 import numpy as np
 
-def prepareOutFile(name, fibList):
+def prepareOutFile(name):
     outFile = name;
     of = open(outFile,'w');
     of.close();
     of = open(outFile,'a');
-    # Write the initial locations
-    for fib in fibList:
-        fib.writeLocs(of);
     return of;
 
 
 # Seed random number generator (for reproducibility)
 np.random.seed(0);
+fixedpointtol=1e-6;
 
 # Read the input file
 infile = open('InputFile.txt','r');
@@ -27,22 +26,24 @@ for line in lines:
     exec(line)
 infile.close();
 
+# Initialize the domain
+Dom = Domain(Ld,Ld,Ld);
+
+# Initialize fiber discretization
+fibDisc = FiberDiscretization(Lf,eps,ellipsoidal,Eb,mu,N);
+
+# Initialize the master list of fibers
+allFibers = fiberCollection(nFib,fibDisc,nonLocal,Dom,xi,mu,omega,gam0)
 # Initialize the fiber list
-if (nFib==1):
-    fibList = makeCurvedFiber(nFib,Lf,eps,ellipsoidal,Eb,mu,N);
-elif (nFib==4):
-    fibList = makeFallingFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N);
-else:
-    fibList = makeRandomFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N,Ld,Ld,Ld);
-
-# Initialize the fluid
-flu = Fluid(nFib,N,nonLocal,Ld,Ld,Ld,xi,mu,omega,gam0,Lf,eps);
-
-# Initialize the external forcing (if any)
-exForce = ExForces(nFib,N,Lf,grav,nCL,Kspring,rl,Ld,Ld,Ld);
+# For the single relaxing fiber test
+#fibList = makeCurvedFiber(nFib,Lf,eps,ellipsoidal,Eb,mu,N);
+#fibList = makeFallingFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N);
+fibList = [None]*nFib;
+allFibers.initFibList(fibList);
 
 # Prepare the output file and write initial locations
-of = prepareOutFile('Locations.txt',fibList);
+of = prepareOutFile('Locations.txt');
+allFibers.writeFiberLocations(of);
 
 # Compute the endtime
 stopcount = int(tf/dt+1e-10);
@@ -55,27 +56,26 @@ for iT in range(stopcount):
     tval = (iT+(abs(solver)-1)/2.0)*dt; # the argument for the background flow t
     iters=0;
     itmax = maxiters;
-    notconvbyFib = np.ones(nFib);
-    notconv = 1;
+    anyNot = 1;
     if (iT < abs(solver)): # for now only doing a max of 10 iterations the first two steps
         itmax=10;#float("inf");
-    # Compute the external forcing (not dependent on lambda so outside loop)
-    fext = exForce.totalExForce(fibList,flu.getg(tval),solver);
+    # Points and U0 do not depend on lambda - fill those arrays outside loop
+    allFibers.setg(tval);
+    allFibers.fillPointBkgrndVelocityArrays(solver,tval); # also makes kD trees
+    fext = np.zeros(nFib*N*3); # temporary
     # Fixed point iteration to solve for the lambdas
-    while (iters < itmax and notconv):
+    while (iters < itmax and anyNot):
         # Compute non-local velocity (this includes finite part integral)
-        glam = LMMlam and (iT > abs(solver)-1) and iters==0; # whether to use LMM for lambda
-        unL = flu.nLvel(fibList,solver,glam,np.reshape(fext,(N*nFib,3)),tval);
-        # Use it to update fibers
-        for jFib in range(len(fibList)):
-            fib = fibList[jFib];
-            fib.updateX(dt,solver,iters,unL[jFib*3*N:(jFib+1)*3*N],fext[jFib*3*N:(jFib+1)*3*N]);
-            notconvbyFib[jFib] = fib.notConverged(1e-6);
-        notconv = (sum(notconvbyFib) > 0);
+        LambdaCombo = LMMlam and (iT > abs(solver)-1) and iters==0; # LMM for lambda?
+        allFibers.fillForceArrays(solver,LambdaCombo,np.reshape(fext,(N*nFib,3)));
+        uNonLoc = allFibers.nonLocalBkgrndVelocity();
+        allFibers.linSolveAllFibers(dt,solver,iters,uNonLoc,fext);
+        anyNot = allFibers.AnyNotConverged(fixedpointtol);
         iters+=1;
     # Once the fixed point iteration has converged, update all the fiber tangent vectors
-    for fib in fibList:
-        fib.updateXs(dt,solver,exacinex);
-        fib.writeLocs(of);
+    allFibers.updateAllFibers(dt,solver,exacinex);
+    allFibers.writeFiberLocations(of);
+
+# Destruction and cleanup
 of.close();
 
