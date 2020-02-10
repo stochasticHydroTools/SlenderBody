@@ -9,6 +9,9 @@ from scipy.linalg import lu_factor, lu_solve
 chebGridType = 1; # always use a type 1 grid for fiber discretization
 D4BCgridType = 2; # always a type 2 grid to enforce the BCs
 numBCs = 4; # number of boundary conditions
+# Numbers of uniform/upsampled points
+nptsUpsample = 32; # number of points to upsample to for special quadrature
+nptsUniform = 16; # number of uniform points to estimate distance
 
 class FiberDiscretization(object):
     """ 
@@ -28,6 +31,8 @@ class FiberDiscretization(object):
         self._Eb = Eb;
         self._mu = mu;
         self._N = N;
+        self._nptsUpsample = nptsUpsample
+        self._nptsUniform = nptsUniform;
         # Chebyshev grid and weights
         self._s = cf.chebPts(self._N,[0,self._L],chebGridType);
         self._w = cf.chebWts(self._N,[0,self._L],chebGridType);
@@ -38,6 +43,7 @@ class FiberDiscretization(object):
         self.initD4BC();
         self.initFPMatrix();
         self.initResamplingMatrices();
+        self.initSpecialQuadMatrices();
         self.initLocalcvals();
 
     ## METHODS FOR INITIALIZATION AND PRECOMPUTATION
@@ -95,17 +101,17 @@ class FiberDiscretization(object):
         self._MatfromNto2N = cf.ResamplingMatrix(2*self._N,self._N,chebGridType,chebGridType);
         self._Matfrom2NtoN = cf.ResamplingMatrix(self._N,2*self._N,chebGridType,chebGridType);
 
-    def initSpecialQuadMatrices(self,nPtsUniform,nPtsUpsample):
+    def initSpecialQuadMatrices(self):
         """
         Initialize matrices that are necessary for special quadrature / resampling.
         """
-        self._MatfromNtoUpsamp = cf.ResamplingMatrix(nPtsUpsample,self._N,chebGridType,chebGridType);
-        self._MatfromNto2panUp = cf.ResamplingMatrix(nPtsUpsample,self._N,chebGridType,chebGridType,\
+        self._MatfromNtoUpsamp = cf.ResamplingMatrix(self._nptsUpsample,self._N,chebGridType,chebGridType);
+        self._MatfromNto2panUp = cf.ResamplingMatrix(self._nptsUpsample,self._N,chebGridType,chebGridType,\
                     nPantarg=2);
-        self._MatfromNtoUniform = cf.ResamplingMatrix(nPtsUniform,self._N,chebGridType,chebGridType);
-        self._UpsampledCoefficientsMatrix = cf.CoeffstoValuesMatrix(nPtsUpsample,nPtsUpsample,chebGridType);
+        self._MatfromNtoUniform = cf.ResamplingMatrix(self._nptsUniform,self._N,'u',chebGridType);
+        self._UpsampledCoefficientsMatrix = cf.CoeffstoValuesMatrix(self._nptsUpsample,self._nptsUpsample,chebGridType);
         # Initialize LU factorization of vandermonde matrix for special quadrature
-        self._specQuadNodes = cf.chebPts(nPtsUpsample,[-1,1],chebGridType);
+        self._specQuadNodes = cf.chebPts(self._nptsUpsample,[-1,1],chebGridType);
         self._NupsampLUpiv = lu_factor(np.vander(self._specQuadNodes,increasing=True).T);        
 
     def initDiffMatrices(self):
@@ -138,6 +144,12 @@ class FiberDiscretization(object):
         The number of uniform points should have been set in the precomputation.
         """
         return np.dot(self._MatfromNtoUniform,Xarg);
+
+    def getNumUpsample(self):
+        return self._nptsUpsample;
+
+    def getNumUniform(self):
+        return self._nptsUniform;
     
     def upsampleGlobally(self,Xarg):
         """
@@ -155,16 +167,15 @@ class FiberDiscretization(object):
         """
         return np.dot(self._MatfromNto2panUp,Xarg);
 
-    def upsampledCoefficients(self,Xarg,nPtsUpsample):
+    def upsampledCoefficients(self,Xarg):
         """
         Get the coefficients of an upsampled representation of the fiber.
-        Inputs: Xarg = upsampled fiber representation, nptsUpsample = number
-        of points to upsample at. 
+        Inputs: Xarg = upsampled fiber representation
         Outputs: the coefficients and derivative coefficients of the upsampled
         representation
         """
         Xcoeffs= np.linalg.solve(self._UpsampledCoefficientsMatrix,Xarg);
-        Xprimecoeffs = cf.diffCoefficients(Xcoeffs,nPtsUpsample);
+        Xprimecoeffs = cf.diffCoefficients(Xcoeffs,self._nptsUpsample);
         return Xcoeffs,Xprimecoeffs;
 
     def evaluatePosition(self,tapprox,coeffs):
@@ -230,6 +241,9 @@ class FiberDiscretization(object):
         
     def getN(self):
         return self._N;
+
+    def gets(self):
+        return self._s;
     
     def getw(self):
         return self._w;
@@ -304,7 +318,7 @@ class FiberDiscretization(object):
         Mloc =sp.block_diag(*self._matlist);
         return Mloc;
 
-    def alphaLambdaSolve(self,Xarg,Xsarg,dt,tint,nLvel,exF):
+    def alphaLambdaSolve(self,Xarg,Xsarg,dt,impco,nLvel,exF):
         """
         This method solves the linear system for 
         lambda and alpha for a given RHS. 
@@ -315,7 +329,6 @@ class FiberDiscretization(object):
         """
         M = self.calcM(Xsarg);
         K, Kt = self.calcKs(Xsarg);
-        impco = -(1.0/3*tint**2-0.5*tint-5.0/6);
         # Schur complement solve
         B = np.concatenate((K-impco*dt*np.dot(M,np.dot(self._D4BC,K)),\
          self._I-impco*dt*np.dot(M,np.dot(self._D4BC,self._I))),axis=1);
@@ -333,15 +346,15 @@ class FiberDiscretization(object):
             np.dot(self._I,alphaU[2*self._N-2:2*self._N+1]);
         lambdas = np.linalg.solve(M,vel-nLvel)-fE-exF- \
                 impco*dt*np.dot(self._D4BC,vel);
-        return alphaU, vel, lambdas;
+        return alphaU[:2*self._N-2], vel, lambdas;
                 
-    def XFromXs(self, XsNow, XsOneHalf, alphaU, dt):
+    def XFromXs(self, XsNow, XsOneHalf, alpha, dt):
         """
         Compute the new tangent vectors. 
         Inputs: XsNow = tangent vectors to rotate (N x 3 array), 
         XsOneHalf = tangent vectors to use for evaluation of the 
         angular velocity Omega (also an N x 3 array), alphaU = alphas
-        from the fiber that are used to determine Omega (a 2N+1 array), 
+        from the fiber that are used to determine Omega (a 2N-2 array),
         dt = timestep
         Outputs: the new positions and tangent vectors X and Xsp1
         """
@@ -355,12 +368,12 @@ class FiberDiscretization(object):
         n2y = -np.sin(theta)*np.sin(phi);
         n2z = np.cos(phi);
         ChebPolys = self._Lmat[:,:N-1];
-        Omegax = np.dot(ChebPolys,alphaU[0:N-1])*n2x - \
-             np.dot(ChebPolys,alphaU[N-1:2*N-2])*n1x; #g1*n2-g2*n1
-        Omegay = np.dot(ChebPolys,alphaU[0:N-1])*n2y - \
-             np.dot(ChebPolys,alphaU[N-1:2*N-2])*n1y; #g1*n2-g2*n1
-        Omegaz = np.dot(ChebPolys,alphaU[0:N-1])*n2z - \
-             np.dot(ChebPolys,alphaU[N-1:2*N-2])*n1z; #g1*n2-g2*n1
+        Omegax = np.dot(ChebPolys,alpha[0:N-1])*n2x - \
+             np.dot(ChebPolys,alpha[N-1:2*N-2])*n1x; #g1*n2-g2*n1
+        Omegay = np.dot(ChebPolys,alpha[0:N-1])*n2y - \
+             np.dot(ChebPolys,alpha[N-1:2*N-2])*n1y; #g1*n2-g2*n1
+        Omegaz = np.dot(ChebPolys,alpha[0:N-1])*n2z - \
+             np.dot(ChebPolys,alpha[N-1:2*N-2])*n1z; #g1*n2-g2*n1
         nOm = np.sqrt(Omegax*Omegax+Omegay*Omegay+Omegaz*Omegaz); 
         k =  np.concatenate(([Omegax],[Omegay],[Omegaz])).T;
         k= k / np.reshape(nOm,(N,1));
@@ -419,15 +432,16 @@ class FiberDiscretization(object):
         """
         a = np.sqrt(3.0/2.0)*self._epsilon*self._L;
         # Python version:
-        #selfVel = np.zeros((self._N,3));
-        #RPY0 = self.RPYTot([0.0,0.0,0.0]);
-        #for iPt in xrange(self._N):
-        #    selfVel[iPt,:]+= np.dot(forces[iPt,:],RPY0.T);
-        #    for jPt in xrange(iPt+1,self._N):
-                # Subtract free space kernel (no periodicity)
-        #        rvec=Xarg[iPt,:]-Xarg[jPt,:];
-        #        selfVel[iPt,:]+=ewc.RPYTot(rvec,forces[jPt,:],self._mu,a, 0);
-        #        selfVel[jPt,:]+=ewc.RPYTot(rvec,forces[iPt,:],self._mu,a, 0);
+        if (False):
+            selfVel = np.zeros((self._N,3));
+            RPY0 = self.RPYTot([0.0,0.0,0.0]);
+            for iPt in xrange(self._N):
+                selfVel[iPt,:]+= np.dot(forces[iPt,:],RPY0.T);
+                for jPt in xrange(iPt+1,self._N):
+                   # Subtract free space kernel (no periodicity)
+                    rvec=Xarg[iPt,:]-Xarg[jPt,:];
+                    selfVel[iPt,:]+=ewc.RPYTot(rvec,forces[jPt,:],self._mu,a, 0);
+                    selfVel[jPt,:]+=ewc.RPYTot(rvec,forces[iPt,:],self._mu,a, 0);
         # Call the C++ function to add up the RPY kernel
         RPYSBTvel = ewc.RPYSBTKernel(self._N,Xarg[:,0],Xarg[:,1],Xarg[:,2],self._N,Xarg[:,0],\
                     Xarg[:,1],Xarg[:,2],forces[:,0],forces[:,1],forces[:,2],self._mu,a,0);
@@ -476,15 +490,15 @@ class FiberDiscretization(object):
         # Rescale (weights are on [-1,1], and divide by viscosity
         return 1.0/(8.0*np.pi*self._mu)*SBTvel;
 
-    """
-    Python versions of C++ functions - all called in C++ now.
+    
+    ## Python versions of C++ functions - all called in C++ now.
     def RPYTot(self,rvec,sbt=0):
-        #
-        #The total RPY kernel for a given input vector rvec.
-        #Another input is whether the kernel is sbt (for sbt=1)
-        #or RPY (for sbt=0). The kernels change close to the fiber.
-        #Output is the matrix of the kernel.
-        #
+        """
+        The total RPY kernel for a given input vector rvec.
+        Another input is whether the kernel is sbt (for sbt=1)
+        or RPY (for sbt=0). The kernels change close to the fiber.
+        Output is the matrix of the kernel.
+        """
         a = np.sqrt(3.0/2.0)*self._epsilon*self._L;
         rvec = np.reshape(rvec,(1,3));
         r=np.sqrt(rvec[:,0]*rvec[:,0]+rvec[:,1]*rvec[:,1]+rvec[:,2]*rvec[:,2]);
@@ -509,7 +523,6 @@ class FiberDiscretization(object):
         else:
             val = (16*a - 3*r)/(96*a**2*np.pi);
         return val;
-    """
         
     @staticmethod
     def cart2sph(x,y,z):
