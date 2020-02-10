@@ -261,6 +261,38 @@ std::vector<double> RPYSBTKernel(int Ntarg, std::vector<double> xtarg, std::vect
     return utargs;
 }
 
+std::tuple<int, std::vector<double>> findQtype(std::vector<double> targ, int Npts, std::vector<double> xfib,
+                    std::vector<double> yfib,std::vector<double> zfib, double g, double Lx, double Ly,
+                    double Lz, double q1cut, double q2cut){
+    std::vector<double> rvec(3,0.0);
+    std::vector<double> shift(3,0.0);
+    int qtype=0;
+    double nr;
+    double rmin = q1cut;
+    for (int iPt=0; iPt < Npts; iPt++){
+        rvec[0]=targ[0]-xfib[iPt];
+        rvec[1]=targ[1]-yfib[iPt];
+        rvec[2]=targ[2]-zfib[iPt];
+        rvec = calcShifted(rvec,g,Lx,Ly,Lz);
+        nr = sqrt(rvec[0]*rvec[0]+rvec[1]*rvec[1]+rvec[2]*rvec[2]);
+        if (nr < q2cut){
+            qtype=2;
+            shift[0]=targ[0]-xfib[iPt]-rvec[0];
+            shift[1]=targ[1]-yfib[iPt]-rvec[1];
+            shift[2]=targ[2]-zfib[iPt]-rvec[2];
+            return std::make_tuple(qtype,shift);
+        } else if (nr < rmin){
+            rmin=nr;
+            qtype=1;
+            shift[0]=targ[0]-xfib[iPt]-rvec[0];
+            shift[1]=targ[1]-yfib[iPt]-rvec[1];
+            shift[2]=targ[2]-zfib[iPt]-rvec[2];
+        }
+    }
+    return std::make_tuple(qtype,shift);
+}
+                                            
+
 
     
 // Module for python
@@ -274,4 +306,5 @@ PYBIND11_MODULE(EwaldUtils, m) {
     m.def("RPYSBTKernel", &RPYSBTKernel, "RPY/SBT quadrature");
     m.def("calcShifted", &calcShifted, "Shift in primed variables to [-L/2, L/2]^3");
     m.def("RPYNKerPairs", &RPYNKerPairs, "RPY near sum done in pairs");
+    m.def("findQtype", &findQtype, "select the near field quad");
 }

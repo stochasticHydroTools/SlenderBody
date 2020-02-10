@@ -31,11 +31,11 @@ std::vector <double> FPDensity(int N, std::vector <double> X,std::vector <double
         oneoverr = 1.0/nr;
         oneoverds = 1.0/(s[jPt]-s[iPt]);
         rdotf = rx*fx[jPt]+ry*fy[jPt]+rz*fz[jPt];
-        gloc[jPt*3] = ((fx[jPt] + rx*rdotf*oneoverr*oneoverr)*oneoverr*abs(s[jPt]-s[iPt])
+        gloc[jPt*3] = ((fx[jPt] + rx*rdotf*oneoverr*oneoverr)*oneoverr*std::abs(s[jPt]-s[iPt])
                         -(fx[iPt]+Xs[0]*Xsdotf))*oneoverds; // x dir
-        gloc[jPt*3+1] = ((fy[jPt] + ry*rdotf*oneoverr*oneoverr)*oneoverr*abs(s[jPt]-s[iPt])
+        gloc[jPt*3+1] = ((fy[jPt] + ry*rdotf*oneoverr*oneoverr)*oneoverr*std::abs(s[jPt]-s[iPt])
                         -(fy[iPt]+Xs[1]*Xsdotf))*oneoverds; // x dir
-        gloc[jPt*3+2] = ((fz[jPt] + rz*rdotf*oneoverr*oneoverr)*oneoverr*abs(s[jPt]-s[iPt])
+        gloc[jPt*3+2] = ((fz[jPt] + rz*rdotf*oneoverr*oneoverr)*oneoverr*std::abs(s[jPt]-s[iPt])
                         -(fz[iPt]+Xs[2]*Xsdotf))*oneoverds; // z dir
     }
     // Corrections at iPt

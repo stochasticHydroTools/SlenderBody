@@ -24,14 +24,13 @@ double deltah(double a,double sigma){
 // Gaussian in the cross linker energy.
 // Return: an N*nFib*3 vector of the forces due to cross linking.
 std::vector <double> CLForces(int nLinks, std::vector<int> iPts, std::vector<int> jPts,std::vector<double> su,
-                std::vector<int> xdshifts, std::vector<int> ydshifts, std::vector<int> zdshifts,
+                std::vector<double> xdshifts, std::vector<double> ydshifts, std::vector<double> zdshifts,
                 std::vector<double> Xpts,std::vector<double> Ypts, std::vector<double> Zpts,
                 int nFib, int N,std::vector<double> s, std::vector<double> w, double Kspring,
-                double restlen, double g, double Lx, double Ly,double Lz, double sigma ){
+                double restlen, double sigma){
     std::vector <double> forces(nFib*N*3,0.0);
     int iFib, jFib, iPtstar, jPtstar;
-    double xsh, ysh, zsh;
-    double s1s, s2s, dsx, dsy, dsz, nds, deltah1, deltah2, factor;
+    double s1s, s2s, dsx, dsy, dsz, nds, deltah1, deltah2, factor, totwt1, totwt2, rnorm;
     double fx, fy, fz;
     for (int iL=0; iL < nLinks; iL++){
         iPtstar = iPts[iL];
@@ -40,20 +39,24 @@ std::vector <double> CLForces(int nLinks, std::vector<int> iPts, std::vector<int
         jFib = jPtstar/N; // integer division
         s1s = su[iPtstar % N];
         s2s = su[jPtstar % N];
-        xsh = xdshifts[iL]*Lx+ydshifts[iL]*Ly*g;
-        ysh = ydshifts[iL]*Ly;
-        zsh = zdshifts[iL]*Lz;
+        totwt1=0;
+        totwt2=0;
+        for (int kPt=0; kPt < N; kPt++){
+            totwt1+=deltah(s[kPt]-s1s,sigma)*w[kPt];
+            totwt2+=deltah(s[kPt]-s2s,sigma)*w[kPt];
+        }
+        rnorm = 1.0/(totwt1*totwt2);
         for (int iPt=0; iPt < N; iPt++){
             for (int jPt=0; jPt < N; jPt++){
                 // Displacement vector
-                dsx = Xpts[iFib*N+iPt] - Xpts[jFib*N+jPt] + xsh;
-                dsy = Ypts[iFib*N+iPt] - Ypts[jFib*N+jPt] + ysh;
-                dsz = Zpts[iFib*N+iPt] - Zpts[jFib*N+jPt] + zsh;
+                dsx = Xpts[iFib*N+iPt] - Xpts[jFib*N+jPt] - xdshifts[iL];
+                dsy = Ypts[iFib*N+iPt] - Ypts[jFib*N+jPt] - ydshifts[iL];
+                dsz = Zpts[iFib*N+iPt] - Zpts[jFib*N+jPt] - zdshifts[iL];
                 nds = sqrt(dsx*dsx+dsy*dsy+dsz*dsz);
                 deltah1 = deltah(s[iPt]-s1s,sigma);
                 deltah2 = deltah(s[jPt]-s2s,sigma);
                 // Multiplication due to rest length and densities
-                factor = (1.0-restlen/nds)*deltah1*deltah2;
+                factor = (1.0-restlen/nds)*deltah1*deltah2*rnorm;
                 fx = -Kspring*dsx*factor;
                 fy = -Kspring*dsy*factor;
                 fz = -Kspring*dsz*factor;
