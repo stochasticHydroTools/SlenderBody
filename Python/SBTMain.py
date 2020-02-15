@@ -40,7 +40,7 @@ allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0);
 
 # Initialize the fiber list
 # For the single relaxing fiber test
-#fibList = makeCurvedFiber(nFib,Lf,eps,ellipsoidal,Eb,mu,N);
+#fibList = makeCurvedFiber(Lf,N,fibDisc);
 #fibList = makeFallingFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N);
 fibList = [None]*nFib;
 allFibers.initFibList(fibList,Dom);
@@ -67,7 +67,7 @@ if (stopcount - tf/dt) > 1e-10:
 
 # Time loop
 for iT in range(stopcount): 
-    print 'Time %f' %(iT*dt);
+    print('Time %f' %(float(iT)*dt));
     TIntegrator.updateAllFibers(iT,dt,Dom,Ewald,of);
 
 # Destruction and cleanup

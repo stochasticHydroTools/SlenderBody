@@ -76,7 +76,7 @@ class CrossLinkedNetwork(object):
         if self._numLinks==0:
             return; # Can't break any links if there aren't any
         # Loop over the links in reverse
-        for iL in xrange(self._numLinks-1,-1,-1): # loop through backwards
+        for iL in range(self._numLinks-1,-1,-1): # loop through backwards
             iPt = self._iPts[iL];
             jPt = self._jPts[iL];
             shift = Dom.unprimecoords(self._Shifts[iL]); 
@@ -109,17 +109,18 @@ class CrossLinkedNetwork(object):
         # Obtain possible pairs of uniform points to consider
         uniTree = Dom.makekDTree(uniPts);
         uniNeighbs = Dom.kDTreeNeighbors(uniTree,self._clcut);
-        iPts=[87, 88, 121,  69,  27,  25,   4,  23,  64,  89,  26,   7,   5,  86, 120,  85,  80,  67,\
-        123,  97,  79,  29,  24,   6,  66];
-        jPts=[134, 133, 150, 112,  62, 116,  58, 115, 118, 132,  63,  55,  57, 127, 149, 128,  83, 111, \
-            148, 158,  84, 153, 114,  56, 110];
-        # nPairs, _ = uniNeighbs.shape;
-        nPairs = len(iPts);
+        print('Make links NOT set up to compare w Matlab')
+        #iPts=[87, 88, 121,  69,  27,  25,   4,  23,  64,  89,  26,   7,   5,  86, 120,  85,  80,  67,\
+        #123,  97,  79,  29,  24,   6,  66];
+        #jPts=[134, 133, 150, 112,  62, 116,  58, 115, 118, 132,  63,  55,  57, 127, 149, 128,  83, 111, \
+        #    148, 158,  84, 153, 114,  56, 110];
+        nPairs, _ = uniNeighbs.shape;
+        #nPairs = len(iPts);
         # Randomly orient the points to check for CLs
         pairOrder = np.random.permutation(nPairs);
         for iPair in pairOrder: # looping through points
-            iPt = iPts[iPair]-1;#uniNeighbs[iPair,0];
-            jPt = jPts[iPair]-1;#uniNeighbs[iPair,1];
+            iPt = uniNeighbs[iPair,0];#iPts[iPair]-1;#
+            jPt = uniNeighbs[iPair,1];#jPts[iPair]-1;#
             iFib = int(iPt/self._Npf);
             jFib = int(jPt/self._Npf);
             alreadyLinked = self._added[jPt]==1 or self._added[iPt]==1;

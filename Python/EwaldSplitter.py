@@ -1,7 +1,8 @@
 import finufftpy as fi
 import numpy as np
 import EwaldUtils as ewc
-from math import pi
+import EwaldNumba as ewNum
+from math import pi, erfc, sqrt, exp
 
 nearcut = 1e-3; # cutoff for near field interactions
 fartol = 1e-10; # far field tolerance for FINUFFT (artificially low rn to compare w Matlab)
@@ -21,9 +22,9 @@ class EwaldSplitter(object):
         xi = Ewald splitting parameter, a = hydrodynamic radius of the RPY blobs 
         (a = sqrt(3/2)*epsilon*L), mu = fluid viscosity
         """
-        self._xi = xi;
-        self._a = a;
-        self._mu = mu;
+        self._xi = float(xi);
+        self._a = float(a);
+        self._mu = float(mu);
         # Calculate the truncation distance for Ewald
         self._calcrcut();
 
@@ -39,10 +40,19 @@ class EwaldSplitter(object):
         # First check if Ewald parameter is ok
         self._checkrcut(Dom);
         Ewaldfar = self._EwaldFarVel(Npts,ptsxyz,forces,Dom); # far field Ewald
+        import time
+        t = time.time();
         Ewaldnear = self._EwaldNearVelkD(Npts,ptsxyz,Dom,treeofPoints,forces); # near field Ewald
-        #Ewaldnear2 = self._EwaldNearVelQuad(Npts,ptsxyz,forces,Dom); # near field Ewald quadratic
-        #print 'Near field error'
-        #print np.amax(Ewaldnear-Ewaldnear2)
+        e1 = time.time();
+        print('Time to do C++ code %f' %(e1-t));
+        Ewaldnear2 = self._EwaldNearVelkDPython(Npts,ptsxyz,Dom,treeofPoints,forces); # near field Ewald
+        print('Time to do python code %f' %(time.time()-e1));
+        # Ewaldnear3 = self._EwaldNearVelQuad(Npts,ptsxyz,forces,Dom); # near field Ewald quadratic
+        print('Near field error')
+        #print(Ewaldnear-Ewaldnear2)
+        print(np.amax(Ewaldnear-Ewaldnear2))
+        #import sys
+        #sys.exit();
         return Ewaldfar+Ewaldnear; 
 
     ## "PRIVATE" METHODS (ONLY CALLED WITHIN THE CLASS)
@@ -133,7 +143,25 @@ class EwaldSplitter(object):
         velNear = ewc.RPYNKerPairs(Npts,Npairs,pairpts[:,0],pairpts[:,1],ptsxyz[:,0],ptsxyz[:,1],ptsxyz[:,2],\
                 forces[:,0],forces[:,1],forces[:,2],self._mu,self._xi,self._a,Lens[0],Lens[1],Lens[2],\
                 g, self._rcut);
-        return np.reshape(velNear,(Npts,3));   
+        return np.reshape(velNear,(Npts,3));
+
+    def _EwaldNearVelkDPython(self,Npts,ptsxyz,Dom,treeOfPoints,forces):
+        """
+        Near field velocity. 
+        Inputs: Npts = the number of blobs, ptsxyz = the list of points 
+        in undeformed, Cartesian coordinates, forces = forces at those points,
+        treeOfPoints = ckD tree of the points.
+        This method uses the kD tree to compute a list of the neighbors.
+        Output: the near field velocity
+        This method w numba is about 1.5 times slower than the straight C++ version
+        """
+        # Find all pairs (returns an array of the pairs) within rcut
+        pairpts = Dom.kDTreeNeighbors(treeOfPoints, self._rcut);
+        Lens = Dom.getLens();
+        g = Dom.getg();
+        velNear = ewNum.RPYNearPairs(Npts,pairpts,ptsxyz,forces,\
+                    self._mu,self._xi,self._a,Lens,g,self._rcut)
+        return velNear;
 
     def _calcrcut(self):
         """
@@ -148,7 +176,7 @@ class EwaldSplitter(object):
             rcut=rcut+rcutstep;
             Vatcut = abs(np.array(ewc.RPYNKer([rcut,0,0],[1,0,0],self._mu,self._xi,self._a)));
         self._rcut =  rcut;
-        print 'Ewald cut %f' %self._rcut
+        print ('Ewald cut %f' %self._rcut)
     
     def _checkrcut(self, Dom):
         """
@@ -161,14 +189,14 @@ class EwaldSplitter(object):
         #print 'Safety distance is %f' %(Lmin*0.5)
         vLover2 = np.amax(ewc.RPYNKer([Lmin*0.5,0,0],[1,0,0],self._mu,self._xi,self._a));
         if (vLover2 > nearcut):
-            print 'Need to increase xi or L, there are near interactions w/ more than 1 image';
+            print ('Need to increase xi or L, there are near interactions w/ more than 1 image');
         while (vLover2 > nearcut):
             # Modify xi
             self._xi+=0.1;
             self._calcrcut();
             vLover2 = np.amax(ewc.RPYNKer([Lmin*0.5,0,0],[1,0,0],self._mu,self._xi,self._a));
-            print 'The new value of xi is %f' %self._xi
-            print 'The new rcut %f' %self._rcut
+            print('The new value of xi is %f' %self._xi)
+            print('The new rcut %f' %self._rcut)
 
     ## SLOW METHODS FOR CHECKING FAST METHODS
     def _EwaldNearVelQuad(self,Npts,pts,forces,Dom):
@@ -181,8 +209,8 @@ class EwaldSplitter(object):
         velNear = np.zeros((pts.T).shape);
         # Go point by point to compute the velocity. Can parallelize this
         # outer loop as necessary.
-        for iPt in xrange(Npts): # loop over points
-            for jPt in xrange(Npts):
+        for iPt in range(Npts): # loop over points
+            for jPt in range(Npts):
                 # Find nearest periodic image (might need to speed this up)
                 rvec = Dom.calcShifted(pts[iPt,:]-pts[jPt,:]);
                 # Only actually do the computation when necessary
@@ -198,19 +226,19 @@ class EwaldSplitter(object):
         in undeformed, Cartesian coordinates, forces = forces at those points.
         This version uses binning and is SLOW!
         """
-        print 'Warning - this near field function is based on bins and is SLOW!'
+        print('Warning - this near field function is based on bins and is SLOW!')
         velNear = np.zeros((pts.T).shape);
         # Sort points into bins
         nxBin, nyBin, nzBin = Dom.calcnBins(self._rcut);
         ptbins = Dom.binsbyP(pts,nxBin,nyBin,nzBin);
-        print 'Number of bins (%d, %d, %d)' %(nxBin, nyBin, nzBin);
+        print('Number of bins (%d, %d, %d)' %(nxBin, nyBin, nzBin));
         bfirst, pnext = Dom.binPoints(Npts,pts,nxBin,nyBin,nzBin);
         # Go point by point to compute the velocity. Can parallelize this
         # outer loop as necessary.
-        for iPt in xrange(Npts): # loop over points
+        for iPt in range(Npts): # loop over points
             tbin=[ptbins[iPt,:]];
             neighBins = Dom.neighborBins(tbin,nxBin,nyBin,nzBin);
-            for iSn in xrange(len(neighBins)): # loop over neighboring bins
+            for iSn in range(len(neighBins)): # loop over neighboring bins
                 jPt = bfirst[neighBins[iSn]];
                 while (jPt !=-1):
                     # Find nearest periodic image (might need to speed this up)
@@ -221,86 +249,5 @@ class EwaldSplitter(object):
                         velNear[:,iPt]+=ewc.RPYNKer(rvec,forces[jPt,:],self._mu,self._xi,self._a);
                     jPt = pnext[jPt];
         return velNear.T;
-
-    # Python versions of functions - not being used as these functions are being
-    # done in C++
-    def RPYNear(self,rvec):
-        """
-        #Evaluate the near field RPY kernel.
-        #Input: the vector rvec to evaluate the kernel at
-        #Output: value of kernel.
-        #This function relies on the C++ functions Fnear
-        #and Gnear, which evaluate the complicated near field \
-        #kernels faster than Python.
-        """
-        rvec = np.reshape(rvec,(1,3));
-        r=np.sqrt(rvec[:,0]*rvec[:,0]+rvec[:,1]*rvec[:,1]+rvec[:,2]*rvec[:,2]);
-        rhat=rvec/r;
-        rhat[np.isnan(rhat)]=0;
-        RR = np.dot(rhat.T,rhat);
-        return 1.0/(6*pi*self._mu*self._a)*(ewc.Fnear(r,self._xi,self._a)*\
-                (np.identity(3)-RR)+ewc.Gnear(r,self._xi,self._a)*RR);
-     
-    
-    def F(self,r,xi,a):
-        if (r < 1e-10): # Taylor series
-            val = 1/(4*np.sqrt(np.pi)*xi*a)*(1-np.exp(-4*a**2*xi**2)+\
-                4*np.sqrt(np.pi)*a*xi*special.erfc(2*a*xi));
-            return val;
-        if (r>2*a):
-            f0=0;
-            f1=(18*r**2*xi**2+3)/(64*np.sqrt(np.pi)*a*r**2*xi**3);
-            f2=(2*xi**2*(2*a-r)*(4*a**2+4*a*r+9*r**2)-2*a-3*r)/\
-                (128*np.sqrt(np.pi)*a*r**3*xi**3);
-            f3=(-2*xi**2*(2*a+r)*(4*a**2-4*a*r+9*r**2)+2*a-3*r)/\
-                (128*np.sqrt(np.pi)*a*r**3*xi**3);
-            f4=(3-36*r**4*xi**4)/(128*a*r**3*xi**4);
-            f5=(4*xi**4*(r-2*a)**2*(4*a**2+4*a*r+9*r**2)-3)/(256*a*r**3*xi**4);
-            f6=(4*xi**4*(r+2*a)**2*(4*a**2-4*a*r+9*r**2)-3)/(256*a*r**3*xi**4);
-        else:
-            f0=-(r-2*a)**2*(4*a**2+4*a*r+9*r**2)/(32*a*r**3);
-            f1=(18*r**2*xi**2+3)/(64*np.sqrt(np.pi)*a*r**2*xi**3);
-            f2=(2*xi**2*(2*a-r)*(4*a**2+4*a*r+9*r**2)-2*a-3*r)/\
-                (128*np.sqrt(np.pi)*a*r**3*xi**3);
-            f3=(-2*xi**2*(2*a+r)*(4*a**2-4*a*r+9*r**2)+2*a-3*r)/\
-                (128*np.sqrt(np.pi)*a*r**3*xi**3);
-            f4=(3-36*r**4*xi**4)/(128*a*r**3*xi**4);
-            f5=(4*xi**4*(r-2*a)**2*(4*a**2+4*a*r+9*r**2)-3)/\
-                (256*a*r**3*xi**4);
-            f6=(4*xi**4*(r+2*a)**2*(4*a**2-4*a*r+9*r**2)-3)/\
-                (256*a*r**3*xi**4);
-        val = f0+f1*np.exp(-r**2*xi**2)+f2*np.exp(-(r-2*a)**2*xi**2)+\
-            f3*np.exp(-(r+2*a)**2*xi**2)+f4*special.erfc(r*xi)+f5*special.erfc((r-2*a)*xi)+\
-            f6*special.erfc((r+2*a)*xi);
-        return val;
-    
-    def G(self,r,xi,a):
-        if (r < 1e-10):
-            return 0;
-        if (r>2*a):
-            g0=0;
-            g1=(6*r**2*xi**2-3)/(32*np.sqrt(np.pi)*a*r**2*xi**3);
-            g2=(-2*xi**2*(r-2*a)**2*(2*a+3*r)+2*a+3*r)/\
-                (64*np.sqrt(np.pi)*a*r**3*xi**3);
-            g3=(2*xi**2*(r+2*a)**2*(2*a-3*r)-2*a+3*r)/\
-                (64*np.sqrt(np.pi)*a*r**3*xi**3);
-            g4=-3*(4*r**4*xi**4+1)/(64*a*r**3*xi**4);
-            g5=(3-4*xi**4*(2*a-r)**3*(2*a+3*r))/(128*a*r**3*xi**4);
-            g6=(3-4*xi**4*(2*a-3*r)*(2*a+r)**3)/(128*a*r**3*xi**4);
-        else:
-            g0=(2*a-r)**3*(2*a+3*r)/(16*a*r**3);
-            g1=(6*r**2*xi**2-3)/(32*np.sqrt(np.pi)*a*r**2*xi**3);
-            g2=(-2*xi**2*(r-2*a)**2*(2*a+3*r)+2*a+3*r)/\
-                (64*np.sqrt(np.pi)*a*r**3*xi**3);
-            g3=(2*xi**2*(r+2*a)**2*(2*a-3*r)-2*a+3*r)/\
-                (64*np.sqrt(np.pi)*a*r**3*xi**3);
-            g4=-3*(4*r**4*xi**4+1)/(64*a*r**3*xi**4);
-            g5=(3-4*xi**4*(2*a-r)**3*(2*a+3*r))/(128*a*r**3*xi**4);
-            g6=(3-4*xi**4*(2*a-3*r)*(2*a+r)**3)/(128*a*r**3*xi**4);
-        val = g0+g1*np.exp(-r**2*xi**2)+g2*np.exp(-(r-2*a)**2*xi**2)+\
-            g3*np.exp(-(r+2*a)**2*xi**2)+g4*special.erfc(r*xi)+g5*special.erfc((r-2*a)*xi)+\
-            g6*special.erfc((r+2*a)*xi);
-        return val;
-        
 
 

@@ -152,7 +152,7 @@ class Domain(object):
         # Form the linked lists
         bfirst = -np.ones(nxBin*nyBin*nzBin,dtype=np.int);
         pnext = -np.ones(Npts,dtype=np.int);
-        for iPt in xrange(Npts):
+        for iPt in range(Npts):
             if (bfirst[sbins[iPt]] == -1):
                 bfirst[sbins[iPt]] = iPt;
             else:

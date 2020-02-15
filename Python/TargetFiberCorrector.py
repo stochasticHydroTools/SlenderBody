@@ -34,10 +34,10 @@ def correctVel(tpt,fiber,fibpts,forces,forceDs,centerVels,method):
     cvel = -fiber.RPYSBTKernel(tpt,fibpts,forces);
     # If doing upsampling, upsample, do the free space quad sum, and stop
     nUpsample = fiber.getNumUpsample();
+    wup = fiber.getUpsampledWeights();
     Xup = fiber.upsampleGlobally(fibpts);
     fDup = fiber.upsampleGlobally(forceDs);
     cvelup = fiber.upsampleGlobally(centerVels);
-    wup = fiber.newWeights(nUpsample);
     forcesup = fDup*np.reshape(wup,(nUpsample,1));
     if (method==1): # free space sum for N = nptsUpsample (32)
         cvel+= fiber.RPYSBTKernel(tpt,Xup,forcesup,sbt=1);
@@ -63,7 +63,7 @@ def correctVel(tpt,fiber,fibpts,forces,forceDs,centerVels,method):
         wtCL = (dstarInterpolate-dstar)/dstarCenterLine;
     wtSBT = 1.0-wtCL;
     if (dstar < dstarCenterLine): # return the centerline velocity and stop
-        print 'Target close to fiber - setting velocity = centerline velocity'
+        print('Target close to fiber - setting velocity = centerline velocity')
         cvel+= clvel;
         return cvel;
     # Now we are dealing with the case where we need the free space slender integral.
@@ -88,8 +88,8 @@ def correctVel(tpt,fiber,fibpts,forces,forceDs,centerVels,method):
     X2pan = fiber.upsample2Panels(fibpts);
     f2pan = fiber.upsample2Panels(forceDs);
     SBTvel = np.zeros(3);
-    for iPan in xrange(2): # looping over the panels
-        indpan = np.arange(nUpsample)+iPan*snUpsample;
+    for iPan in range(2): # looping over the panels
+        indpan = np.arange(nUpsample)+iPan*nUpsample;
         # Points and force densities for the panel
         Xpan = X2pan[indpan,:];
         fdpan = f2pan[indpan,:];

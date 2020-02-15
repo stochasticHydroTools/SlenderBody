@@ -1,16 +1,18 @@
 from math import pi
-from Fiber import Fiber
+from DiscretizedFiber import DiscretizedFiber
 import chebfcns as cf
 import numpy as np
 
 
-def makeCurvedFiber(nFib,Lf,eps,ellipsoidal,Eb,mu,N):
-    s,w=cf.chebpts(N,[0,Lf],1);
+def makeCurvedFiber(Lf,N,fibDisc):
+    s=cf.chebPts(N,[0,Lf],1);
+    w=cf.chebPts(N,[0,Lf],1);
     # Stuff for the single relaxing fiber
     Xs = np.concatenate(([np.cos(s**3*(s-Lf)**3)],[np.sin(s**3*(s-Lf)**3)],\
         [np.ones(N)]),axis=0).T;
     Xs/=np.sqrt(2);
     Xs = np.reshape(Xs,3*N);
+    raise ValueError('Relaxing fib not working - wrong configs at t=0')
     if (N== 8 and Lf == 2):
         X = np.array([0.0135868585233040,-1.88367626667077e-07,0.0135868585254738,
         0.119161084940861,-0.000925883980571755,0.119168979976868,
@@ -48,11 +50,11 @@ def makeCurvedFiber(nFib,Lf,eps,ellipsoidal,Eb,mu,N):
         1.18391837586371,    -0.582190522279972,    1.41080864994974]);
     else:
         raise ValueError('Do not have the configuration of a curved fiber loaded for that N, L')
-    fibList = [None]*nFib;
-    fibList[0] = Fiber(Lf,eps,ellipsoidal,Eb,mu,N,X,Xs);
+    fibList = [None];
+    fibList[0] = DiscretizedFiber(fibDisc,X,Xs);
     return fibList;
 
-def makeFallingFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N):
+def makeFallingFibers(Lf,N,fibDisc):
     s,w=cf.chebpts(N,[0,Lf],1);
     # Falling fibers
     Xs = np.concatenate(([np.zeros(N)],[np.zeros(N)],[np.ones(N)]),axis=0).T;
@@ -62,16 +64,9 @@ def makeFallingFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N):
     X2 = np.concatenate(([np.zeros(N)],[np.zeros(N)+d],[s-1]),axis=0).T;
     X3 = np.concatenate(([np.zeros(N)-d],[np.zeros(N)],[s-1]),axis=0).T;
     X4 = np.concatenate(([np.zeros(N)],[np.zeros(N)-d],[s-1]),axis=0).T;
-    fibList = [None]*nFib;
-    fibList[0] = Fiber(Lf,eps,ellipsoidal,Eb,mu,N,np.reshape(X1,3*N),Xs);
-    fibList[1] = Fiber(Lf,eps,ellipsoidal,Eb,mu,N,np.reshape(X2,3*N),Xs);
-    fibList[2] = Fiber(Lf,eps,ellipsoidal,Eb,mu,N,np.reshape(X3,3*N),Xs);
-    fibList[3] = Fiber(Lf,eps,ellipsoidal,Eb,mu,N,np.reshape(X4,3*N),Xs);
-    return fibList;
-
-def makeRandomFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N,Lxi,Lyi,Lzi):
-    # Random straight fibers
-    fibList = [None]*nFib;
-    for iFib in xrange(nFib):
-        fibList[iFib] = Fiber(Lf,eps,ellipsoidal,Eb,mu,N,Lx=Lxi,Ly=Lyi,Lz=Lzi);
+    fibList = [None]*4;
+    fibList[0] = Fiber(fibDisc,np.reshape(X1,3*N),Xs);
+    fibList[1] = Fiber(fibDisc,np.reshape(X2,3*N),Xs);
+    fibList[2] = Fiber(fibDisc,np.reshape(X3,3*N),Xs);
+    fibList[3] = Fiber(fibDisc,np.reshape(X4,3*N),Xs);
     return fibList;

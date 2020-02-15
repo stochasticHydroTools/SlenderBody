@@ -3,6 +3,8 @@ import scipy.linalg as sp
 import chebfcns as cf
 import EwaldUtils as ewc
 import FiberUtils as fc
+import EwaldNumba as ewnb
+from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
 
 # Definitions
@@ -54,7 +56,7 @@ class FiberDiscretization(object):
         """
         self._I = np.zeros((3*self._N,3));
         self._wIt = np.zeros((3,3*self._N));
-        for j in xrange(self._N):
+        for j in range(self._N):
             self._I[3*j:3*j+3,:]=np.identity(3);
             self._wIt[:,3*j:3*j+3]=np.identity(3)*self._w[j];
         
@@ -112,6 +114,7 @@ class FiberDiscretization(object):
         self._UpsampledCoefficientsMatrix = cf.CoeffstoValuesMatrix(self._nptsUpsample,self._nptsUpsample,chebGridType);
         # Initialize LU factorization of vandermonde matrix for special quadrature
         self._specQuadNodes = cf.chebPts(self._nptsUpsample,[-1,1],chebGridType);
+        self._upsampledWeights = cf.chebWts(self._nptsUpsample,[0, self._L], chebGridType);
         self._NupsampLUpiv = lu_factor(np.vander(self._specQuadNodes,increasing=True).T);        
 
     def initDiffMatrices(self):
@@ -191,6 +194,9 @@ class FiberDiscretization(object):
     
     def getSpecialQuadNodes(self):
         return self._specQuadNodes;
+    
+    def getUpsampledWeights(self):
+        return self._upsampledWeights;
 
     def specialWeightsfromIntegrals(self,integrals,troot):
         """
@@ -267,10 +273,11 @@ class FiberDiscretization(object):
         From X_s this method computes the normals and then 
         the matrix K.   
         """
-        theta, phi, r = FiberDiscretization.cart2sph(Xs[0::3],Xs[1::3],Xs[2::3]);
+        XsUpsampled = np.dot(self._MatfromNto2N,np.reshape(Xs,(self._N,3)));
+        theta, phi, r = FiberDiscretization.cart2sph(XsUpsampled[:,0],XsUpsampled[:,1],XsUpsampled[:,2]);
         n1x = -np.sin(theta);
         n1y = np.cos(theta);
-        n1z = np.zeros(self._N);
+        n1z = np.zeros(2*self._N);
         n2x = -np.cos(theta)*np.sin(phi);
         n2y = -np.sin(theta)*np.sin(phi);
         n2z = np.cos(phi);
@@ -296,7 +303,7 @@ class FiberDiscretization(object):
         downsample to an N point grid.
         """
         # Upsample the multiplication of f with Chebyshev polys for anti-aliasing
-        UpSampMulti = np.reshape(np.dot(self._MatfromNto2N,f),(2*self._N,1)) \
+        UpSampMulti = np.reshape(f,(2*self._N,1)) \
             *np.dot(self._MatfromNto2N,self._Lmat[:,:self._N-1]);
         # Integrals on the original grid (integrate on upsampled grid and downsample)
         OGIntegrals = np.dot(self._Matfrom2NtoN,np.dot(self._Dpinv2N,UpSampMulti));
@@ -309,7 +316,7 @@ class FiberDiscretization(object):
         From X_s this method computes the matrix M (changes for 
         ellipsoidal vs. cylindrical fibers).
         """
-        for j in xrange(self._N):
+        for j in range(self._N):
             v = Xs[j*3:j*3+3];
             XsXs = np.outer(v,v);
             self._matlist[j]=1/(8*np.pi*self._mu)*\
@@ -359,24 +366,19 @@ class FiberDiscretization(object):
         Outputs: the new positions and tangent vectors X and Xsp1
         """
         N = self._N; # save writing
-        theta, phi, r = FiberDiscretization.cart2sph(XsOneHalf[0::3],\
-            XsOneHalf[1::3],XsOneHalf[2::3]);
-        n1x = -np.sin(theta);
-        n1y = np.cos(theta);
-        n1z = np.zeros(N);
-        n2x = -np.cos(theta)*np.sin(phi);
-        n2y = -np.sin(theta)*np.sin(phi);
-        n2z = np.cos(phi);
+        # Compute Omega on the upsampled grid
+        XsUpsampled = np.dot(self._MatfromNto2N,np.reshape(XsOneHalf,(self._N,3)));
+        theta, phi, r = FiberDiscretization.cart2sph(XsUpsampled[:,0],XsUpsampled[:,1],XsUpsampled[:,2]);
+        n1 = np.concatenate(([-np.sin(theta)],[np.cos(theta)],[np.zeros(2*N)])).T;
+        n2 = np.concatenate(([-np.cos(theta)*np.sin(phi)],[-np.sin(theta)*np.sin(phi)],[np.cos(phi)])).T;
         ChebPolys = self._Lmat[:,:N-1];
-        Omegax = np.dot(ChebPolys,alpha[0:N-1])*n2x - \
-             np.dot(ChebPolys,alpha[N-1:2*N-2])*n1x; #g1*n2-g2*n1
-        Omegay = np.dot(ChebPolys,alpha[0:N-1])*n2y - \
-             np.dot(ChebPolys,alpha[N-1:2*N-2])*n1y; #g1*n2-g2*n1
-        Omegaz = np.dot(ChebPolys,alpha[0:N-1])*n2z - \
-             np.dot(ChebPolys,alpha[N-1:2*N-2])*n1z; #g1*n2-g2*n1
-        nOm = np.sqrt(Omegax*Omegax+Omegay*Omegay+Omegaz*Omegaz); 
-        k =  np.concatenate(([Omegax],[Omegay],[Omegaz])).T;
-        k= k / np.reshape(nOm,(N,1));
+        g1 = np.reshape(np.dot(self._MatfromNto2N,np.dot(ChebPolys,alpha[0:N-1])),(2*N,1));
+        g2 = np.reshape(np.dot(self._MatfromNto2N,np.dot(ChebPolys,alpha[N-1:2*N-2])),(2*N,1));
+        Omega = g1*n2-g2*n1;
+        # Downsample Omega
+        Omega = np.dot(self._Matfrom2NtoN,Omega);
+        nOm = np.sqrt(np.sum(Omega*Omega,axis=1));
+        k= Omega / np.reshape(nOm,(N,1));
         k[nOm < 1e-6,:]=0;
         nOm = np.reshape(nOm,(N,1));
         Xsrs = np.reshape(XsNow,(N,3));
@@ -402,7 +404,7 @@ class FiberDiscretization(object):
         FPvel = np.zeros((3,self._N));
         Xss = np.dot(self._Dmat,Xsarg);
         fprime = np.dot(self._Dmat,forceDs);
-        for iPt in xrange(self._N):
+        for iPt in range(self._N):
             # Call the C++ function to compute the correct density,
             # 1/(s[j]-s[i])*((I+Rhat*Rhat)*f[j]*abs(s[j]-s[i])/R - (I+Xs*Xs)*f[i])
             gloc = fc.FPDensity(self._N,Xarg[:,0],Xarg[:,1],Xarg[:,2],Xsarg[iPt,:],Xss[iPt,:],fprime[iPt,:],\
@@ -429,23 +431,22 @@ class FiberDiscretization(object):
         on the temporal integrator), and the forces, also as an N x 3 vector.
         Outpts: the velocity due to N blobs (self RPY kernel) in FREE SPACE
         as an N x 3 vector
+        For this one the cpp code is slightly faster, but this is not a large 
+        computation so leaving the numba for now.
         """
         a = np.sqrt(3.0/2.0)*self._epsilon*self._L;
         # Python version:
-        if (False):
-            selfVel = np.zeros((self._N,3));
-            RPY0 = self.RPYTot([0.0,0.0,0.0]);
-            for iPt in xrange(self._N):
-                selfVel[iPt,:]+= np.dot(forces[iPt,:],RPY0.T);
-                for jPt in xrange(iPt+1,self._N):
-                   # Subtract free space kernel (no periodicity)
-                    rvec=Xarg[iPt,:]-Xarg[jPt,:];
-                    selfVel[iPt,:]+=ewc.RPYTot(rvec,forces[jPt,:],self._mu,a, 0);
-                    selfVel[jPt,:]+=ewc.RPYTot(rvec,forces[iPt,:],self._mu,a, 0);
+        #import time
+        #t=time.time();
+        subVel_Py = ewnb.RPYSBTK(self._N,Xarg,self._N,Xarg,forces,self._mu,a,0);
+        #print('Time to do numba %f' %(time.time()-t));
+        #e1=time.time();
         # Call the C++ function to add up the RPY kernel
-        RPYSBTvel = ewc.RPYSBTKernel(self._N,Xarg[:,0],Xarg[:,1],Xarg[:,2],self._N,Xarg[:,0],\
-                    Xarg[:,1],Xarg[:,2],forces[:,0],forces[:,1],forces[:,2],self._mu,a,0);
-        return np.reshape(RPYSBTvel,(self._N,3));
+        #RPYSBTvel = ewc.RPYSBTKernel(self._N,Xarg[:,0],Xarg[:,1],Xarg[:,2],self._N,Xarg[:,0],\
+        #            Xarg[:,1],Xarg[:,2],forces[:,0],forces[:,1],forces[:,2],self._mu,a,0);
+        #print('Time to do cpp %f' %(time.time()-e1));
+        #print('Error from numba ', subVel_Py-np.reshape(RPYSBTvel,(self._N,3)));
+        return subVel_Py;
 
     def RPYSBTKernel(self,Xtarg,Xarg,forces,sbt=0):
         """
@@ -455,14 +456,21 @@ class FiberDiscretization(object):
         sbt = 0 for the RPY kernel (they are different when r < 2a) and sbt = 1 for the SBT kernel.
         Outpts: the velocity due to N blobs (self RPY kernel) at target point as a 3 vector.
         This is a free space kernel; all periodic shifts are done elsewhere.
+        Numba appears slightly faster than cpp here.
         """
-        RPYvel = np.zeros(3);
-        r,_ = Xarg.shape;
-        a = np.sqrt(3.0/2.0)*self._epsilon*self._L;
-        RPYSBTvel = ewc.RPYSBTKernel(1,np.array([Xtarg[0]]),np.array([Xtarg[1]]),np.array([Xtarg[2]]),\
-                                  r,Xarg[:,0],Xarg[:,1],Xarg[:,2],forces[:,0],forces[:,1],forces[:,2],\
-                                  self._mu,a,sbt);
-        return np.array(RPYSBTvel);
+        Npts,_ = Xarg.shape;
+        a = sqrt(1.5)*self._L*self._epsilon;
+        #import time
+        #t=time.time();
+        RPYSBTVel_Py = ewnb.RPYSBTK(1,np.array([Xtarg]),Npts,Xarg,forces,self._mu,a,sbt);
+        #print('RPYSBT Time to do numba %f' %(time.time()-t));
+        #e1=time.time();
+        #RPYSBTvel = ewc.RPYSBTKernel(1,np.array([Xtarg[0]]),np.array([Xtarg[1]]),np.array([Xtarg[2]]),\
+        #                          Npts,Xarg[:,0],Xarg[:,1],Xarg[:,2],forces[:,0],forces[:,1],forces[:,2],\
+        #                          self._mu,a,sbt);
+        #print('Time to do cpp %f' %(time.time()-e1));
+        #print('Error from numba ', RPYSBTVel_Py-RPYSBTvel)
+        return np.reshape(RPYSBTVel_Py,3);
 
 
     def SBTKernelSplit(self,Xtarg,Xarg,forceDs,w1,w3,w5):
@@ -474,55 +482,20 @@ class FiberDiscretization(object):
         Inputs: Xtarg = target point (as a 3 vector), Xarg = fiber points (as an r x 3 vector)
         (r gets determined in the code), forceDs = force densities (as an r x 3 vector), 
         N vectors w1, w3, w5 of quadrature weights (those come from special quad).
+        In this method numba is slightly faster than cpp
         """
-        # THIS NEEDS TO BE REWRITTEN IN COMPILED LANGUAGE
-        SBTvel = np.zeros(3);
-        r,_ = Xarg.shape;
-        for jPt in xrange(r):
-            # Subtract free space kernel (no periodicity)
-            rvec=Xtarg-Xarg[jPt,:];
-            r=np.sqrt(rvec[0]*rvec[0]+rvec[1]*rvec[1]+rvec[2]*rvec[2]);
-            rdotf = rvec[0]*forceDs[jPt,0]+rvec[1]*forceDs[jPt,1]+rvec[2]*forceDs[jPt,2];
-            u1 = forceDs[jPt,:]/r;
-            u3 = (rvec*rdotf+((self._epsilon*self._L)**2)*forceDs[jPt,:])/r**3;
-            u5 = -((self._epsilon*self._L)**2)*3.0*rvec*rdotf/r**5;
-            SBTvel+= u1*w1[jPt]+u3*w3[jPt]+u5*w5[jPt];
-        # Rescale (weights are on [-1,1], and divide by viscosity
-        return 1.0/(8.0*np.pi*self._mu)*SBTvel;
-
-    
-    ## Python versions of C++ functions - all called in C++ now.
-    def RPYTot(self,rvec,sbt=0):
-        """
-        The total RPY kernel for a given input vector rvec.
-        Another input is whether the kernel is sbt (for sbt=1)
-        or RPY (for sbt=0). The kernels change close to the fiber.
-        Output is the matrix of the kernel.
-        """
-        a = np.sqrt(3.0/2.0)*self._epsilon*self._L;
-        rvec = np.reshape(rvec,(1,3));
-        r=np.sqrt(rvec[:,0]*rvec[:,0]+rvec[:,1]*rvec[:,1]+rvec[:,2]*rvec[:,2]);
-        rhat=rvec/r;
-        rhat[np.isnan(rhat)]=0;
-        RR = np.dot(rhat.T,rhat);
-        return 1.0/self._mu*(Fiber.FT(r,a,sbt)*(np.identity(3)-RR)+Fiber.GT(r,a,sbt)*RR);
-    
-    # Next 2 methods are utilities for RPY kernel
-    @staticmethod
-    def FT(r,a,sbt):
-        if (r>2*a or sbt): # RPY far or slender body
-            val = (2*a**2 + 3*r**2)/(24*np.pi*r**3);
-        else:
-            val = (32*a - 9*r)/(192*a**2*np.pi);
-        return val;
-    
-    @staticmethod
-    def GT(r,a,sbt):
-        if (r>2*a or sbt): # RPY far or slender body
-            val = (-2*a**2 + 3*r**2)/(12*np.pi*r**3);
-        else:
-            val = (16*a - 3*r)/(96*a**2*np.pi);
-        return val;
+        Npts,_ = Xarg.shape;
+        #import time
+        #t=time.time();
+        NewVel = ewnb.SBTKSpl(Xtarg,Npts,Xarg,forceDs,self._mu,self._epsilon,\
+                            self._L,w1,w3,w5);
+        #print('Split time to do numba %f' %(time.time()-t));
+        #e1=time.time();
+        #CppVel = ewc.SBTKernelSplit(Xtarg,Npts,Xarg[:,0],Xarg[:,1],Xarg[:,2],forceDs[:,0],forceDs[:,1],\
+        #        forceDs[:,2],self._mu,self._epsilon,self._L,w1,w3,w5);
+        #print('Time to do cpp %f' %(time.time()-e1));
+        #print('Error from cpp special', NewVel-CppVel)
+        return NewVel;
         
     @staticmethod
     def cart2sph(x,y,z):

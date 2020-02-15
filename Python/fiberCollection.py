@@ -42,7 +42,7 @@ class fiberCollection(object):
         and tangent vectors.
         """
         self._fibList = fibListIn;
-        for jFib in xrange(self._Nfib):
+        for jFib in range(self._Nfib):
            if self._fibList[jFib] is None:
                 # Initialize memory
                 self._fibList[jFib] = DiscretizedFiber(self._fiberDisc);
@@ -83,7 +83,7 @@ class fiberCollection(object):
         # First determine which sets of points and targets need corrections
         targs, fibers, methods, shifts = self._determineQuadkDLists(X_nonLoc, uniPoints,Dom, chebTree, uniformTree);
         # Loop over the points that need corrections and do the corrections
-        for iT in xrange(len(targs)):
+        for iT in range(len(targs)):
             target = X_nonLoc[targs[iT],:];
             jFib = fibers[iT];
             rowinds = self._getRowInds(jFib);
@@ -111,7 +111,7 @@ class fiberCollection(object):
         update in a way that maintains exact inextensibility. 
         """
         # Linear solve on each fiber
-        for iFib in xrange(self._Nfib):
+        for iFib in range(self._Nfib):
             fib = self._fibList[iFib];
             stackinds = self._getStackInds(iFib);
             rowinds = self._getRowInds(iFib);
@@ -124,7 +124,7 @@ class fiberCollection(object):
     def updateAllFibers(self,dt,XsforNL,exactinex=1):
         # Fixed point over - update the fiber configurations X and Xs
         # This updates the configurations in the OBJECT, which is much cleaner
-        for iFib in xrange(self._Nfib):
+        for iFib in range(self._Nfib):
             stackinds = self._getStackInds(iFib);
             rowinds = self._getRowInds(iFib);
             fib = self._fibList[iFib];
@@ -139,7 +139,7 @@ class fiberCollection(object):
         """
         self._ptsChebPrev = self._ptsCheb.copy();
         self._tanvecsPrev = self._tanvecs.copy();
-        for iFib in xrange(self._Nfib):
+        for iFib in range(self._Nfib):
             rowinds = self._getRowInds(iFib);
             fib = self._fibList[iFib];
             X, Xs = fib.getXandXs();
@@ -172,7 +172,7 @@ class fiberCollection(object):
         This method is necessary for cross-linking
         """
         uniPoints = np.zeros((self._Nfib*self._Nunifpf,3));
-        for iFib in xrange(self._Nfib):
+        for iFib in range(self._Nfib):
             uniinds = range(iFib*self._Nunifpf,(iFib+1)*self._Nunifpf);
             rowinds = self._getRowInds(iFib);
             uniPoints[uniinds]=self._fiberDisc.resampleUniform(chebpts[rowinds]);
@@ -209,7 +209,7 @@ class fiberCollection(object):
         selfRPY = np.zeros(X_nonLoc.shape);
         finitePart = np.zeros(len(X_nonLoc)*3);
         LocalOnly = np.zeros(len(X_nonLoc)*3);
-        for iFib in xrange(self._Nfib):
+        for iFib in range(self._Nfib):
             rowinds = self._getRowInds(iFib);
             stackinds = self._getStackInds(iFib);
             X = X_nonLoc[rowinds,:];
@@ -249,7 +249,7 @@ class fiberCollection(object):
         neighborList = Dom.TwokDTreesNeighbors(chebTree, uniformTree, q1cut);
         Lens = Dom.getLens();
         g = Dom.getg();
-        for iPt in xrange(self._Nfib*self._Npf): # loop over points
+        for iPt in range(self._Nfib*self._Npf): # loop over points
             iFib = iPt//self._Npf; # integer division to get the fiber point i is on
             pNeighbors = np.array(neighborList[iPt],dtype=int); # neighbors of point i
             fNeighbors = pNeighbors//self._Nunifpf; # fibers that are neighbors w point i
@@ -336,7 +336,7 @@ class fiberCollection(object):
         """
         totnum = self._Nfib*self._Npf;
         forceDs=np.zeros((totnum,3));
-        for iFib in xrange(self._Nfib):
+        for iFib in range(self._Nfib):
             rowinds = self._getRowInds(iFib);
             Xin = np.reshape(X_nonLoc[rowinds,:],self._Npf*3);
             forceDs[rowinds,:] = np.reshape(self._fiberDisc.calcfE(Xin),(self._Npf,3));
@@ -364,9 +364,9 @@ class fiberCollection(object):
         xShifts = sp.lil_matrix((totnum,self._Nfib)); # periodic shifts in the x direction
         yShifts = sp.lil_matrix((totnum,self._Nfib)); # periodic shifts in the y direction
         zShifts = sp.lil_matrix((totnum,self._Nfib)); # periodic shifts in the z direction
-        for iPt in xrange(totnum): # looping over the target points
+        for iPt in range(totnum): # looping over the target points
             iFib = iPt//self._Npf;
-            for jPt in xrange(self._Nfib*self._Nunifpf):
+            for jPt in range(self._Nfib*self._Nunifpf):
                 jFib = jPt//self._Nunifpf;
                 if (iFib!=jFib):
                     rvec = Dom.calcShifted(XCheb[iPt,:]-Xuniform[jPt,:]);
