@@ -1,0 +1,21 @@
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+       28  103.446    3.694  377.496   13.482 fiberCollection.py:53(nonLocalBkgrndVelocity)
+  2874907   67.619    0.000   67.619    0.000 EwaldNumba.py:137(RPYSBTK)
+  1482262   19.941    0.000  218.034    0.000 TargetFiberCorrector.py:19(correctVel)
+   571316   17.711    0.000   25.165    0.000 linalg.py:327(solve)
+  2867907   16.599    0.000   98.304    0.000 FiberDiscretization.py:451(RPYSBTKernel)
+       28   14.498    0.518   22.497    0.803 fiberCollection.py:228(_determineQuadkDLists)
+  5687063   12.709    0.000   12.709    0.000 {built-in method numpy.dot}
+  7119373    9.755    0.000    9.755    0.000 {method 'reshape' of 'numpy.ndarray' objects}
+  5647634    9.435    0.000    9.435    0.000 {built-in method numpy.array}
+   273865    8.228    0.000    8.228    0.000 {built-in method SpecQuadUtils.rootfinder}
+   547730    5.765    0.000   10.719    0.000 chebfcns.py:150(evalSeries)
+   277232    5.709    0.000   67.285    0.000 TargetFiberCorrector.py:116(calcRoot)
+   553846    4.850    0.000    4.850    0.000 TargetFiberCorrector.py:176(bernstein_radius)
+  7118731    4.430    0.000   21.550    0.000 fromnumeric.py:197(reshape)
+  1490479    4.049    0.000    4.049    0.000 {built-in method EwaldUtils.findQtype}
+  7118733    4.016    0.000   17.121    0.000 fromnumeric.py:54(_wrapfunc)
+  1498762    3.978    0.000    3.978    0.000 fiberCollection.py:294(_getStackInds)
+  1518012    3.729    0.000    3.729    0.000 fiberCollection.py:286(_getRowInds)
+   277232    3.668    0.000    3.668    0.000 {built-in method SpecQuadUtils.rf_iguess}
+    99615    3.240    0.000    3.240    0.000 EwaldNumba.py:103(SBTKSpl)
