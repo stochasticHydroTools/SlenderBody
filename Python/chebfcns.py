@@ -1,6 +1,7 @@
 import numpy as np
 from numpy import pi
 from numpy import cos
+import numba as nb
 
 """
     This file is a list of Chebyshev related functions
@@ -31,9 +32,9 @@ def chebWts(N,dom,kind):
     if kind==1:
         m=2.0 / np.concatenate(([1],1-np.arange(2,N,2)**2));
         if np.mod(N,2):
-            c=np.concatenate((m,-m[(N+1)/2-1:0:-1]));
+            c=np.concatenate((m,-m[(N+1)//2-1:0:-1]));
         else:
-            c=np.concatenate((m,[0],-m[N/2-1:0:-1]))
+            c=np.concatenate((m,[0],-m[N//2-1:0:-1]))
         v=np.exp(1j*np.arange(N)*np.pi/N);
         c=c*v;
         w = np.real(np.fft.ifft(c));
@@ -98,13 +99,14 @@ def diffMat(numDs,dom,Ntarg,Nsrc,typtarg,typsrc):
     # Compute coefficients in the basis
     VtoC_src=np.linalg.inv(CtoV_src);
     # Differentiate the Chebyshev series numDs times
-    for iD in xrange(numDs):
+    for iD in range(numDs):
         VtoC_src=diffCoefficients(VtoC_src,Nsrc);
     # Multiply by the matrix of values at the targets
     NderivMat = np.dot(CtoV_targ,VtoC_src);
     Jacobian = 0.5*(dom[1]-dom[0]);
     return NderivMat/(Jacobian**numDs);
 
+@nb.njit(nb.float64[:,:](nb.float64[:,:],nb.int64))
 def diffCoefficients(coefs,N):
     """
     Differentiate Chebyshev coefficients using the recursive

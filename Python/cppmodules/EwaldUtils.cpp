@@ -261,6 +261,35 @@ std::vector<double> RPYSBTKernel(int Ntarg, std::vector<double> xtarg, std::vect
     return utargs;
 }
 
+std::vector<double> SBTKernelSplit(std::vector<double> targpt, int N, std::vector<double> xsrc,
+                            std::vector<double> ysrc, std::vector<double> zsrc,
+                            std::vector<double> fx, std::vector<double> fy, std::vector<double> fz,
+                            double mu, double epsilon, double L, std::vector <double> w1,
+                            std::vector <double> w3, std::vector <double> w5){
+    std::vector<double> rvec(3);
+    std::vector<double> forces(3);
+    std::vector<double> utarg(3);
+    double r, rdotf, u1, u3, u5;
+    double outFront = 1.0/(8.0*M_PI*mu);
+    for (int iPt=0; iPt < N; iPt++){
+        rvec[0]=targpt[0]-xsrc[iPt];
+        rvec[1]=targpt[1]-ysrc[iPt];
+        rvec[2]=targpt[2]-zsrc[iPt];
+        forces[0]=fx[iPt];
+        forces[1]=fy[iPt];
+        forces[2]=fz[iPt];
+        rdotf = dot(rvec,forces);
+        r = normalize(rvec);
+        for (int d=0; d < 3; d++){
+            u1 = forces[d]/r;
+            u3 = (r*rvec[d]*rdotf+(epsilon*L)*(epsilon*L)*forces[d])/(r*r*r);
+            u5 = -3.0*(epsilon*L)*(epsilon*L)*rvec[d]*r*rdotf/pow(r,5);
+            utarg[d]+=outFront*(u1*w1[iPt]+u3*w3[iPt]+u5*w5[iPt]);
+        }
+    }
+    return utarg;
+}
+
 std::tuple<int, std::vector<double>> findQtype(std::vector<double> targ, int Npts, std::vector<double> xfib,
                     std::vector<double> yfib,std::vector<double> zfib, double g, double Lx, double Ly,
                     double Lz, double q1cut, double q2cut){
@@ -307,4 +336,5 @@ PYBIND11_MODULE(EwaldUtils, m) {
     m.def("calcShifted", &calcShifted, "Shift in primed variables to [-L/2, L/2]^3");
     m.def("RPYNKerPairs", &RPYNKerPairs, "RPY near sum done in pairs");
     m.def("findQtype", &findQtype, "select the near field quad");
+    m.def("SBTKernelSplit",&SBTKernelSplit,"Compute SBT kernel with special wts");
 }
