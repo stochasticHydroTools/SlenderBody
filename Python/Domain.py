@@ -3,6 +3,22 @@ from scipy.spatial import cKDTree
 import EwaldUtils as ewc
 from math import sqrt
 
+# Donev: It seems to me this class exposes the KD tree underneath it
+# But it also contains functions at the end that use binning,not used right now
+# But we want to be able to have modular and extensible code so that
+# someday we may switch to another method for finding neighbors
+# So instead of calling something a initKDTree you want to call it
+# initSpatialDatabase
+# where Database is some generic object. I don't know
+# how scipy.spatial is designed but a good design would have an abstract class
+# for something that find neighbors, so one can switch different methods
+# and not just kDTrees. That is, is a kdTree a child class of some other more general
+# class, which can serve as a spatialDatabase?
+# It is OK to keep this as is as it takes some amount of work to overwrite and is not crucial
+# but just want to keep pointing these hard-wired choices to you so you are aware
+# What makes your job even harder here is that you need to be able to have multiple
+# spatial databases, not just one, so the callers need to be able to declare/pass
+# the spatial database themselves (otherwise you have to keep a database/list of databases, a pain)
 class Domain(object):
     """
     This class handles the domain and the periodic BCs
@@ -88,6 +104,8 @@ class Domain(object):
         """
         # Just call the C++ function (the python was unbelievably slow!)
         newvec = ewc.calcShifted(dvec, self._g, self._Lx, self._Ly, self._Lz);
+	# Donev: Instead of commenting out code like this, put this in an if-else statement
+	# That way one can switch and maybe compare they give the same answer etc.
         #shift = 0*dvec;
         ## Shift in oblique y and z
         #shift[1] = round(dvec[1]/(1.0*self._Ly));
@@ -110,6 +128,8 @@ class Domain(object):
         Output is the vector pts', i.e. in the x',y',z' coordinate system
         """
         L = np.array([[1,self._g,0],[0,1,0],[0,0,1]]);
+	# If this function is called often this seems wasteful
+	# I am sure you can just write a simple analytical result using Mathematica
         pts = np.linalg.solve(L,ptsxyz.T).T;
         return pts;
     
@@ -127,6 +147,7 @@ class Domain(object):
     #
     # Stuff for binning the points (not used in the final version of the
     # code, we are using kD trees instead)
+    # Donev: It would be curious to see at some point if this would run at descent speed with numba...
     #
     def calcnBins(self,rcut):
         """

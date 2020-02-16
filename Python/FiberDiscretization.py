@@ -47,6 +47,11 @@ class FiberDiscretization(object):
         self.initLocalcvals();
 
     ## METHODS FOR INITIALIZATION AND PRECOMPUTATION
+    # Donev:Is this a method of this class that clients/callers ever use
+    # If it is only called in __init__ then how about indicating somehow it is a private 
+    # function, maybe with underscore in the name.
+    # As I explained it is important to make it clear what method is public
+    # so that if you implement this with Legendre it is clear which functions need to be written
     def initIs(self):
         """
         Initialize the identity matrix and matrix that takes 
@@ -159,6 +164,8 @@ class FiberDiscretization(object):
         """
         return np.dot(self._MatfromNtoUpsamp,Xarg);
     
+    # Donev: Somehow the hard-wiring of 2 panels (why not 4?) seems wrong to me
+    # Maybe the number of panels can be an argument instead?
     def upsample2Panels(self,Xarg):
         """
         Get the locations on some 2 panels of upsampled nodes on the fiber.
