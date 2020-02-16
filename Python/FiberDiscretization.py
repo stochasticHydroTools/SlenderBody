@@ -7,6 +7,20 @@ import EwaldNumba as ewnb
 from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
 
+# Donev: Let's agree that one of the main goals of this class is to isolate
+# the methods that depend on the specific type of discretization
+# in this case Chebyshev
+# This means that generic linear algebra such as forming saddle-point matrices,
+# Schur complements, should not be part of this class.
+# Not sure about Rodriguez rotations since maybe we assume a collocation discretization
+# If you want to force yourself to design the code properly, since python does not,
+# get in the practice of using (at least for one of these things) class inheritance.
+# there should be a base abstract class here which is just the concept of a FiberDiscretization
+# Then, either Chebushev, Legendre, Galerkin, FEM, or FD methods should be able to inherit
+# (be children of) this class. Other codes should accept as input a class of this abstract type
+# By putting in one place/function both discretization-generic things like linear algebra
+# and non-generic stuff like Chebyshev, you are not discipling yourself in the design of the code
+ 
 # Definitions
 chebGridType = 1; # always use a type 1 grid for fiber discretization
 D4BCgridType = 2; # always a type 2 grid to enforce the BCs
@@ -49,6 +63,11 @@ class FiberDiscretization(object):
         self.initLocalcvals();
 
     ## METHODS FOR INITIALIZATION AND PRECOMPUTATION
+    # Donev:Is this a method of this class that clients/callers ever use
+    # If it is only called in __init__ then how about indicating somehow it is a private 
+    # function, maybe with underscore in the name.
+    # As I explained it is important to make it clear what method is public
+    # so that if you implement this with Legendre it is clear which functions need to be written
     def initIs(self):
         """
         Initialize the identity matrix and matrix that takes 
@@ -162,6 +181,8 @@ class FiberDiscretization(object):
         """
         return np.dot(self._MatfromNtoUpsamp,Xarg);
     
+    # Donev: Somehow the hard-wiring of 2 panels (why not 4?) seems wrong to me
+    # Maybe the number of panels can be an argument instead?
     def upsample2Panels(self,Xarg):
         """
         Get the locations on some 2 panels of upsampled nodes on the fiber.
@@ -325,6 +346,13 @@ class FiberDiscretization(object):
         Mloc =sp.block_diag(*self._matlist);
         return Mloc;
 
+    # Donev: The documentation seems to be out of date, I was about to complain about "tint" :-)	
+    # But I can complain/ask about other things
+    # Is there anything specific here to Chebyshev?
+    # Is this just doing linear algebra? Maybe the _D4BC is?
+    # But maybe the BC should be folded into some matrix
+    # It just looks like a lot of this code works for any discretization
+    # So maybe it should be part of another class (say the temporal integrator itself?)
     def alphaLambdaSolve(self,Xarg,Xsarg,dt,impco,nLvel,exF):
         """
         This method solves the linear system for 

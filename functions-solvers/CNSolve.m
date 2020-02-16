@@ -13,8 +13,8 @@ function [Xp1,lambdas,fE,Xsp1] = CNSolve(nFib,N,Ms,Ks,Kts,I,wIt,FE,LRLs,URLs,Xt,
     l_m = lamprev;  % put in the previous lambda as the initial guess
     iters=0;
     reler = 10;
-    reshape(Xs,3,N*nFib)';
-    max(abs(sum(ans.*ans,2)-1))
+%     reshape(Xs,3,N*nFib)';
+%     max(abs(sum(ans.*ans,2)-1))
     % Precompute the relevant fE's 
     for iFib=1:nFib
         inds = (iFib-1)*3*N+1:3*N*iFib;
@@ -22,14 +22,14 @@ function [Xp1,lambdas,fE,Xsp1] = CNSolve(nFib,N,Ms,Ks,Kts,I,wIt,FE,LRLs,URLs,Xt,
         fEprev(inds)=FE*(URLs \ (LRLs \ [eye(3*N); zeros(12,3*N)]*Xtm1(inds)));
     end
     fEarg = 1.5*fE-0.5*fEprev;
-    while ((nonLocal || iters==0) && reler > 1e-3 && iters < maxiters)
+    while ((nonLocal || iters==0) && reler > 1e-6 && iters < maxiters)
         if (nonLocal)
-            nLvel = MNonLocalSlow(nFib,N,s0,w0,Lf,epsilon,reshape(fEarg+l_m+fext,3,N*nFib),...
+%             nLvel = MNonLocalSlow(nFib,N,s0,w0,Lf,epsilon,reshape(fEarg+l_m+fext,3,N*nFib),...
+%                      reshape(1.5*Xt-0.5*Xtm1,3,N*nFib)',reshape(1.5*Xs-0.5*Xsm1,3,N*nFib)',...
+%                      Dmat(1:3:3*N,1:3:3*N),mu);
+            nLvel = MNonLocal(nFib,N,s0,w0,Lf,epsilon,reshape(fEarg+l_m+fext,3,N*nFib),...
                      reshape(1.5*Xt-0.5*Xtm1,3,N*nFib)',reshape(1.5*Xs-0.5*Xsm1,3,N*nFib)',...
-                     Dmat(1:3:3*N,1:3:3*N),mu);
-%             nLvel = MNonLocal(nFib,N,s0,w0,Lf,epsilon,reshape(fEarg+l_m+fext,3,N*nFib),...
-%                      reshape(1.5*Xt-0.5*Xtm1,3,N*nFib)',reshape(Xs,3,N*nFib)',...
-%                      Dmat(1:3:3*N,1:3:3*N),mu,xi,L,strain);
+                     Dmat(1:3:3*N,1:3:3*N),mu,xi,L,L,L,strain);
             nLvel = reshape(nLvel',3*N*nFib,1);
         end
         for iFib=1:nFib
@@ -52,13 +52,13 @@ function [Xp1,lambdas,fE,Xsp1] = CNSolve(nFib,N,Ms,Ks,Kts,I,wIt,FE,LRLs,URLs,Xt,
             Xp1(inds) = Xt(inds)+dt*ut;
             Xsp1(inds) = Dmat*Xp1(inds);
             l_m1(inds) = l_m(inds);
-            l_m(inds) = M \ (K*alphas+I*Urigid-nLvel(inds)+...
-                 -M*FE*(URLs \ (LRLs \ [eye(3*N); zeros(12,3*N)]*0.5*(Xp1(inds)+Xt(inds))))...
-                 -M*fext(inds)-U0(inds));
+            l_m(inds) = M \ (K*alphas+I*Urigid-nLvel(inds)-U0(inds))+...
+                 -FE*(URLs \ (LRLs \ [eye(3*N); zeros(12,3*N)]*0.5*(Xp1(inds)+Xt(inds))))...
+                 -fext(inds);
         end
         reler = norm(l_m-l_m1)/(max([1 norm(l_m)]));
         iters=iters+1;
-        if (iters > 200)
+        if (iters ==25 && reler > 1e-6)
             disp('Fixed point iteration not converging - change tolerance')
         end
     end

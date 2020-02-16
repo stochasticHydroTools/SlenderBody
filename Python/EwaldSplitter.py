@@ -4,6 +4,7 @@ import EwaldUtils as ewc
 import EwaldNumba as ewNum
 from math import pi, erfc, sqrt, exp
 
+# Let's discuss in person again: Does this have to be Ewald specifically? Can it be FMM or GPU?
 nearcut = 1e-3; # cutoff for near field interactions
 fartol = 1e-10; # far field tolerance for FINUFFT (artificially low rn to compare w Matlab)
 
