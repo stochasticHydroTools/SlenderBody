@@ -1,23 +1,31 @@
 import numpy as np
 from scipy.spatial import cKDTree
 
+# Donev: This looks good to me with some minor points below
 class SpatialDatabase(object):
 
     """
-    Spatial database object. Its role is to compute neighbors
-    between sets of points.
+    Donev changed this to say what I think it is:
+    Spatial database object. 
+    This class is a spatial index of a collection of points in a (periodic sheared) Domain (see Domain.py)
+    Its purpose is to search for neighboring points efficiently
     """
     
     def __init__(self,pts,Dom):
         """
         Constructor. Inputs are the set of points and the Domain 
         which are used to initialize the ptsprime variable
+        Donev: Essentially all arguments here take a Domain as an argument
+        Would it make sense to store here a pointer to Domain?
+        Way to answer this is to think whether it would make sense to pass in Domain argument to one of the routines
+        that is *different* from the one you used inside updateSpatialStructures?
         """
         self._Npts,_ = pts.shape;
         self.updateSpatialStructures(pts,Dom);
 
     def updateSpatialStructures(self,pts,Dom):
         """
+        Donev: Explain what pts is: An array of unprimed coordinates of the points?
         Update all relevant spatial structures. In the general case, 
         this is just updating the deformed coordinates of the points.
         """
@@ -80,6 +88,10 @@ class ckDSpatial(SpatialDatabase):
         Constructor. Initialize the kD tree.
         """
         self.updateSpatialStructures(pts,Dom);
+        # Donev: It is typical for child classes in init to call the initializer of the parent class
+        # Is this automatic in python? That is, has the line
+        # self._Npts,_ = pts.shape;
+        # been executed also somehow?
     
     def updateSpatialStructures(self,pts,Dom):
         """

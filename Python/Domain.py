@@ -6,6 +6,19 @@ class Domain(object):
     """
     This class handles the domain and the relevant BCs
     (periodic domain is a child of general domain)
+    Donev: It is a bit strange to talk about periodic images in a parent class that is not supposed to know about its children
+    Donev: In this specific case it seems to me this abstraction is not very powerful
+    Donev: You have a domain that is limited to being only sheared in y and somehow is either periodic or not
+    Donev: What flexibility have we really gained with this functionality
+    Donev: Seems you can just delete PeriodicDomain to me
+    Donev: The domain is assumed to be a potentially deformed (non-orthogonal) parallelopiped
+    Donev: Primed coordinates denote positions in the undeformed (orthogonal) domain and primed in the deformed domain
+    Donev: In this implementation the domain deformation is limited to be simple shear
+    Donev: That is, I think just adding a logical flag inside the class isPeriodic accomplished everything
+           without creating a child class, so why not just do that?
+           You want to get something from abstraction. For example, could we implement more general types of shear like extensional flow?
+           Or, could we implement partially-periodic domains that are periodic only in some directions? Etc.
+           If the answer is no, and the only choice is between all-periodic and non-periodic, why not just use a binary variable?
     """
     def __init__(self,Lx,Ly,Lz):
         """
@@ -16,7 +29,7 @@ class Domain(object):
         self._Ly = Ly;
         self._Lz = Lz;
         self._Lens = np.array([self._Lx,self._Ly,self._Lz]);
-        self._g = 0;
+        self._g = 0; # Donev: Deformation factor due to the shear
 
     def safetyfactor(self):
         """
@@ -25,6 +38,7 @@ class Domain(object):
         in real coordinates, then they are at most rcut*safetyfactor(g)
         apart in shear coordinates
         """
+        # Donev: Why don't you declare a local variable g=self._g to save typing?
         return 1+0.5*self._g*self._g+0.5*sqrt(self._g*self._g*(self._g*self._g+4.0));
     
     def setg(self,ing):
@@ -105,7 +119,7 @@ class Domain(object):
         # Destructor
         print('Domain object destroyed');
         
-
+# Donev: I would just move these methods up and remove this child class
 class PeriodicDomain(Domain):
     
     """
