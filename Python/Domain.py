@@ -6,24 +6,21 @@ class Domain(object):
     """
     This class handles the domain and the relevant BCs
     (periodic domain is a child of general domain)
-    Donev: It is a bit strange to talk about periodic images in a parent class that is not supposed to know about its children
-    Donev: In this specific case it seems to me this abstraction is not very powerful
-    Donev: You have a domain that is limited to being only sheared in y and somehow is either periodic or not
-    Donev: What flexibility have we really gained with this functionality
-    Donev: Seems you can just delete PeriodicDomain to me
-    Donev: The domain is assumed to be a potentially deformed (non-orthogonal) parallelopiped
-    Donev: Primed coordinates denote positions in the undeformed (orthogonal) domain and primed in the deformed domain
-    Donev: In this implementation the domain deformation is limited to be simple shear
-    Donev: That is, I think just adding a logical flag inside the class isPeriodic accomplished everything
-           without creating a child class, so why not just do that?
-           You want to get something from abstraction. For example, could we implement more general types of shear like extensional flow?
-           Or, could we implement partially-periodic domains that are periodic only in some directions? Etc.
-           If the answer is no, and the only choice is between all-periodic and non-periodic, why not just use a binary variable?
+    There is a domain D that is just a regular rectangular box 
+    of size Lx * Ly * Lz. Then, there is some mapping from this to R^3 (all of R^3). 
+    This can involve periodic replication in some directions and shearing/stretching
+    due to simple shear.
+    The domain is assumed to be a potentially deformed (non-orthogonal) parallelopiped
+    Unprimed coordinates denote positions in the undeformed (orthogonal) domain and 
+    primed in the deformed domain
+    In this implementation the domain deformation is limited to be simple shear
     """
     def __init__(self,Lx,Ly,Lz):
         """
         Constructor. Initialize the domain
-        Input variables: Lx, Ly, Lz = periodic length in the x, y, and z directions.
+        Input variables: Lx, Ly, Lz = length in the x, y, and z directions (this is NOT
+        necessarily periodic length). But we need the domain to have some volume 
+        for stress calculations.
         """
         self._Lx = Lx;
         self._Ly = Ly;
@@ -39,7 +36,9 @@ class Domain(object):
         apart in shear coordinates
         """
         # Donev: Why don't you declare a local variable g=self._g to save typing?
-        return 1+0.5*self._g*self._g+0.5*sqrt(self._g*self._g*(self._g*self._g+4.0));
+        # This is why I hate self!!!
+        g = self._g;
+        return 1+0.5*g*g+0.5*sqrt(g*g*(g*g+4.0));
     
     def setg(self,ing):
         ing-=round(ing); # Now g is in [-1/2,1/2]
@@ -49,16 +48,15 @@ class Domain(object):
         return self._g;
     
     def getLens(self):
+        # Get lengths of the bounded domain
         return self._Lens;
-    
-    def getminLen(self):
-        return np.amin(self._Lens);
     
     def getVol(self):
         return 1.0*self._Lx*self._Ly*self._Lz;
 
-    def isPeriodic(self):
-        return 0;
+    def getPeriodicLens(self):
+        # Get periodic lengths (none for general domain)
+        return [None,None,None];
     
     def calcShifted(self,dvec):
         """
@@ -114,12 +112,28 @@ class Domain(object):
         L = np.array([[1,self._g,0],[0,1,0],[0,0,1]]);
         pts = np.dot(L,ptsprime.T).T;
         return pts;
+    
+    def primeWaveNumbersFromUnprimed(self,kxUP,kyUP,kzUP):
+        """
+        Compute the wave numbers on a sheared grid from the 
+        wave numbers on an unsheared grid. This applies in arbitrary
+        periodic directions. (This is here so Ewald doesn't know about
+        the sheared domain). 
+        Inputs: kxUP, kyUP, kzUP = wave numbers on the standard unprimed
+        coordinate system (x,y,z). These could be arrays of any form
+        Outputs: kxPrime, kyPrime, kzPrime = wabe numbers on the primed
+        deformed coordindate system (x',y',z'). Format of output and input 
+        are the same.
+        """
+        kxPrime = kxUP;
+        kyPrime = kyUP - self._g*kxUP;
+        kzPrime = kzUP;
+        return kxPrime, kyPrime, kzPrime;
 
     def __del__(self):
         # Destructor
         print('Domain object destroyed');
         
-# Donev: I would just move these methods up and remove this child class
 class PeriodicDomain(Domain):
     
     """
@@ -133,8 +147,9 @@ class PeriodicDomain(Domain):
         """
         Method to compute the nearest periodic image
         of a point. The periodicity is in (x',y',z').
-        Inputs: vector (not shifted) dvec.
-        Output: vector shifted so it's on [-L/2,L/2]^3 (this is 
+        Inputs: vector (not shifted) dvec in UNPRIMED COORDS.
+        Output: UNPRIMED vector shifted periodicially in the primed directions
+        so it's on [-L/2,L/2]^3 in undeformed space (this is
         necessary to estimate the minimum norm)
         """
         # Just call the C++ function (the python was unbelievably slow!)
@@ -166,6 +181,6 @@ class PeriodicDomain(Domain):
         """
         return np.mod(rprime,self._Lens);
 
-    def isPeriodic(self):
-        return 1;
+    def getPeriodicLens(self):
+        return self._Lens;
 
