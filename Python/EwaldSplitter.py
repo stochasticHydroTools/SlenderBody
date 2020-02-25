@@ -202,7 +202,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         """
         # Find all pairs (returns an array of the pairs) within rcut
         # print 'Doing Ewald with g=%f' %Dom.getg();
-        SpatialData.updateSpatialStructures(ptsxyz,Dom);
+        # SpatialData.updateSpatialStructures(ptsxyz,Dom); the update happens in fiberCollection
         neighborList = SpatialData.selfNeighborList(self._rcut);
         Lens = Dom.getLens();
         g = Dom.getg();
