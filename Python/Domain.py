@@ -7,13 +7,14 @@ class Domain(object):
     This class handles the domain and the relevant BCs
     (periodic domain is a child of general domain)
     There is a domain D that is just a regular rectangular box 
-    of size Lx * Ly * Lz. Then, there is some mapping from this to R^3 (all of R^3). 
+    of size Lx * Ly * Lz. Then, there is some mapping from this to R^3. 
     This can involve periodic replication in some directions and shearing/stretching
-    due to simple shear.
-    The domain is assumed to be a potentially deformed (non-orthogonal) parallelopiped
+    Donev: Is this true for a general domain -- where is it used? The domain is assumed to be a potentially deformed (non-orthogonal) parallelopiped
     Unprimed coordinates denote positions in the undeformed (orthogonal) domain and 
     primed in the deformed domain
-    In this implementation the domain deformation is limited to be simple shear
+    Donev: This needs to go inside the child class: In this implementation the domain deformation is limited to be simple shear
+    Putting shear here in the parent class completely destroys the abstraction of a domain as a general mapping from a rectangle
+    to a subdomain of R^3 (it is not all of R^3 btw but could be if all periodic).
     """
     def __init__(self,Lx,Ly,Lz):
         """
@@ -138,6 +139,7 @@ class PeriodicDomain(Domain):
     
     """
     Child class of Domain that handles periodic BCs
+    Donev: Move shear here not in Domain.
     """
     
     def __init__(self,Lx,Ly,Lz):

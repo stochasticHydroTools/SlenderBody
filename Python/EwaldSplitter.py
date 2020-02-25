@@ -4,11 +4,15 @@ import EwaldUtils as ewc
 import EwaldNumba as ewNum
 from math import pi
 
+# Donev: These seem misplaced here --- can you make these static members of the child class
+# or at least move this code to below where Ewald actually begins?
 nearcut = 1e-3; # cutoff for near field interactions
 fartol = 1e-10; # far field tolerance for FINUFFT (artificially low rn to compare w Matlab)
 rcuttol = 1e-2; # accuracy of truncation distance for Ewald
 cppnear = 1; # C++ code for near field? 1 for cpp, 0 for python
 trouble_xi_step = 0.1; # if we have to increase Ewald parameter xi mid-run, how much should we increase by?
+
+# Donev: I don't like the name of this file ;-)
 
 class RPYVelocityEvaluator(object):
     """
@@ -38,6 +42,14 @@ class RPYVelocityEvaluator(object):
             if iL is not None:
                 raise NotImplementedError('Doing a free space velocity sum with periodicity in a direction');
         return ewNum.RPYSBTK(Npts,ptsxyz,Npts,ptsxyz,forces,self._mu,self._a,sbt=0);
+        
+    # Donev: I would declare here a method called Check or Update
+    # This is later overwritten in the child with the current checkrcut
+    # The point is that this kind of routine would be common to any implementation
+    # I assume the point of this routine as an abstraction is that the mapping in Domain has changed
+    # and you want to update your data structures / parameters
+    # In the parent class this method would be empty but the point is that client/user code will only call RPYVelocityEvaluator.Update
+    # and not "checkrcut" which is very specific to Ewald    
 
 
 class EwaldSplitter(RPYVelocityEvaluator):
@@ -47,6 +59,13 @@ class EwaldSplitter(RPYVelocityEvaluator):
     the non-local velocity on a TRIPLY PERIODIC DOMAIN
     """
     
+    # Donev: Are these really all public methods (it says below that at some point private ones begin)?
+    # The only public methods here should be those of RPYVelocityEvaluator
+    # Everything else should probably private except maybe something about setting Ewald parameters?
+    # For example, updateFarFieldArrays does not appear to be called anywhere so it appears as private to me
+    # Do you not like _Name for private routines? You seem to use them for data members and I don't see the difference
+    # Dom is again passed as an argument to most if not all routines here -- should a pointer be stored internally?
+    # Same thing as we had for SpatialDatabase -- if Domain cannot change after you initialize/update then don't pass
     def __init__(self,a,mu,xi,PerDom):
         """
         Constructor. Initialize the Ewald splitter. 
@@ -59,6 +78,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self.calcrcut();
         self.updateFarFieldArrays(PerDom);
 
+    # Is this really public?
     def calcrcut(self):
         """
         Calculate the truncation distance for the Ewald near field. 
@@ -73,6 +93,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self._rcut =  rcut;
         print ('Ewald cut %f' %self._rcut)
     
+    # Donev: Make this an over-riding of Update/Check of parent class
     def checkrcut(self, Dom):
         """
         Check if rcut is less than one half period dynamically (the absolute
@@ -99,6 +120,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         # Update the far field arrays for the new xi
         self.updateFarFieldArrays(Dom);
 
+    # Is this really public?
     def updateFarFieldArrays(self,Dom):
         """
         Update/initialize the far field arrays when self._xi changes. 
@@ -122,6 +144,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self._fyhat = np.zeros([self._nx,self._ny,self._nz],dtype=np.complex128,order='F');
         self._fzhat = np.zeros([self._nx,self._ny,self._nz],dtype=np.complex128,order='F');
 
+    # This is definitely public, good!
     def calcBlobTotalVel(self,Npts,ptsxyz,forces,Dom,SpatialData):
         """
         Total velocity due to Ewald (far field + near field). 
@@ -140,7 +163,9 @@ class EwaldSplitter(RPYVelocityEvaluator):
         #print(np.amax(Ewaldnear-Ewaldnear2))
         return Ewaldfar+Ewaldnear; 
 
+    ## ------------------------------------------------ 
     ## "PRIVATE" METHODS (ONLY CALLED WITHIN THE CLASS)
+    ## ------------------------------------------------ Donev added this line to make it easier to find (good practice)
     def EwaldFarVel(self,Npts,ptsxyz,forces,Dom):
         """
         This function computes the far field Ewald velocity. 

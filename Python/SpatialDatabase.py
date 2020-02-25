@@ -90,6 +90,13 @@ class ckDSpatial(SpatialDatabase):
         # self._Npts,_ = pts.shape;
         # been executed also somehow?
         # No. ckDSpatial doesn't need that variable.
+        # Donev: But methods of SpatialDatabase that were NOT overwritten
+        # might need that variable!!!
+        # In neither C++ or Fortran or any reasonable typed language
+        # can you exclude components of a parent class in the child
+        # After all a child IS the same class as a parent with extra attributes, not less
+        # So you should get into the practice of executing the parent initializer here *always*
+        # Similarly, the destructor of the child class would call the destructor of the parent.
     
     def updateSpatialStructures(self,pts,Dom):
         """
