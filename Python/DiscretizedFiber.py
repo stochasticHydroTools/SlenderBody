@@ -6,7 +6,9 @@ class DiscretizedFiber(object):
     That is X and Xs are the only things stored here, as well
     as the discretization of the fiber. 
     """
-    ## METHODS FOR INITIALIZATION
+    ## ===============================================
+    ##          METHODS FOR INITIALIZATION
+    ## ===============================================
     def __init__(self,Discretization,X=None,Xs=None):
         """
         Constructor. Object variables are:
@@ -19,7 +21,9 @@ class DiscretizedFiber(object):
         self._X = X;
         self._Xs = Xs;
 
-    ## PUBLIC METHODS
+    ## ===============================================
+    ##              PUBLIC METHODS
+    ## ===============================================
     def initFib(self,Lengths):
         """
         Initialize straight fiber locations and tangent 
@@ -28,19 +32,15 @@ class DiscretizedFiber(object):
         """
         # Choose a random start point
         start = np.random.rand(3)*Lengths;
+        # Tangent vector (constant along fiber initially)
         u=1-2*np.random.rand();
         v=np.sqrt(1-u*u);
         w=2*np.pi*np.random.rand();
         tangent = np.array([v*np.cos(w), v*np.sin(w), u]);
         N = self._fibDisc.getN();
+        # Initial Xs and X
         self._Xs = np.tile(tangent,N);
         self._X = np.reshape(start+np.reshape(self._fibDisc._s,(N,1))*tangent,3*N);
-
-    def getFibDisc(self):
-        """
-        Return the FiberDiscretization object
-        """
-        return self._fibDisc;
 
     def getXandXs(self):
         """
