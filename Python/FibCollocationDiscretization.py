@@ -7,7 +7,7 @@ import EwaldNumba as ewnb
 from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
 
-
+# Donev: Same comment as before: if possible, move the constants related to Cheb below where Cheb starts not here
 # Definitions
 chebGridType = 1; # always use a type 1 grid for fiber discretization
 D4BCgridType = 2; # always a type 2 grid to enforce the BCs
@@ -108,14 +108,8 @@ class FibCollocationDiscretization(object):
         """
         return np.dot(self._MatfromNtoUpsamp,Xarg);
     
-    # Donev: Somehow the hard-wiring of 2 panels (why not 4?) seems wrong to me
-    # Maybe the number of panels can be an argument instead?
-    # OM: I hard-wired it because the resampling matrix has to be precomputed to
-    # save time. Remember the special quad can be a bottleneck so it's best to
-    # precompute the resampling matrix and just call it this way.
-    # In theory the number of panels could be an argument and then all the resampling
-    # matrices precomputed, then a bunch of if statements. I don't think this is worth
-    # it though.
+    # Note: In theory the number of panels could be an argument and then all the resampling
+    # matrices precomputed, then a bunch of if statements. But we are being lazy...
     def upsample2Panels(self,Xarg):
         """
         Get the locations on 2 panels of upsampled nodes on the fiber.
@@ -180,6 +174,9 @@ class FibCollocationDiscretization(object):
         """
         This method solves the linear system for 
         lambda and alpha for a given RHS. 
+        Donev: Can you please be more specific and write down what this solves so you remember in the future?
+        I assume it is just a block-diagonal system you are handling here but write something down with math in it
+        to explain what impco (implicit constant) is etc.
         Inputs: Xarg and Xsarg = X and Xs to build the matrices for
         dt = timestep, impco = implicit coefficient (coming from the temporal integrator)
         nLvel = non-local velocity as a 3N vector, exF = external forces as a 3N vector
