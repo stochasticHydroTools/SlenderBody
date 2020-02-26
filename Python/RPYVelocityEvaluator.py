@@ -38,7 +38,8 @@ class RPYVelocityEvaluator(object):
             if iL is not None:
                 raise NotImplementedError('Doing a free space velocity sum with periodicity in a direction');
         return ewNum.RPYSBTK(Npts,ptsxyz,Npts,ptsxyz,forces,self._mu,self._a,sbt=0);
-        
+    
+    # Donev: Sorry: If this is not called from outside no need for it here    
     # Donev: I would declare here a method called Check or Update
     # This is later overwritten in the child with the current checkrcut
     # The point is that this kind of routine would be common to any implementation
