@@ -7,15 +7,12 @@ class Domain(object):
     This class handles the domain and the relevant BCs
     (periodic domain is a child of general domain)
     There is a domain D that is just a regular rectangular box 
-    of size Lx * Ly * Lz. Then, there is some mapping from this to R^3. 
+    of size Lx * Ly * Lz. Then, there is some mapping from this to (a subset of) R^3. 
     This can involve periodic replication in some directions and shearing/stretching
-    Donev: Is this true for a general domain -- where is it used? The domain is assumed to be a potentially deformed (non-orthogonal) parallelopiped
-    Unprimed coordinates denote positions in the undeformed (orthogonal) domain and 
-    primed in the deformed domain
-    Donev: This needs to go inside the child class: In this implementation the domain deformation is limited to be simple shear
-    Putting shear here in the parent class completely destroys the abstraction of a domain as a general mapping from a rectangle
-    to a subdomain of R^3 (it is not all of R^3 btw but could be if all periodic).
     """
+    ## ===================================
+    ##      METHODS FOR INITIALIZATION
+    ## ===================================
     def __init__(self,Lx,Ly,Lz):
         """
         Constructor. Initialize the domain
@@ -27,27 +24,19 @@ class Domain(object):
         self._Ly = Ly;
         self._Lz = Lz;
         self._Lens = np.array([self._Lx,self._Ly,self._Lz]);
-        self._g = 0; # Donev: Deformation factor due to the shear
 
+    ## ===================================
+    ##          PUBLIC METHODS 
+    ## ===================================
     def safetyfactor(self):
         """
         Compute the safety factor for measuring distance
         in the primed coordinates. If two points are at most rcut apart
         in real coordinates, then they are at most rcut*safetyfactor(g)
-        apart in shear coordinates
+        apart in shear coordinates. Abstract domain: do nothing, return 1. 
         """
-        # Donev: Why don't you declare a local variable g=self._g to save typing?
-        # This is why I hate self!!!
-        g = self._g;
-        return 1+0.5*g*g+0.5*sqrt(g*g*(g*g+4.0));
-    
-    def setg(self,ing):
-        ing-=round(ing); # Now g is in [-1/2,1/2]
-        self._g = ing;
-    
-    def getg(self):
-        return self._g;
-    
+        return 1.0;
+       
     def getLens(self):
         # Get lengths of the bounded domain
         return self._Lens;
@@ -98,10 +87,9 @@ class Domain(object):
         in the shifted coordinate system. Inputs = ptsxyz (pts in
         the x,y,z coordinate system).
         Output is the vector pts', i.e. in the x',y',z' coordinate system
+        Abstract domain: do nothing
         """
-        Linv = np.array([[1,-self._g,0],[0,1,0],[0,0,1]]);
-        ptsprime = np.dot(Linv,ptsxyz.T).T;
-        return ptsprime;
+        return ptsxyz;
     
     def unprimecoords(self,ptsprime):
         """
@@ -109,10 +97,9 @@ class Domain(object):
         coordinate system from the coordinates in the (x',y',z') coordinate
         system. Inputs: the prime coordinates.
         Outpts: the coordinates in the (x,y,z) space
+        Abstract domain: do nothing
         """
-        L = np.array([[1,self._g,0],[0,1,0],[0,0,1]]);
-        pts = np.dot(L,ptsprime.T).T;
-        return pts;
+        return ptsprime;
     
     def primeWaveNumbersFromUnprimed(self,kxUP,kyUP,kzUP):
         """
@@ -125,25 +112,49 @@ class Domain(object):
         Outputs: kxPrime, kyPrime, kzPrime = wabe numbers on the primed
         deformed coordindate system (x',y',z'). Format of output and input 
         are the same.
+        Abstract domain: return input wave numbers
         """
         kxPrime = kxUP;
-        kyPrime = kyUP - self._g*kxUP;
+        kyPrime = kyUP;
         kzPrime = kzUP;
         return kxPrime, kyPrime, kzPrime;
-
-    def __del__(self):
-        # Destructor
-        print('Domain object destroyed');
         
-class PeriodicDomain(Domain):
+class PeriodicShearedDomain(Domain):
     
     """
-    Child class of Domain that handles periodic BCs
-    Donev: Move shear here not in Domain.
+    Child class of Domain that handles periodic BCs and shear
+    In this implementation the domain deformation is limited to be simple shear
+    The domain is assumed to be a potentially deformed (non-orthogonal) parallelpiped
+    Unprimed coordinates denote positions in the undeformed (orthogonal) domain and 
+    primed in the deformed domain
     """
     
+    ## ===================================
+    ##      METHODS FOR INITIALIZATION
+    ## ===================================
     def __init__(self,Lx,Ly,Lz):
         super().__init__(Lx,Ly,Lz);
+        self._g = 0; # Deformation factor due to the shear
+
+    ## ===================================
+    ##          PUBLIC METHODS 
+    ## ===================================
+    def safetyfactor(self):
+        """
+        Compute the safety factor for measuring distance
+        in the primed coordinates. If two points are at most rcut apart
+        in real coordinates, then they are at most rcut*safetyfactor(g)
+        apart in shear coordinates
+        """
+        g = self._g;
+        return 1+0.5*g*g+0.5*sqrt(g*g*(g*g+4.0));
+    
+    def setg(self,ing):
+        ing-=round(ing); # Now g is in [-1/2,1/2]
+        self._g = ing;
+    
+    def getg(self):
+        return self._g;
 
     def calcShifted(self,dvec):
         """
@@ -185,4 +196,43 @@ class PeriodicDomain(Domain):
 
     def getPeriodicLens(self):
         return self._Lens;
+
+    def primecoords(self,ptsxyz):
+        """
+        Method to calculate the coordinates of a vector 
+        in the shifted coordinate system. Inputs = ptsxyz (pts in
+        the x,y,z coordinate system).
+        Output is the vector pts', i.e. in the x',y',z' coordinate system
+        """
+        Linv = np.array([[1,-self._g,0],[0,1,0],[0,0,1]]);
+        ptsprime = np.dot(Linv,ptsxyz.T).T;
+        return ptsprime;
+    
+    def unprimecoords(self,ptsprime):
+        """
+        Method to compute the coordinates of a point in the (x,y,z)
+        coordinate system from the coordinates in the (x',y',z') coordinate
+        system. Inputs: the prime coordinates.
+        Outpts: the coordinates in the (x,y,z) space
+        """
+        L = np.array([[1,self._g,0],[0,1,0],[0,0,1]]);
+        pts = np.dot(L,ptsprime.T).T;
+        return pts;
+    
+    def primeWaveNumbersFromUnprimed(self,kxUP,kyUP,kzUP):
+        """
+        Compute the wave numbers on a sheared grid from the 
+        wave numbers on an unsheared grid. This applies in arbitrary
+        periodic directions. (This is here so Ewald doesn't know about
+        the sheared domain). 
+        Inputs: kxUP, kyUP, kzUP = wave numbers on the standard unprimed
+        coordinate system (x,y,z). These could be arrays of any form
+        Outputs: kxPrime, kyPrime, kzPrime = wabe numbers on the primed
+        deformed coordindate system (x',y',z'). Format of output and input 
+        are the same.
+        """
+        kxPrime = kxUP;
+        kyPrime = kyUP - self._g*kxUP;
+        kzPrime = kzUP;
+        return kxPrime, kyPrime, kzPrime;
 
