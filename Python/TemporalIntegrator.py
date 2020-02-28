@@ -9,12 +9,13 @@ class TemporalIntegrator(object):
     """
     Class to do the temporal integration. 
     Child classes: BackwardEuler and CrankNicolsonLMM
+    Abstract class: does first order explicit
     """
     
     def __init__(self,fibCol,CLNetwork):
         self._allFibers = fibCol;
         self._CLNetwork = CLNetwork;
-        self._impco = 0; 
+        self._impco = 0; #coefficient for linear solves in FibCollocationDiscretization.alphaLamSolve
     
     def getXandXsNonLoc(self):
         return self._allFibers.getX().copy(), self._allFibers.getXs().copy();
@@ -57,10 +58,10 @@ class TemporalIntegrator(object):
         XforNL, XsforNL = self.getXandXsNonLoc();    
         forceExt = self._CLNetwork.CLForce(self._allFibers._fiberDisc,XforNL,Dom);
         while (not converged and iters < itmax):
-            lamforNL = self.getLamNonLoc(iT,iters);
+            lamforNL = self.getLamNonLoc(iT,iters);  
             uNonLoc = self._allFibers.nonLocalBkgrndVelocity(XforNL,XsforNL,lamforNL, tvalSolve, \
-                        forceExt, Dom, Ewald);
-            self._allFibers.linSolveAllFibers(XsforNL,uNonLoc,forceExt,fixedpointtol,dt,self._impco);
+                        forceExt,Dom,Ewald);
+            self._allFibers.linSolveAllFibers(XsforNL,uNonLoc,forceExt,dt,self._impco);
             converged = self._allFibers.converged(lamforNL,fixedpointtol);
             iters+=1;
         # Converged, update the fiber positions

@@ -156,7 +156,7 @@ def evalSeries(coeffs,th):
     Output: value(s) of the Chebyshev series at th
     """
     N,_= coeffs.shape;
-    polys = np.reshape(np.cos(np.arange(N)*th),(1,N));
+    polys = np.cos(np.outer(np.arange(N),th)).T;
     vals = np.dot(polys,coeffs);
     return vals;
 

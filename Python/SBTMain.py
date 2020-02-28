@@ -1,8 +1,8 @@
 from math import pi
 from fiberCollection import fiberCollection
-from FiberDiscretization import FiberDiscretization
-from EwaldSplitter import EwaldSplitter
-from Domain import Domain
+from FibCollocationDiscretization import FibCollocationDiscretization, ChebyshevDiscretization
+from RPYVelocityEvaluator import EwaldSplitter
+from Domain import Domain, PeriodicShearedDomain
 from TemporalIntegrator import TemporalIntegrator, BackwardEuler, CrankNicolsonLMM
 from FibInitializer import makeCurvedFiber, makeFallingFibers
 from CrossLinkedNetwork import CrossLinkedNetwork
@@ -26,17 +26,17 @@ for line in lines:
     exec(line)
 infile.close();
 
-# Initialize the domain
-Dom = Domain(Ld,Ld,Ld);
+# Initialize the domain and spatial database
+Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize Ewald for non-local velocities
-Ewald = EwaldSplitter(xi,np.sqrt(1.5)*eps*Lf,mu);
+Ewald = EwaldSplitter(np.sqrt(1.5)*eps*Lf,mu,xi,Dom);
 
 # Initialize fiber discretization
-fibDisc = FiberDiscretization(Lf,eps,ellipsoidal,Eb,mu,N);
+fibDisc = ChebyshevDiscretization(Lf,eps,ellipsoidal,Eb,mu,N);
 
 # Initialize the master list of fibers
-allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0);
+allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0,Dom);
 
 # Initialize the fiber list
 # For the single relaxing fiber test
@@ -72,4 +72,10 @@ for iT in range(stopcount):
 
 # Destruction and cleanup
 of.close();
+del Dom;
+del Ewald;
+del fibDisc;
+del allFibers;
+del CLNet;
+del TIntegrator;
 

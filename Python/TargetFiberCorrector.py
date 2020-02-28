@@ -1,5 +1,7 @@
 import numpy as np
 import SpecQuadUtils as sq
+import EwaldNumba as ewNum
+import EwaldUtils as ewc
 
 # Definitions
 dstarCenterLine = 2.2; # dstarCenterLine*eps*L is distance where we set v to centerline v
@@ -16,107 +18,85 @@ only does free space corrections, it therefore DOES NOT need geometric
 information.
 """
 
-def correctVel(tpt,fiber,fibpts,forces,forceDs,centerVels,method):
+
+def SpecQuadVel(Ntarg,tpts,fiber,Xup,X2pan,forcesUp,fDup,f2pan,centerVels,cvelup,\
+                wup,epsilon,Lf,aRPY,mu,N,nUpsample):
     """
-    Method to correct the velocity when fibers are close together. 
-    Inputs: tpt = target point (3 array), fiber = the fiber object that
-    is close to the target, fibpts = Npts x 3 array of the (shifted)
-    fiber locations that are close to the target, forces = the forces on the 
-    fiber (not force densities; these are the force densities*weights), 
-    forceDs = Npts x 3 array of force densities on the fiber, 
-    centerVels = nPts x 3 array of the velocity on the fiber centerline
-    (for use when points get really close to the fiber), and 
-    the correction method (1 for nptsUpsample direct quadrature), otherwise this will 
-    do special quadrature 
-    Outputs: the correction to the velocity at the target as a 3 array
+    In progress. 
     """
-    # Subtract the Ewald with Npf points on the fiber
-    cvel = -fiber.RPYSBTKernel(tpt,fibpts,forces);
-    # If doing upsampling, upsample, do the free space quad sum, and stop
-    nUpsample = fiber.getNumUpsample();
-    wup = fiber.getUpsampledWeights();
-    Xup = fiber.upsampleGlobally(fibpts);
-    fDup = fiber.upsampleGlobally(forceDs);
-    cvelup = fiber.upsampleGlobally(centerVels);
-    forcesup = fDup*np.reshape(wup,(nUpsample,1));
-    if (method==1): # free space sum for N = nptsUpsample (32)
-        cvel+= fiber.RPYSBTKernel(tpt,Xup,forcesup,sbt=1);
-        return cvel;
-    # If doing special quad, find the complex root using the domain for centerline
-    # t in [-1,1]
-    troot, converged, cdist, clvel = calcRoot(tpt,fiber,Xup,cvelup,nUpsample);
-    # If not converged, point must be far, just do direct with N = nUpsample and stop
-    if (not converged):
-        cvel+= fiber.RPYSBTKernel(tpt,Xup,forcesup,sbt=1);
-        return cvel;
+    SBTvels = np.zeros((Ntarg,3));
+    # Find the complex root using the domain for centerline t in [-1,1]
+    troots, converged, cdists, clvels = calcRoots(Ntarg,tpts,fiber,Xup,cvelup,nUpsample);
+    # Separate targets into those needing special and not needing special
+    allInds = np.arange(Ntarg);
+    DirectInds = allInds[converged==0];
+    SpecialInds = allInds[converged > 0];
     # Now we know we have converged to the root
     # How far are we from the fiber in a non-dimensional sense?
-    epsilon, Lf = fiber.getepsilonL();
-    dstar = cdist/(epsilon*Lf);
+    dstars = np.zeros(Ntarg);
+    dstars[DirectInds] = float("inf");
+    dstars[SpecialInds] = cdists[SpecialInds]/(epsilon*Lf);
     # If the point is inside the fiber "cross section," which we define as
     # dstar < dstarCenterLine, compute the centerline velocity at the approximate
     # closest point and return (in fact we need it when cdist/(epsilon*L) < dstarInterpolate;
     # in that case we are going to interpolate. How this is implemented is to set
     # wtCL > 0 if we need to interpolate
-    wtCL = 0.0;
-    if (dstar < dstarInterpolate):
-        wtCL = (dstarInterpolate-dstar)/dstarCenterLine;
-    wtSBT = 1.0-wtCL;
-    if (dstar < dstarCenterLine): # return the centerline velocity and stop
-        print('Target close to fiber - setting velocity = centerline velocity')
-        cvel+= clvel;
-        return cvel;
-    # Now we are dealing with the case where we need the free space slender integral.
-    # 3 possible options:
-    # 1. Don't need special quad (determined by Bernstein radius)
-    # 2. Special quad needed, but 1 panel of 32 is ok
-    # 3. Special quad needed, but need 2 panels of 32
-    # Bernstein radius
-    bradius = bernstein_radius(troot);
-    sqneeded = (bradius < rho_crit);
-    if (not sqneeded):
-        cvel+= wtSBT*fiber.RPYSBTKernel(tpt,Xup,forcesup,sbt=1)+wtCL*clvel;
-        return cvel;
+    wtsCL = np.zeros(Ntarg);
+    wtsCL[SpecialInds]+= np.logical_and(dstars[SpecialInds] < dstarInterpolate,dstars[SpecialInds] > dstarCenterLine)\
+            *(dstarInterpolate-dstars[SpecialInds])/dstarCenterLine;  # points that get an interpolation 
+    wtsCL[SpecialInds]+= (dstars[SpecialInds] < dstarCenterLine)*1.0; # points that get only centerline vel
+    wtsSBT = 1.0-wtsCL;
+    # Append to directInds the ones that don't need special quad
+    bradius = bernstein_radius(troots);
+    sqneeded = np.logical_and(converged,bradius < rho_crit);
+    AllDirectInds = allInds[np.logical_not(sqneeded)]; 
+    # Do direct ones with direct
+    SBTvels[AllDirectInds,:]+=np.reshape(ewc.RPYSBTKernel(len(AllDirectInds),tpts[AllDirectInds,0],\
+        tpts[AllDirectInds,1],tpts[AllDirectInds,2],nUpsample,Xup[:,0],Xup[:,1],Xup[:,2],\
+        forcesUp[:,0],forcesUp[:,1],forcesUp[:,2],mu,aRPY,1),(len(AllDirectInds),3));
+    # Now we are dealing with the case where we need special quad.
+    # 2 possible options: 1 panel of 32 is ok or need 2 panels of 32
     specNodes = fiber.getSpecialQuadNodes();
-    if (dstar > dstar2panels): # Ok to proceed with 1 panel of nptsUpsample
-        # Special quad weights
-        wts = specialWts(fiber,troot,nUpsample);
-        cvel+= fiber.SBTKernelSplit(tpt,Xup,fDup,wts[:,0],wts[:,1],wts[:,2])
-        return cvel;
-    # dstar < dstar2panels, need to redo special quad with 2 panels of 32
-    # Resample at 2 panels of 32
-    X2pan = fiber.upsample2Panels(fibpts);
-    f2pan = fiber.upsample2Panels(forceDs);
-    SBTvel = np.zeros(3);
-    for iPan in range(2): # looping over the panels
-        indpan = np.arange(nUpsample)+iPan*nUpsample;
-        # Points and force densities for the panel
-        Xpan = X2pan[indpan,:];
-        fdpan = f2pan[indpan,:];
-        # Calculate the root as before. The method will waste time
-        # computing the closest point, etc, but those are trivial computations
-        # and it's easier for now to put it all in one method.
-        troot, converged, _, _ = calcRoot(tpt,fiber,Xpan,cvelup,nUpsample);
-        bradius = bernstein_radius(troot);
-        # Do we need special quad for this panel? (Will only need for 1 panel,
-        # whatever one has the fiber section closest to the target).
-        sqneeded = converged and (bradius < rho_crit);
-        if (not sqneeded):
-            # Directly do the integral for 1 panel (weights have to be halved because
-            # we cut the fiber in 2)
-            SBTvel+=fiber.RPYSBTKernel(tpt,Xpan,fdpan*\
-                                np.reshape(wup,(nUpsample,1))/2.0,sbt=1);
-        else:
-            # Compute special quad weights (divide weights by 2 for 2 panels)
-            wts = specialWts(fiber,troot,nUpsample)/2.0;
-            SBTvel+= fiber.SBTKernelSplit(tpt,Xpan,fdpan,wts[:,0],wts[:,1],wts[:,2]);
-    cvel+= wtSBT*SBTvel+wtCL*clvel;
-    return cvel;
+    OnePanelInds = allInds[np.logical_and(sqneeded,dstars > dstar2panels)];
+    TwoPanelsInds = allInds[np.logical_and(sqneeded,dstars <= dstar2panels)];
+    for iOnePan in OnePanelInds: 
+        # Special quad weights for single panel
+        wts = specialWts(fiber,troots[iOnePan],nUpsample);
+        SBTvels[iOnePan,:]+= ewNum.SBTKSpl(tpts[iOnePan,:],nUpsample,Xup,fDup,\
+                    mu,epsilon,Lf,wts[:,0],wts[:,1],wts[:,2]);
+    for iTwoPan in TwoPanelsInds:
+        # Special quad w 2 panels
+        for iPan in range(2): # looping over the panels
+            indpan = np.arange(nUpsample)+iPan*nUpsample;
+            # Points and force densities for the panel
+            Xpan = X2pan[indpan,:];
+            fdpan = f2pan[indpan,:];
+            # Calculate the root as before. The method will waste time
+            # computing the closest point, etc, but those are trivial computations
+            # and it's easier for now to put it all in one method.
+            tr, conv, _, _ = calcRoots(1,np.array([tpts[iTwoPan,:]]),fiber,Xpan,cvelup,nUpsample);
+            br = bernstein_radius(tr);
+            # Do we need special quad for this panel? (Will only need for 1 panel,
+            # whatever one has the fiber section closest to the target).
+            sqneeded = conv and (br < rho_crit);
+            if (not sqneeded):
+                # Directly do the integral for 1 panel (weights have to be halved because
+                # we cut the fiber in 2)
+                forcePan = fdpan*np.reshape(wup,(nUpsample,1))/2.0;
+                SBTvels[iTwoPan,:]+= np.reshape(ewNum.RPYSBTK(1,np.array([tpts[iTwoPan,:]]),nUpsample,\
+                        Xpan,forcePan,mu,aRPY,sbt=1),3);
+            else:
+                # Compute special quad weights (divide weights by 2 for 2 panels)
+                wts = specialWts(fiber,tr,nUpsample)/2.0;
+                SBTvels[iTwoPan,:]+= ewNum.SBTKSpl(tpts[iTwoPan,:],nUpsample,Xpan,fdpan,mu,epsilon,\
+                            Lf,wts[:,0],wts[:,1],wts[:,2]);  
+    return np.reshape(wtsSBT,(Ntarg,1))*SBTvels+np.reshape(wtsCL,(Ntarg,1))*clvels;
 
-def calcRoot(tpt,fiber,X,centerVels,nUpsample):
+def calcRoots(Ntarg,tpts,fiber,X,centerVels,nUpsample):
     """
     Compute the root troot using special quadrature. 
-    Inputs: tpt = 3 array target point where we seek the velocity due to the fiber, 
+    Inputs: Ntarg = number of targets, tpt = Ntarg x 3 array target point 
+    where we seek the velocity due to the fiber, 
     fiber = fiber object we seek the velocity due to, X = nptsUpsample x 3 array of fiber points,
     centerVels = nptsUpsample x 3 array of velocities on the fiber centerline (for close points).
     Outputs: troot = complex root for special quad, converged = 1 if we actually
@@ -124,16 +104,22 @@ def calcRoot(tpt,fiber,X,centerVels,nUpsample):
     we didn't need to), cdist = approximate distance from the fiber centerline 
     to the point, clvel_close = 3 array of velocity at the closest centerline point
     """
+    tinits = np.zeros(Ntarg,dtype=np.complex128);
+    converged = -np.ones(Ntarg,dtype=int);
+    troots = np.zeros(Ntarg,dtype=np.complex128);
+    cdists = 1000*np.ones(Ntarg);
+    cvels_close = np.zeros((Ntarg,3));
     # Initial guess (C++ function)
     specNodes = fiber.getSpecialQuadNodes();
-    tinit = sq.rf_iguess(specNodes,X[:,0],X[:,1],X[:,2],nUpsample,\
-                            tpt[0],tpt[1],tpt[2]);
-    # If initial guess is too far, return so we can do direct with N = 32
-    if (bernstein_radius(tinit) > 1.5*rho_crit):
-        converged=0;
-        troot=0+0j;
-        cdist = 1000; # a big number
-        return troot, converged, cdist, np.zeros(3);
+    # C++ function to compute the roots
+    tinits = np.array(sq.rf_iguess(specNodes,X[:,0],X[:,1],X[:,2],nUpsample,\
+                        tpts[:,0],tpts[:,1],tpts[:,2],Ntarg));
+    # If initial guess is too far, do nothing
+    converged[bernstein_radius(tinits) > 1.5*rho_crit] = 0;
+    # Now filter to only do targets with tinit close enough
+    TargNums = np.arange(Ntarg);
+    TargNumsLeft = TargNums[converged < 0];
+    remainingTargs = tpts[converged < 0];
     # Compute the Chebyshev coefficients and the coefficients of the derivative
     pos_coeffs, deriv_cos = fiber.upsampledCoefficients(X);
     # From Ludvig: cap the expansion at 16 coefficients for root finding (this seems
@@ -141,23 +127,27 @@ def calcRoot(tpt,fiber,X,centerVels,nUpsample):
     # (C++ code). Returns a tuple with elements (troot, converged).
     pos_coeffsRfind = pos_coeffs[:rootfinderExpansionCap,:];
     deriv_cosRfind = deriv_cos[:rootfinderExpansionCap,:];
+    # C++ function to compute the roots and convergence
     trconv = sq.rootfinder(pos_coeffsRfind[:,0],pos_coeffsRfind[:,1],pos_coeffsRfind[:,2],\
                 deriv_cosRfind[:,0],deriv_cosRfind[:,1],deriv_cosRfind[:,2],rootfinderExpansionCap, \
-                tpt[0], tpt[1], tpt[2],tinit);
-    troot = trconv[0];
-    converged = trconv[1];
-    # Use troot to estimate the distance from the fiber
-    tapprox = troot;
-    if (np.real(troot) < -1): # root is off the fiber centerline in tangental dir
-        tapprox = -1.0+1j*np.imag(tapprox);
-    elif (np.real(troot) > 1): # root is off the fiber centerline in tangental dir
-        tapprox = 1.0+1j*np.imag(tapprox);
-    # Evaluate the Chebyshev series at tapprox
-    cdist = np.linalg.norm(np.real(fiber.evaluatePosition(tapprox,pos_coeffs)-tpt));
+                tpts[TargNumsLeft,0], tpts[TargNumsLeft,1], tpts[TargNumsLeft,2],len(TargNumsLeft),\
+                tinits[TargNumsLeft]);
+    troots[TargNumsLeft] = np.array(trconv[0]);
+    converged[TargNumsLeft] = np.array(trconv[1]);
+    # Use troot to get the approximate closest point on the fiber to the target, 
+    # which I call tapprox
+    tapprox = np.real(troots.copy());
+    # For roots off the fiber centerline in tangental dir, push them to the endpoints
+    # of the fiber
+    tapprox[tapprox < -1.0] = -1.0;
+    tapprox[tapprox > 1.0] = 1.0;
+    # Estimate approximate distances
+    cdistVectors = fiber.evaluatePosition(tapprox,pos_coeffs)-tpts;
+    cdists = np.linalg.norm(cdistVectors,axis=1);
     # Evaluate centerline velocity at tapprox
     clv_cos, _ = fiber.upsampledCoefficients(centerVels);
-    clvel_close = np.reshape(fiber.evaluatePosition(np.real(tapprox),clv_cos),3);
-    return troot, converged, cdist, clvel_close
+    clvel_close = fiber.evaluatePosition(tapprox,clv_cos);
+    return troots, converged, cdists, clvel_close
 
 def specialWts(fiber,troot,nUpsample):
     """

@@ -38,25 +38,7 @@ class RPYVelocityEvaluator(object):
             if iL is not None:
                 raise NotImplementedError('Doing a free space velocity sum with periodicity in a direction');
         return ewNum.RPYSBTK(Npts,ptsxyz,Npts,ptsxyz,forces,self._mu,self._a,sbt=0);
-    
-    # Donev: Sorry: If this is not called from outside no need for it here    
-    # Donev: I would declare here a method called Check or Update
-    # This is later overwritten in the child with the current checkrcut
-    # The point is that this kind of routine would be common to any implementation
-    # I assume the point of this routine as an abstraction is that the mapping in Domain has changed
-    # and you want to update your data structures / parameters
-    # In the parent class this method would be empty but the point is that client/user code will only call RPYVelocityEvaluator.Update
-    # and not "checkrcut" which is very specific to Ewald
-    ## =========================================
-    ##  PRIVATE METHODS ONLY CALLED WITHIN CLASS
-    ## =========================================
-    def checkParams(self,Dom):
-        """
-        This routine updates the parameters of the RPYVelocityEvaluator
-        as necessary for a new domain object. In the abstract class it 
-        does nothing
-        """
-        return;
+
 
 ## Some parameters specific to Ewald
 nearcut = 1e-3; # cutoff for near field interactions
@@ -70,14 +52,6 @@ class EwaldSplitter(RPYVelocityEvaluator):
     This class implements Ewald splitting for the calculation of
     the non-local velocity on a TRIPLY PERIODIC DOMAIN
     """
-    
-    # Donev: Are these really all public methods (it says below that at some point private ones begin)?
-    # The only public methods here should be those of RPYVelocityEvaluator
-    # Everything else should probably private except maybe something about setting Ewald parameters?
-    # For example, updateFarFieldArrays does not appear to be called anywhere so it appears as private to me
-    # Do you not like _Name for private routines? You seem to use them for data members and I don't see the difference
-    # Dom is again passed as an argument to most if not all routines here -- should a pointer be stored internally?
-    # Same thing as we had for SpatialDatabase -- if Domain cannot change after you initialize/update then don't pass
     ## ========================================
     ##          METHODS FOR INITIALIZATION
     ## ========================================
@@ -89,9 +63,10 @@ class EwaldSplitter(RPYVelocityEvaluator):
         """
         super().__init__(a,mu);
         self._xi = float(xi);
+        self._currentDomain = PerDom;
         # Calculate the truncation distance for Ewald
         self.calcrcut();
-        self.updateFarFieldArrays(PerDom);
+        self.updateFarFieldArrays();
 
     ## =========================================
     ##    PUBLIC METHODS CALLED OUTSIDE CLASS
@@ -104,11 +79,13 @@ class EwaldSplitter(RPYVelocityEvaluator):
         SpatialData = SpatialDatabase object for fast neighbor computation.
         Output: the total velocity as an Npts x 3 array.
         """
+        # Update domain object
+        self._currentDomain = Dom;
         # First check if Ewald parameter is ok
-        self.checkParams(Dom);
+        self.checkrcut();
         # Compute far field and near field
-        Ewaldfar = self.EwaldFarVel(Npts,ptsxyz,forces,Dom); # far field Ewald
-        Ewaldnear = self.EwaldNearVel(Npts,ptsxyz,Dom,SpatialData,forces); # near field Ewald
+        Ewaldfar = self.EwaldFarVel(Npts,ptsxyz,forces); # far field Ewald
+        Ewaldnear = self.EwaldNearVel(Npts,ptsxyz,forces,SpatialData); # near field Ewald
         #Ewaldnear2 = self.EwaldNearVelQuad(Npts,ptsxyz,forces,Dom); # near field Ewald quadratic
         #print('Near field error')
         #print(np.amax(Ewaldnear-Ewaldnear2))
@@ -117,7 +94,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
     ## =========================================
     ##  PRIVATE METHODS ONLY CALLED WITHIN CLASS
     ## =========================================
-    def EwaldFarVel(self,Npts,ptsxyz,forces,Dom):
+    def EwaldFarVel(self,Npts,ptsxyz,forces):
         """
         This function computes the far field Ewald velocity. 
         Inputs: Npts = the number of blobs, ptsxyz = the list of points 
@@ -126,9 +103,9 @@ class EwaldSplitter(RPYVelocityEvaluator):
         there for more information.
         """
         # Compute the coordinates in the transformed basis
-        pts = Dom.primecoords(ptsxyz);
+        pts = self._currentDomain.primecoords(ptsxyz);
         # Rescale to [-pi,pi] (for FINUFFT)
-        Lens = Dom.getPeriodicLens();
+        Lens = self._currentDomain.getPeriodicLens();
         pts = 2*pi*np.mod(pts,Lens)/Lens-pi;
         # Forcing on the grid (FINUFFT type 1)
         fi.nufft3d1(pts[:,0],pts[:,1],pts[:,2],forces[:,0],-1,fartol,\
@@ -138,7 +115,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         fi.nufft3d1(pts[:,0],pts[:,1],pts[:,2],forces[:,2],-1,fartol,\
                     self._nx,self._ny,self._nz,self._fzhat,modeord=1);
         # Manipulation in Fourier space
-        kxP, kyP, kzP = Dom.primeWaveNumbersFromUnprimed(self._kx, self._ky, self._kz);
+        kxP, kyP, kzP = self._currentDomain.primeWaveNumbersFromUnprimed(self._kx, self._ky, self._kz);
         k = np.sqrt(kxP*kxP+kyP*kyP+kzP*kzP);
         # Multiplication factor for the RPY tensor
         factor = 1.0/(self._mu*k*k)*np.sinc(k*self._a/pi)**2;
@@ -161,13 +138,13 @@ class EwaldSplitter(RPYVelocityEvaluator):
         fi.nufft3d2(pts[:,0],pts[:,1],pts[:,2],ux,1,fartol,uprojx,modeord=1);
         fi.nufft3d2(pts[:,0],pts[:,1],pts[:,2],uy,1,fartol,uprojy,modeord=1);
         fi.nufft3d2(pts[:,0],pts[:,1],pts[:,2],uz,1,fartol,uprojz,modeord=1);
-        vol = Dom.getVol();
+        vol = self._currentDomain.getVol();
         ux = np.real(ux)/vol;
         uy = np.real(uy)/vol;
         uz = np.real(uz)/vol;
         return np.concatenate(([ux],[uy],[uz])).T;
     
-    def EwaldNearVel(self,Npts,ptsxyz,Dom,SpatialData,forces):
+    def EwaldNearVel(self,Npts,ptsxyz,forces,SpatialData):
         """
         Near field velocity. 
         Inputs: Npts = the number of blobs, ptsxyz = the list of points 
@@ -180,8 +157,8 @@ class EwaldSplitter(RPYVelocityEvaluator):
         # print 'Doing Ewald with g=%f' %Dom.getg();
         # SpatialData.updateSpatialStructures(ptsxyz,Dom); the update happens in fiberCollection
         neighborList = SpatialData.selfNeighborList(self._rcut);
-        Lens = Dom.getLens();
-        g = Dom.getg();
+        Lens = self._currentDomain.getLens();
+        g = self._currentDomain.getg();
         if (cppnear):
             Npairs = len(neighborList);
             # Call the C+ function which takes as input the pairs of points, number of points and gives
@@ -230,16 +207,16 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self._rcut =  rcut;
         print ('Ewald cut %f' %self._rcut)
     
-    def checkParams(self, Dom):
+    def checkrcut(self):
         """
         Check if rcut is less than one half period dynamically (the absolute
         length of a half period varies as the strain g changes). 
         If rcut is less than a half period, increase xi until rcut is less than a half
         period.
         """
-        Lper = Dom.getPeriodicLens();
+        Lper = self._currentDomain.getPeriodicLens();
         try:
-            Lmin = np.amin(Lper)/Dom.safetyfactor();
+            Lmin = np.amin(Lper)/self._currentDomain.safetyfactor();
         except:
             raise NotImplementedError('Periodic velocity solver only implemented for triply periodic');
         vLover2 = np.amax(ewc.RPYNKer([Lmin*0.5,0,0],[1,0,0],self._mu,self._xi,self._a));
@@ -254,16 +231,16 @@ class EwaldSplitter(RPYVelocityEvaluator):
             print('The new value of xi is %f' %self._xi)
             print('The new rcut %f' %self._rcut)
         # Update the far field arrays for the new xi
-        self.updateFarFieldArrays(Dom);
+        self.updateFarFieldArrays();
 
-    def updateFarFieldArrays(self,Dom):
+    def updateFarFieldArrays(self):
         """
         Update/initialize the far field arrays when self._xi changes. 
         Inputs: Domain object Dom
         Method then updates the self._waveNumbers on a standard 3-periodic grid and
         initialized the arrays for FINUFFT to put the forces.
         """
-        Lens = Dom.getPeriodicLens();
+        Lens = self._currentDomain.getPeriodicLens();
         # Estimate the required grid
         gw=1.0/(2*self._xi); # width of the Gaussian
         h = gw/1.6;          # approximate grid spacing needed to resolve Gaussian

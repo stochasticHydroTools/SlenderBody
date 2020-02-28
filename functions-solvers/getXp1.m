@@ -38,7 +38,7 @@ function [Xnp1,Xtm1,lambdas,fE,fext,lambdasm1,links,Xsp1,Xstm1] = getXp1(Xt,Xtm1
         fext = reshape(getCLforce(links,reshape(Xt,3,N*nFib)',...
             N,s0,w0,Lf, Kspring,rl,g,L)',3*N*nFib,1);
     end
-    maxIters = 10;
+    maxIters = 1;
     if (t > 0)
         maxIters=imax;
     end
@@ -70,7 +70,7 @@ function [Xnp1,Xtm1,lambdas,fE,fext,lambdasm1,links,Xsp1,Xstm1] = getXp1(Xt,Xtm1
         Xstm1=Xsp1;
     elseif (solver==2) % CN
         if (t < 1.5*dt)
-            maxIters=10;
+            maxIters=1;
         end
         lambdasm1=lambdas;
         if (t > 1.5*dt && LMM)

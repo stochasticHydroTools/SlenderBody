@@ -1,6 +1,15 @@
 import numba as nb
 import numpy as np
 from math import pi, erfc, sqrt, exp
+
+"""
+These methods are sped up with numba. As a general comment, 
+my experience is that C++ and PyBind11 performs better than 
+numba if the computation involves more than 1 for loop. For 
+this reason, the only thing I am using Numba for right now
+is the SBT kernel computation for a  single fiber and target. 
+This will be eliminated in future versions of the code. 
+"""
  
 @nb.njit(nb.float64(nb.float64,nb.float64,nb.float64))
 def F(r,xi,a):
@@ -64,6 +73,18 @@ def G(r,xi,a):
         g6*erfc((r+2*a)*xi);
     return val;
 
+@nb.njit(nb.float64[:](nb.float64[:],nb.float64,nb.float64[:]))
+def calcShifted(rvec,g,Lens):
+    # Mod r vec so it's on [-L/2,L/2]
+    s1 = round(rvec[1]/Lens[1]);
+    # Shift in y' direction and z direction
+    rvec[0]-= g*Lens[1]*s1;
+    rvec[1]-= Lens[1]*s1;
+    rvec[2]-= Lens[2]*round(rvec[2]/Lens[2]);
+    # Shift in x direction
+    rvec[0]-= Lens[0]*round(rvec[0]/Lens[0]);
+    return rvec;
+
 @nb.njit(nb.float64[:,:](nb.int64,nb.int64[:,:],nb.float64[:,:],nb.float64[:,:],\
             nb.float64,nb.float64,nb.float64,nb.float64[:],nb.float64,nb.float64))
 def RPYNearPairs(Npts,pairpts,ptsxyz,forces,mu,xi,a,Lens,g,rcut):
@@ -82,14 +103,7 @@ def RPYNearPairs(Npts,pairpts,ptsxyz,forces,mu,xi,a,Lens,g,rcut):
         iPt = pairpts[iPair,0];
         jPt = pairpts[iPair,1];
         rvec = ptsxyz[iPt,:]-ptsxyz[jPt,:];
-        # Mod r vec so it's on [-L/2,L/2]
-        s1 = round(rvec[1]/Lens[1]);
-        # Shift in y' direction and z direction
-        rvec[0]-= g*Lens[1]*s1;
-        rvec[1]-= Lens[1]*s1;
-        rvec[2]-= Lens[2]*round(rvec[2]/Lens[2]);
-        # Shift in x direction
-        rvec[0]-= Lens[0]*round(rvec[0]/Lens[0]);
+        rvec = calcShifted(rvec,g,Lens);
         r = np.linalg.norm(rvec);
         if (r < rcut):
             co1 = F(r,xi,a)*outFront;
@@ -157,4 +171,41 @@ def RPYSBTK(Ntarg,Xtarg,Nsrc,Xfib,forces,mu,a,sbt):
             utot[iTarg,:]+= oneOvermu*(fval*forces[iSrc,:]+rdotf*(gval-fval)*rhat);
     return utot;
 
+## C++ WITH PYTHON PERFORMS MUCH BETTER THAN NUMBA HERE
+@nb.njit(nb.types.Tuple((nb.int64[:],nb.int64[:],nb.int64[:],nb.float64[:,:]))\
+        (nb.int64,nb.int64,nb.int64,nb.int64[:],nb.int64[:,:],nb.float64[:,:],\
+         nb.float64[:,:],nb.float64,nb.float64[:],nb.float64,nb.float64))
+def testList(Nfib,NperFib,NunifperFib,numNeighbors,neighbors2DArray,\
+             XnonLoc,Xunif,g,Lens,q1cut,q2cut):
+    targets = np.empty(0,dtype=nb.int64);
+    fibers = np.empty(0,dtype=nb.int64);
+    methods = np.empty(0,dtype=nb.int64);
+    shifts = np.empty(0);
+    for iPt in range(Nfib*NperFib): # loop over points
+        iFib = iPt//NperFib; # integer division to get the fiber point i is on
+        pNeighbors = neighbors2DArray[iPt,:numNeighbors[iPt]]; # neighbors of point i
+        fNeighbors = pNeighbors//NunifperFib; # fibers that are neighbors w point i
+        oFibs = np.unique(fNeighbors[fNeighbors!=iFib]); # exclude itself
+        for neFib in oFibs: # loop over neighboring fibers
+            oPts = pNeighbors[fNeighbors==neFib]; # close points on those fibers
+            qtype = 0;
+            rmin = q1cut;
+            for iuPt in range(len(oPts)):
+                rvec = XnonLoc[iPt,:]-Xunif[oPts[iuPt],:];
+                rvec = calcShifted(rvec,g,Lens);
+                nr = np.linalg.norm(rvec);
+                if (nr < q2cut):
+                    qtype = 2;
+                    shift = XnonLoc[iPt,:]-Xunif[oPts[iuPt],:]-rvec;
+                    break;
+                elif (nr < rmin):
+                    rmin = nr;
+                    qtype = 1;
+                    shift = XnonLoc[iPt,:]-Xunif[oPts[iuPt],:]-rvec;
+            if (qtype > 0): # add to the list of corrections
+                targets = np.concatenate((targets,np.array([iPt])));
+                fibers = np.concatenate((fibers,np.array([neFib])));
+                methods = np.concatenate((methods,np.array([qtype])));
+                shifts = np.concatenate((shifts,shift));
+    return targets, fibers, methods, np.reshape(shifts,(len(targets),3));
 

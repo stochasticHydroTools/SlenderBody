@@ -7,10 +7,7 @@ import EwaldNumba as ewnb
 from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
 
-# Donev: Same comment as before: if possible, move the constants related to Cheb below where Cheb starts not here
-# Definitions
-chebGridType = 1; # always use a type 1 grid for fiber discretization
-D4BCgridType = 2; # always a type 2 grid to enforce the BCs
+# Some definitions that are not specific to any particular discretization
 numBCs = 4; # number of boundary conditions
 # Numbers of uniform/upsampled points
 nptsUpsample = 32; # number of points to upsample to for special quadrature
@@ -135,6 +132,58 @@ class FibCollocationDiscretization(object):
         special_wts = seriescos*distance_pows*self._L/2.0;
         return special_wts;
     
+    def upsampledCoefficients(self,Xarg):
+        """
+        Get the coefficients of an upsampled representation of the fiber.
+        Inputs: Xarg = upsampled fiber representation
+        Outputs: the coefficients and derivative coefficients of the upsampled
+        representation
+        """
+        raise NotImplementedError('upsampledCoefficients needs specific discretization.');
+
+    def evaluatePosition(self,tapprox,coeffs):
+        """
+        Evaluate the series representing the fiber
+        at a value tapprox.
+        Inputs: tapprox = value to evaluate at. This value must be
+        rescaled so that the centerline is parameterized by t in [-1,1],
+        coeffs = coefficients that represent the fiber centerline 
+        (arbitrary number)
+        """
+        raise NotImplementedError('evaluatePosition needs specific discretization.');
+
+    def resample(self,Xarg,Nrs,typetarg):
+        """
+        Resample the fiber at Nrs nodes of type type
+        Inputs: Xarg = a self._N x 3 vector of the fiber points,
+        Nrs = number of points where the resampling is desired. typetarg = type
+        of points
+        Outputs: the resampled locations as an Nrs x 3 vector of points. 
+        """
+        raise NotImplementedError('resample needs specific discretization.');
+
+    def newNodes(self,Nrs,typetarg,numPanels=1):
+        """
+        New nodes
+        Inputs: Nrs = number of new nodes, typetarg = type of new nodes
+        Outputs: new nodes
+        """
+        raise NotImplementedError('newNodes needs specific discretization.');
+
+    def newWeights(self,Nrs,typetarg):
+        """
+        New quadrature weights for a set of Chebyshev nodes
+        Inputs: Nrs = number of new nodes, typetarg = type of new nodes
+        Outputs: new weights wN
+        """
+        raise NotImplementedError('newWeights needs specific discretization.');
+
+    def integrateXs(self,Xsp1):
+        """
+        Method to integrate Xs and get X.
+        """
+        raise NotImplementedError('integrateXs needs specific discretization.');
+    
     def getNumUpsample(self):
         return self._nptsUpsample;
 
@@ -174,9 +223,16 @@ class FibCollocationDiscretization(object):
         """
         This method solves the linear system for 
         lambda and alpha for a given RHS. 
-        Donev: Can you please be more specific and write down what this solves so you remember in the future?
-        I assume it is just a block-diagonal system you are handling here but write something down with math in it
-        to explain what impco (implicit constant) is etc.
+        Specifically, the system we are solving is in block form
+        [-M K-impco*dt*M*L*K; K^T [0; impco*dt*I^T*L*K]] [lambda; alpha] = ...
+            [M*L*X^n + U_0 + nLvel + M*exF; [0; -I^T*L*X^n]
+        here impco = 1 for backward Euler, 1/2 for CN, 0 for explicit. 
+        We solve the system using the Schur complement. 
+        Note that the [0; impco*dt*I^T*L*K] blocks show up because we enforce 
+        the sum of forces being 0 in the discrete sense, so the sum of any lambas 
+        cancels the sum in fE.
+        The Schur blocks are [M B; C D] correspdong to the LHS matrix above, and 
+        L is encoded bia self._D4BC.
         Inputs: Xarg and Xsarg = X and Xs to build the matrices for
         dt = timestep, impco = implicit coefficient (coming from the temporal integrator)
         nLvel = non-local velocity as a 3N vector, exF = external forces as a 3N vector
@@ -247,7 +303,6 @@ class FibCollocationDiscretization(object):
         is better to have these as inputs rather than object variables as
         it can get messy with the LMMs and different non-local velocities.
         Outpts: the velocity due to the finite part integral as a 3N one-dimensional vector
-        TODO: Do this with numba
         """
         FPvel = np.zeros((3,self._N));
         Xss = np.dot(self._Dmat,Xsarg);
@@ -345,6 +400,9 @@ class FibCollocationDiscretization(object):
         azimuth[(np.abs(np.abs(elevation)-np.pi/2) < 1e-12)] = 0;
         return azimuth, elevation, r;
 
+# Definitions specific to Chebyshev
+chebGridType = 1; # always use a type 1 grid for fiber discretization
+D4BCgridType = 2; # always a type 2 grid to enforce the BCs
 class ChebyshevDiscretization(FibCollocationDiscretization):
 
     """
@@ -441,7 +499,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         """
         Evaluate the Chebyshev series representing the fiber 
         at a value tapprox.
-        Inputs: tapprox = value to evaluate at. This value must be
+        Inputs: tapprox = values to evaluate at. These values must be
         rescaled so that the centerline is parameterized by t in [-1,1],
         coeffs = coefficients that represent the fiber centerline 
         (arbitrary number)
@@ -462,9 +520,9 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
 
     def newNodes(self,Nrs,typetarg=chebGridType, numPanels=1):
         """
-        New quadrature weights for a set of Chebyshev nodes
+        New Chebyshev nodes
         Inputs: Nrs = number of new nodes, typetarg = type of new nodes
-        Outputs: new weights wN
+        Outputs: new nodes sNew
         """
         sNew = cf.chebPts(Nrs,[0,self._L],typetarg,numPanels);
         return sNew;

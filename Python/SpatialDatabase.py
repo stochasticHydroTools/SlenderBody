@@ -6,7 +6,9 @@ class SpatialDatabase(object):
     """
     Spatial database object.
     This class is a spatial index of a collection of points in a (sheared) Domain (see Domain.py)
-    Its purpose is to search for neighboring points efficiently
+    Its purpose is to search for neighboring points efficiently. 
+    Children: cKDSpatial (uses ckD trees to find neighbors), LinkedListSpatial (uses linked list which
+    rn are written in native python). 
     """
     
     def __init__(self,pts,Dom):
@@ -66,12 +68,7 @@ class SpatialDatabase(object):
                 if (np.linalg.norm(rvecprime) < rwsafety):
                     iNeighbors.append(jPt);
             neighbors.append(iNeighbors);
-        return neighbors;
-
-    def __del__(self):
-        # Destructor
-        print('SpatialDatabase object destroyed');
-     
+        return neighbors;    
 
 class ckDSpatial(SpatialDatabase):
 
@@ -84,19 +81,9 @@ class ckDSpatial(SpatialDatabase):
         """
         Constructor. Initialize the kD tree.
         """
-        self.updateSpatialStructures(pts,Dom);
-        # Donev: It is typical for child classes in init to call the initializer of the parent class
-        # Is this automatic in python? That is, has the line
-        # self._Npts,_ = pts.shape;
-        # been executed also somehow?
-        # No. ckDSpatial doesn't need that variable.
-        # Donev: But methods of SpatialDatabase that were NOT overwritten
-        # might need that variable!!!
-        # In neither C++ or Fortran or any reasonable typed language
-        # can you exclude components of a parent class in the child
-        # After all a child IS the same class as a parent with extra attributes, not less
-        # So you should get into the practice of executing the parent initializer here *always*
-        # Similarly, the destructor of the child class would call the destructor of the parent.
+        super().__init__(pts,Dom);
+        # The super constructor will then call THIS child method to
+        # updateSpatialStructures
     
     def updateSpatialStructures(self,pts,Dom):
         """
