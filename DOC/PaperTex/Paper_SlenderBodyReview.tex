@@ -1,0 +1,99 @@
+For completeness, we begin by summarizing the slender body theories of \cite{krub, johnson, gotz2001interactions}, here following in particular Johnson \cite{johnson} and G\"otz \cite{gotz2001interactions}. 
+
+\subsection{Single filament}
+Introducing notation first, let $\V{X}(s)$ be the centerline of a filament, parameterized by arclength on $s \in [0,L]$, where $L$ is the fiber length. The tangent vector is $\Xs(s)=\displaystyle{\frac{\partial \V{X}}{\partial s}}$ and has unit length. The fiber has physical radius $a(s) = r \rho(s)$, where $0 \leq \rho(s) \leq 1$, and slenderness ratio $\epsilon = r/L$. Let the force per unit length on the fiber centerline be denoted as $\V{f}(s)$. We denote the background flow at an arbitrary point in the fluid as $\V{U}_0(\V{x},t)$. In this section we study a specific instant in time, so we refer to $\V{U}_0$ as $\V{U}_0(\V{x})$. 
+
+We first define the Stokeslet and doublet centered at $\V{x}_0$, 
+\begin{equation}
+\label{eq:Slet}
+\Slet{\V{x},\V{x}_0} = \frac{\M{I}+\hat{\V{R}}\hat{\V{R}}}{\norm{\V{R}}} \qquad \text{ and } \qquad 
+\Dlet{\V{x},\V{x}_0} = \frac{\M{I}-3\hat{\V{R}}\hat{\V{R}}}{\norm{\V{R}}^3},
+\end{equation}
+where $\V{R} = \V{x}-\V{x}_0$ and $\hat{\V{R}}=\V{R}/\norm{\V{R}}$. The Stokeslet is the fundamental solution to the Stokes equations for a delta-function forcing at $\V{x}_0$, while the doublet (Laplacian of the Stokeslet) is the fundamental solution for a mass source dipole at $\V{x}_0$. 
+
+The idea of SBT is to introduce an ansatz for the flow field away from the fiber centerline of the form
+\begin{align}
+\label{eq:sbtsd}
+\V{u}(\V{x}) - \V{U}_0(\V{x}) = & \EPMI \int_0^L \left(\Slet{\V{x},\V{X}(s)}+\beta(s)\Dlet{\V{x},\V{X}(s)}\right)\V{f}(s) \, ds\\[2 pt] 
+\label{eq:Kdef}
+\eqd & \EPMI \int_0^L \Knel{\V{x},\V{X}(s), \beta(s)}\V{f}(s) \, ds. 
+\end{align}
+In Eq.\ \eqref{eq:Kdef}, we have defined an integral kernel $K$ that is a combination of a Stokeslet and a doublet with strenght $\beta$. Using the method of matched asymptotic expansions, the integral in Eq.\ \eqref{eq:sbtsd} can be computed analytically on the surface of the fiber to $\mathcal{O}(\epsilon)$ (see \cite{gotz2001interactions, koens2018boundary} for details on these integrals). The value of $\beta$ comes from imposing the boundary condition that the velocity on the fiber surface be constant to $\mathcal{O}(\epsilon)$ (Mori \textit{et al.} \cite{mori2018theoretical, morifree} refer to this as the ``fiber integrity condition''). This yields the solution for the velocity in the fluid as 
+\begin{equation}
+\label{eq:sbt2}
+\V{u}(\V{x}) - \V{U}_0(\V{x}) =\EPMI \int_0^L  \Knel{\V{x},\V{X}(s), \frac{a(s)^2}{2}}\V{f}(s) \, ds. 
+\end{equation}
+Eq.\ \eqref{eq:sbt2} is not defined on the centerline of the fiber. Physically, however, the velocity of the fiber centerline $\ddt{\V{X}}(s)$ should be equal to \textit{the average of Eq.\ \eqref{eq:sbt2} around a cross-section of the fiber}. This averaging can be done asymptotically in $\epsilon$ \cite{gotz2001interactions} to obtain 
+\begin{gather}
+\label{eq:onefib}
+\ddt{\V{X}}(s)-\V{U}_0\left(\V{X}(s)\right)= \ML[\V{X}(s)]\V{f}(s) + \left(\MFP\left[\V{X}(\cdot)\right]\V{f}(\cdot)\right)(s), \text{ where} \\[2 pt]
+\label{eq:ML}
+\ML[\V{X}(s)]= \EPMI \left(c(s)(\V{I}+\Xs(s)\Xs(s)) +  (\V{I}-3\Xs(s)\Xs(s))\right),\\[2 pt]
+\label{eq:Mfp}
+\left(\MFP\left[\V{X}(\cdot)\right]\V{f}(\cdot)\right)(s) =  \EPMI \int_{0}^L \Slet{\V{X}(s),\V{X}(s')} \V{f}(s') -\left(\frac{\V{I}+\Xs(s)\Xs(s)}{|s-s'|}\right) \V{f}(s) \, ds'. 
+\end{gather}
+Here $\ML[\V{X}(s)]$ is the local drag matrix which gives the velocity contribution from forcing at points $\mathcal{O}(\epsilon)$ away from $\V{X}(s)$.  The linear operator $\MFP$ gives the action of the so-called finite part integral. The first term in the integrand is the Stokeslet, and the second term is the ``common'' part in the matched asymptotic expansion that comes from expansion of the Stokeslet around $s'=s$. Physically, the finite part integral gives the velocity contribution from forcing at points $\mathcal{O}(1)$ away from $\V{X}(s)$. Thus while both terms in the integrand are singular, their difference is finite \cite{ts04}. 
+
+In Eq.\ \eqref{eq:ML}, the leading order local drag coefficient is given by \cite{gotz2001interactions}
+\begin{equation}
+\label{eq:unmodc}
+c(s) = \text{log}\left(\frac{4s(L-s)}{a(s)^2}\right)
+\end{equation}
+and is singular without proper decay of $a(s)$ at $s=0$ and $s=L$. Johnson \cite{johnson} was the first to show that, when $a(s)$ decays near the fiber endpoints as $2\epsilon\sqrt{s(L-s)}$ (i.e. ellipsoidally), Eq.\ \eqref{eq:onefib} gives a uniformly accurate (to $\mathcal{O}(\epsilon^2 \text{log}\, \epsilon))$ approximation to the Stokeslet strength for a given velocity on the fiber boundary. The accuracy of $\mathcal{O}(\epsilon^2 \text{log}\, \epsilon)$ comes from his consideration of higher order singularities that make the velocity on the fiber cross section constant to $\mathcal{O}(\epsilon^2)$. That said, the nonlocal aspects of slender body theory are greatly simplified if we assume the filaments to be cylinders with spherical caps, so that $a(s) = r = \epsilon L$ on $s \in [0,L]$. In this case, Eq.\ \eqref{eq:unmodc} becomes singular at the filament ends, and we replace it with the local drag coefficient of \cite{morifree}, 
+\begin{equation}
+\label{eq:creg}
+c(s) = \text{log}\left(\frac{2s(L-s)+2\sqrt{\epsilon^2 L^4 + s^2(L-s)^2}}{\epsilon^2 L^2}\right),
+\end{equation}
+which regularizes the leading order coefficient near the fiber ends at the cost of reduced asymptotc accuracy there. %For a straight fiber with constant forcing, our internal testing showed Eq.\ \eqref{eq:onefib} with leading order coefficient given by Eq.\ \eqref{eq:creg} to give an $\mathcal{O}(\epsilon^2)$ approximation to averaging Eq.\ \eqref{eq:sbt2} around a fiber cross section, with proportionality constants approaching infinity at the fiber endpoints (separate treatment of the endpoints shows Eq.\ \eqref{eq:onefib} to be an $\mathcal{O}(1)$ approximation to actual averaging at $s=0,L$). Johnson \cite{johnson} discusses how to treat the ends in a way that maintains $\mathcal{O}(\epsilon^2)$ accuracy everywhere; we do not concern ourselves with this here, for simplicity, and accept an $\mathcal{O}(1)$ error at the fiber endpoints. 
+
+\subsection{Multiple filaments}
+It remains to include in Eq.\ \eqref{eq:onefib} the perturbed flow due to other filaments, i.e. to account for hydrodynamic interactions between fibers. The simplest approach for this, which was taken by Tornberg and Shelley \cite{ts04}, is to simply evaluate Eq.\ \eqref{eq:sbt2} on the centerline of the other fibers. Nazockdast \textit{et al.} also adopted this, except they dropped the doublet term completely and included only the Stokeslet term. We take a different approach: inspired by the single fiber solution, we define the velocity induced by fiber $j$ on the centerline of fiber $i$ to be the average of Eq.\ \eqref{eq:sbt2} taken over a circular ring cross section of fiber $i$. For a single fiber ($i=j$), this definition gives Eq.\ \eqref{eq:onefib} to $\mathcal{O}(\epsilon^2 \text{log}\, \epsilon)$ (away from the filament ends) \cite{johnson}. For other filaments, because Eq.\ \eqref{eq:sbt2} is only valid to $\mathcal{O}(\epsilon)$, the velocity we obtain on other fibers is only correct to $\mathcal{O}(\epsilon)$. 
+
+It is actually not difficult to derive a formula for the average of Eq.\ \eqref{eq:sbt2} around any fiber $i$ that does not intersect fiber $j$ if we make two observations. First, we recall that the flow induced by a sphere of radius $b$ centered at $\V{X}$ with forcing $\V{F}$ is given by 
+\begin{equation}
+\label{eq:sphvel}
+\V{u}(\V{x}) - \V{U}_0(\V{x}) = \EPMI \Knel{\V{x},\V{X},\frac{b^2}{3}}\V{F}. 
+\end{equation}
+We therefore recognize that Eq.\ \eqref{eq:sbt2} is the flow field due to a line of spheres of radius $\displaystyle{b(s) = \sqrt{\frac{3}{2}}a(s)}$. Since we are considering a constant $a(s)=\epsilon L$, the velocity induced by the filament is equivalent to that due to a line of spheres of radius 
+\begin{equation}
+\label{eq:rpyradius}
+a^*=\epsilon L \sqrt{\frac{3}{2}}.
+\end{equation}
+
+Our second observation is that the average of any smooth velocity field is the same to $\mathcal{O}(\epsilon^2)$, regardless of whether it is taken over a sphere of radius $\aRPY$ or a circular ring of radius $\epsilon L$ (as long as the sphere and ring have the same center). We can therefore replace our averaging over a circular ring cross section with averaging over a sphere of radius $\aRPY$. 
+
+Combining these two observations, the non-local velocity field reduces to an average over a sphere of the flow induced by a collection of other spheres, all with radius $\aRPY$. Now, the flow created by a sphere of radius $a^*$ on another sphere of radius $a^*$ is given by the Rotne-Prager tensor \cite{rpyOG, PSRPY}, which for non-overlapping spheres is
+\begin{equation}
+\M{M}_\text{RPY}\left[\V{X},\V{Y}\right] = \EPMI \Knel{\V{X},\V{Y},\frac{2{\left(a^*\right)}^2}{3}}. 
+\end{equation}
+Substituting the equivalent sphere radius for a fiber, $\aRPY$ from Eq.\ \eqref{eq:rpyradius}, we obtain the kernel $\Knel{\ind{\V{X}}{i},\ind{\V{X}}{j},(\epsilon L)^2}$ for the contribution of a point $\ind{\V{X}}{j}$ on fiber $j$ to the velocity at point $\ind{\V{X}}{i}$ on fiber $i$. Integrating over the centerline of fiber $j$, we obtain a formula for the velocity at $s$ on fiber $i$ due to fiber $j$, which we define via
+\begin{equation}
+\label{eq:sbtother}
+\MJF\left[\V{X}_i(s), \V{X}_j(\cdot)\right]\ind{\V{f}}{j}(\cdot) \eqd \EPMI \int_0^{L_j} \Knel{\ind{\V{X}}{i}(s),\ind{\V{X}}{j}(s'),(\epsilon L)^2}\ind{\V{f}}{j}(s') \, ds'. 
+\end{equation}
+Here we have again defined an operator $\MJF$ which acts linearly on $\ind{\V{f}}{j}$ to give the velocity on the centerline of filament $i$ solely due to filament $j$. 
+
+Summing over filaments $j \neq i$ and adding to the terms from local drag, we have the total slender body velocity on filament $i$ given by
+\begin{equation}
+\label{eq:fibevcont}
+\ddt{\ind{\V{X}}{i}}(s) -\V{U}_0(\ind{\V{X}}{i}(s))=  \ML [\ind{\V{X}}{i}(s)]\ind{\V{f}}{i}(s) + \left(\MFP\left[\ind{\V{X}}{i}(\cdot)\right]\ind{\V{f}}{i}(\cdot)\right)(s) + \sum_{j \neq i}\MJF\left[\V{X}_i(s), \V{X}_j(\cdot)\right]\ind{\V{f}}{j}(\cdot)
+\end{equation}
+
+In sum, given positions $\V{X}=\{\ind{\V{X}}{i}\}$ and force densities $\V{f}=\{\ind{\V{f}}{i}\}$ on the fiber centerlines, there exists a total mobility operator, which we denote by
+\begin{equation}
+\label{eq:mobeqn}
+ \ddt{\V{X}}(s)-\V{U}_0\left(\V{X}(s)\right) \eqd \left(\Lop{M}\left[\V{X}(\cdot)\right]\V{f}(\cdot)\right)(s)
+\end{equation}
+which determines the velocity (relative to the background flow) on the centerline of each filament. This mobility equation can be closed by defining a constitutive equation for the fiber force densities $\V{f}$, which we do in the next section.
+
+\iffalse
+In sum, the overall SBT mobility on fiber $i$ is given by, 
+\begin{flalign}
+& \V{U}(s_i)-\V{U}_0(\V{X}(s_i)) :=(\M{M}\V{f})(s_i) := ((\M{M}_L+\M{M}_{NL})\V{f})(s_i)\\[2 pt] \nonumber &\frac{1}{8\pi\mu}\left(c(s_i)(\V{I}+\V{X}_s(s_i)\V{X}_s(s_i)) +  (\V{I}-3\V{X}_s(s_i)\V{X}_s(s_i))\right)\V{f}^i(s_i)\\[4 pt]
+& \nonumber + \frac{1}{8\pi\mu}\int_{0}^L \left(\frac{\V{I}+\hat{\V{R}}(s_i,s')\hat{\V{R}}(s_i,s')}{\norm{\V{R}(s_i,s')}}\right) \V{f}^i(s') -\left(\frac{\V{I}+\V{X}_s(s_i)\V{X}_s(s_i)}{|s_i-s'|}\right) \V{f}^i(s_i) \, ds' \\[4 pt]
+\nonumber
+& + \frac{1}{8\pi\mu}\sum_{j \neq i} \int_0^L \left(\frac{\V{I}+\hat{\V{R}}(s_i,s_j)\hat{\V{R}}(s_i,s_j)}{\norm{\V{R}(s_i,s_j)}} + (\epsilon L)^2 \frac{\V{I}-3\hat{\V{R}}(s_i,s_j)\hat{\V{R}}(s_i,s_j)}{\norm{\V{R}(s_i,s_j)}^3}\right)\V{f}^j(s_j) \, ds_j. 
+\end{flalign}
+The velocity on fiber $i$ can be broken down into three parts: the leading order, purely local, term is the first line in Eq.\ \eqref{eq:fibevcont} and is denoted as $\M{M}_L \V{f}$. The second line is the singular finite part integral that gives the velocity contribution from the rest of filament $i$ to the velocity at $s_i$, and the third line is the contribution from all other fibers to the velocity at filament $i$. The second and third lines are nonlocal integrals, and we denote them together as $\M{M}_{NL} \V{f}$. 
+\fi 
+

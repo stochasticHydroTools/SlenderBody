@@ -1,0 +1,45 @@
+Tornberg has formulated a spectrally accurate method for the nonlocal integral \cite{tornquad}. The key to this scheme is to isolate the singularity at $s'=s_i$ and remove it from the integral. We can write the nonlocal integral as
+\begin{equation}
+\label{eq:Jrewrite}
+\M{J}[\V{f}](s_i) = \int_0^L \V{g}(s_i,s') \frac{s'-s_i}{|s'-s_i|} \, ds', 
+\end{equation}
+where 
+\begin{equation}
+\V{g}(s_i,s') = \left[ \left(\V{I}+\hat{\V{R}}(s_i,s')\hat{\V{R}}(s_i,s')\right) \frac{|s'-s_i|}{\norm{\V{R}(s_i,s')}} \V{f}(s') - \left(\V{I}+\V{X}_s(s_i) \V{X}_s(s_i)\right) \V{f}(s_i)\right] \frac{1}{s'-s_i}. 
+\end{equation}
+By adding and subtracting $\left(\V{I}+\V{X}_s(s_i)\V{X}_s(s_i)\right)\V{f}(s')$ inside the square bracket, $\V{g}$ can be rewritten as
+\begin{equation}
+\V{g}(s_i,s')=\V{g}_1(s_i,s') + \left(\V{I}+\V{X}_s(s_i)\V{X}_s(s_i)\right)\frac{\V{f}(s')-\V{f}(s_i)}{s'-s_i}, 
+\end{equation}
+where
+\begin{equation}
+\V{g}_1(s_i,s') = \left[ \left(\V{I}+\hat{\V{R}}(s_i,s')\hat{\V{R}}(s_i,s')\right) \frac{|s'-s_i|}{\norm{\V{R}(s_i,s')}} \V{f}(s') - \left(\V{I}+\V{X}_s(s_i) \V{X}_s(s_i)\right)\V{f}(s')\right] \frac{1}{s'-s_i}. 
+\end{equation}
+When $\V{g}$ is rewritten in this way, it has a limit as $s' \rightarrow s_i$ which can be computed via Taylor expansion around $s'=s_i$,  
+\begin{equation}
+\lim_{s' \to s_i} \V{g}(s_i,s') = \frac{1}{2}\left(\V{X}_s(s_i)\V{X}_{ss}(s_i)+\V{X}_{ss}\V{X}_s(s_i)\right)\V{f}(s_i) + \left(\V{I}+\V{X}_s(s_i)\V{X}_s(s_i)\right)\V{f}'(s_i). 
+\end{equation}
+We use this representation to compute $\V{J}[\V{f}](s_i)$ in Eq.\ \eqref{eq:Jrewrite} in the following way. Consider the $i$th component of $\V{g}$, and let $\phi=\V{g}_i$. Then we need to evaluate integrals of the form
+\begin{equation}
+\label{eq:specint}
+I = \int_0^L \phi(s_i,s') \frac{s'-s_i}{|s'-s_i|} \, ds' = \frac{L}{2}\int_{-1}^1 \phi(\eta_i, \eta') \frac{\eta'-\eta_i}{|\eta'-\eta_i|} \, d\eta', 
+\end{equation}
+where the change of variables is $\eta=-1+\frac{2}{L}s$. The key to the method is now to expand $\phi$ in a monomial basis as 
+\begin{equation}
+\phi(\eta,\eta') = \sum_{k=0}^{N-1} c_k (\eta')^k, 
+\end{equation}
+where $N$ is the number of Chebyshev points. The integral in Eq.\ \eqref{eq:specint} can now be done as
+\begin{equation}
+\label{eq:expandmono}
+I(\eta_i)= \frac{L}{2} \sum_{k=0}^{N-1} c_k \int_{-1}^1 (\eta')^k \frac{\eta'-\eta_i}{|\eta'-\eta_i|} \, d\eta' = \sum_{k=0}^{N-1} c_k q_k(\eta_i), 
+\end{equation}
+where 
+\begin{equation}
+q_k(\eta_i) = \frac{L}{2}\int_{-1}^1 (\eta')^k \frac{\eta'-\eta_i}{|\eta'-\eta_i|} = \left(\frac{L}{2}\right)\frac{1+(-1)^{k+1}-2\eta_i^{k+1}}{k+1}
+\end{equation}
+is known analytically. As in \cite{tornquad}, we introduce the Vandermonde matrix $\V{V}$. Let $\V{p}$ be the values of $\phi$ at the Chebyshev nodes. Then we can obtain the coefficients $\V{c}$ by solving the linear system $\V{V}\V{c}=\V{p}$. Substituting this into Eq.\ \eqref{eq:expandmono}, we have 
+\begin{equation}
+\label{eq:specscheme}
+I(\eta_i)=\V{c}^T \V{q} = (\V{V}^{-1}\V{p})^T \V{q}(\eta_i) = \V{p}^T \left(\V{V}^{-T}\V{q}(\eta_i)\right) = \V{p}^T \V{b}(\eta_i). 
+\end{equation}
+Thus for each $\eta_i$, we can precompute $\left(\V{V}^{-T}\V{q}(\eta_i)\right)$ and take the inner product of this vector with the values of $\phi$. Importantly, the Vandermonde matrix must be sufficiently well-conditioned to do this calculation accurately. This means that the fiber discretization can have at most 40 points. If higher accuracy is needed, then the fiber must be split into multiple panels. 

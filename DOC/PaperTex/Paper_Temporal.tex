@@ -1,0 +1,55 @@
+For temporal integration, we use a combination of Crank-Nicolson for the linear terms and a linear multistep method to obtain arguments for the nonlinear operations. 
+
+\subsubsection{Solving for $\V{\alpha}$ and $\V{\lambda}$}
+Recall that in Eq.\ \eqref{eq:fibevcont}, we separated the mobility into a local and nonlocal contribution. Since the local term is leading order in $\epsilon$, we treat it implicitly using Crank-Nicolson. We do the nonlocal terms explicitly in a second-order way using Adams-Bashforth style extrapolation. 
+
+Using this discretization scheme, we need to solve the following equation for $\V{\lambda}$ at timestep $n$ 
+\begin{gather}
+\label{eq:CNnL}
+\M{M}_L^{n+1/2,*} \left(\V{\lambda}^{n+1/2}+\frac{1}{2}\left(\left(\V{f}^E\right)^{n+1}+\left(\V{f}^E\right)^{n}\right)\right)+\M{M}_{NL}^{n+1/2,*} \left( \V{\lambda}^{n+1/2}+\left(\V{f}^E\right)^{n+1/2,*}\right) = \M{K}^{n+1/2,*}\V{\alpha},\\[2 pt]
+\nonumber
+\left(\M{K}^{n+1/2,*}\right)^*\V{\lambda}^{n+1/2} = \V{0}. 
+\end{gather}
+Here $\bm{X}^{n+1/2,*}=\frac{3}{2}\bm{X}^n-\frac{1}{2}\bm{X}^{n-1}$, and we use $\bm{X}^{n+1/2,*}$ to calculate all of the starred quantities; for example $\M{M}_{L}^{n+1/2,*}=\M{M}_L\left(\V{X}^{n+1/2,*}\right)$. 
+
+In order to simplify the evaluation of $\left(\V{f}^E\right)^{n+1}$, we make the second order approximation 
+\begin{equation}
+\left(\V{f}^E\right)^{n+1}=\M{L}\left(\V{X}^n+\Delta t \M{K}\V{\alpha}\right). 
+\end{equation}
+This allows us to treat the local $\V{f}^E$ via Crank-Nicolson without considering the fact that we actually update the fiber by rotating $\V{X}_s$ and integrating. 
+
+Now, it is possible to solve Eq.\ \eqref{eq:CNnL} \textit{exactly} for $\V{\lambda}^{n}$ via a fixed point iteration. That is, at step $m$ we can solve
+\begin{gather}
+\label{eq:CNnLFP}
+\M{M}_L^{n+1/2,*} \left(\V{\lambda}^{n+1/2, m}+\frac{1}{2}\left(\left(\V{f}^E\right)^{n+1, m}+\left(\V{f}^E\right)^{n}\right)\right)+\M{M}_{NL}^{n+1/2,*} \left( \V{\lambda}^{n+1/2, m-1}+\left(\V{f}^E\right)^{n+1/2,*}\right) = \M{K}^{n+1/2,*}\V{\alpha},\\[2 pt]
+\nonumber
+\left(\M{K}^{n+1/2,*}\right)^*\V{\lambda}^{n+1/2, m} = \V{0}. 
+\end{gather}
+for $\V{\lambda}^{n+1/2, m}$. This scheme can be shown both theoretically and empirically to be second order if $\V{\lambda}$ is solved for exactly. It is, however, expensive, as it requires multiple evaluations of the nonlocal hydrodynamics per timestep. 
+
+In our approximate scheme, we instead evaluate the nonlocal hydrodynamics using $\V{\lambda}^{n+1/2,*}=2\V{\lambda}^{n-1/2}-\V{\lambda}^{n-3/2}$, which is a second order approximation to $\V{\lambda}^{n+1/2}$. In our one step scheme, we therefore solve
+\begin{gather}
+\label{eq:CNnLUs}
+\M{M}_L^{n+1/2,*} \left(\V{\lambda}^{n+1/2}+\frac{1}{2}\left(\left(\V{f}^E\right)^{n+1}+\left(\V{f}^E\right)^{n}\right)\right)+\M{M}_{NL}^{n+1/2,*} \left( \V{\lambda}^{n+1/2, *}+\left(\V{f}^E\right)^{n+1/2,*}\right) = \M{K}^{n+1/2,*}\V{\alpha},\\[2 pt]
+\nonumber
+\left(\M{K}^{n+1/2,*}\right)^*\V{\lambda}^{n+1/2} = \V{0}. 
+\end{gather}
+for $\V{\lambda}^{n+1/2}$. Eq.\ \eqref{eq:CNnLUs} is now a linear equation for $\V{\lambda}^{n+1/2}$ and can be viewed as one step of the fixed point iteration in Eq.\ \eqref{eq:CNnLFP}, with the initial guess $\V{\lambda}^{n+1/2,0}=\V{\lambda}^{n+1/2, *}$. Because we use an initial guess that is a combination of the previous two timesteps, we solve the problem exactly at $t=0$ and $t=\Delta t$ so that $\bm{\lambda}^{1/2}$ and $\bm{\lambda}^{3/2}$ are known exactly. After $t=\Delta t$, the nonlocal hydrodynamics need to be evaluated only once per timestep to obtain $\V{\lambda}$ and $\V{\alpha}$. 
+
+\subsubsection{Updating $\V{X}_s$ and $\V{X}$}
+Once we have computed $\V{\alpha}$, we use a discrete form of Eq.\ \eqref{eq:omegadef} to update the tangent vectors. Our goal is to rotate $\V{X}_s^n$ on the unit sphere by the vector $\V{\Omega}^{n+1/2} =  \V{\Omega}\left(\V{X}^{n+1/2,*},\V{\alpha}^{n+1/2}\right)$. Using the definition of $\V{\Omega}$ in Eq.\ \eqref{eq:omdef} and the spectral choice of basis functions, we have 
+\begin{align}
+\V{\Omega}^{n+1/2}(s) & = g_1(s)\V{n}_2^{n+1/2,*}(s) -g_2(s) \V{n}_1^{n+1/2, *}(s)\\[2 pt]
+& = \sum_{k=0}^{N-2} \alpha_{1k}^{n+1/2} T_k(s) \V{n}_2^{n+1/2,*}(s) -\alpha_{2k}^{n+1/2} T_k(s) \V{n}_1^{n+1/2, *}(s). 
+\end{align} 
+Note that $\V{\Omega}^{n+1/2}$ must be computed with proper anti-aliasing. As in the computation of $\M{K}$, we upsample $\V{X}^{s,n+1/2,*}$ to a $2N$ grid and multiply by the Chebyshev polynomials $T_k$ on the upsampled grid. We then downsample the result to obtain $\V{\Omega}^{n+1/2}$ on the $N$ point grid.
+
+Once $\V{\Omega}^{n+1/2}$ is known, we use the Rodrigues rotation formula \cite{rodrigues1840lois} to compute the rotated $\V{X}_s$. Letting $\Omega = \norm{\V{\Omega}}$ and $\hat{\V{\Omega}}=\V{\Omega}/\Omega$, we compute the rotated $\V{X}_s$ as
+\begin{equation}
+\V{X}_s^{n+1} = \V{X}_s^n \cos{\left(\Omega^{n+1/2}\D t\right)} + \left(\hat{\V{\Omega}}^{n+1/2} \times \V{X}_s^n \right)  \sin{\left(\Omega^{n+1/2}\D t\right)}+\hat{\V{\Omega}}^{n+1/2}\left(\hat{\V{\Omega}}^{n+1/2} \cdot \V{X}_s^n\right)\left(1-\cos{\left(\Omega^{n+1/2}\D t\right)}\right).
+\end{equation}
+\cmt{The last term is 0 in continuum but not discretely. Should we include it?} We then compute $\V{X}^{n+1}$ via Chebyshev integration. Specifically, we compute the Chebyshev series coefficients of $\V{X}_s^{n+1}$, apply the spectral integration matrix \cite{greengard1991spectral} to compute the Chebyshev series of $\V{X}^{n+1}$, then evaluate this series at the nodes $s_i$ (this result is off by an unknown constant). We then add a constant velocity so that the position at $s=s_1$ is the same as it would have been had the fiber been updated via adding $\Delta t \M{K}\V{\alpha}$. Specifically, we set
+\begin{equation}
+\V{X}^{n+1}(s_1) = \V{X}^n(s_1) + \Delta t \left(\M{K}\V{\alpha}\right)(s_1). 
+\end{equation}
+The positions of all other points $\V{X}(s_i)$ can then be determined from the Chebyshev series coefficients of $\V{X}(s)$ and the velocity at $s=s_1$. 

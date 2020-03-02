@@ -1,0 +1,179 @@
+We first require a constitutive equation for the bending force density on the fibers. We use the Euler beam model, so that the bending force is given by
+\begin{equation}
+\label{eq:bforce}
+    \V{f}^E=-E\V{X}_{ssss}\eqd \Lop{F}\V{X},
+\end{equation}
+where the linear operation $\Lop{F}\V{X}$ gives $ \V{f}^E$ with proper treatment of the ``free fiber'' boundary conditions in Eq.\ \eqref{eq:frBCs}. See Section \ref{sec:rsc} for details on how we construct a discrete form of $\Lop{F}$. 
+
+It is easy to see that the boundary conditions in Eq.\ \eqref{eq:frBCs} cause the total force and torque on each fiber due to $\V{f}^E$ to be zero, 
+\begin{gather}
+\label{eq:totfe}
+\int_{0}^{L} \V{f}^E \, ds = -E\V{X}_{sss}\Big \rvert^{L}_{0} = \V{0}, \quad \text{and}\\[2 pt]
+\left(\int_{0}^{L} \V{f}^E \times \V{X} \, ds\right)^\ell = -E\int_{0}^{L} X^j X^k_{ssss} - X^k X^j_{ssss} \, ds = -E\int_{0}^{L} X^j_{ss}  X^k_{ss} -X^k_{ss} X^j _{ss} = 0. 
+\end{gather}
+Here superscripts denote vector components and $(j,k,\ell)$ is a cyclic permutation of $(1,2,3)$. In the torque equation, the free fiber boundary conditions lead to the cancellation of boundary terms that arise in integration by parts.
+
+\subsection{Traditional formulation}
+In the traditional formulation of inextensibility \cite{ts04}, Eq.\ \eqref{eq:inex} is differentiated with respect to time. Then, $s$ and $t$ derivatives are interchanged to yield
+\begin{gather}
+\label{eq:inexdt}
+\left(\ddt{\Xs}\right)_s \cdot \Xs = 0. 
+\end{gather}
+In \cite{ts04}, the system was closed by substituting Eq.\ \eqref{eq:mobeqn} into Eq.\ \eqref{eq:inexdt}, where the total fiber force density is given by $\V{f}=\V{f}^E + \V{\lambda}$. By assuming that $\V{\lambda}=(T\Xs)_s$, where $T(s)$ is the scalar line tension, we obtain the \textit{line tension equation} of \cite{ts04}
+\begin{equation}
+\label{eq:lineT}
+\left(\Lop{M}\left[\V{X}\right]\left(\Lop{F}\V{X}+(T\Xs)_s\right)\right)_s  \cdot \V{X}_s = 0. 
+\end{equation}
+While this equation is linear in $T$, it is highly nonlinear in $\V{X}$, since the operation $\Lop{F}\V{X}$ gives fourth derivatives of $\V{X}$. Even in the absence of any nonlocal interactions (i.e. if $\Lop{M}=\ML$) and zero background flow ($\V{U}_0=\V{0}$), the line tension equation still has terms of the form $\V{X}_{sss}\cdot \V{X}_{sss}$ (see \cite[~Eq. (13)]{ts04}). Because Eq.\ \eqref{eq:lineT} is a boundary value problem enforced pointwise along the fiber, we refer to it as a \textit{strong formulation of inextensibility}. 
+
+\subsection{New formulation \label{sec:geo}}
+In our approach, the variable of interest is $\Xs(s,t)$, rather than $\V{X}(s,t)$, which can be obtained by integration modulo a constant. Considering the evolution of $\Xs(s,t)$, Eq.\ \eqref{eq:inexdt} implies that 
+\begin{equation}
+\label{eq:omegadef}
+\frac{\partial \Xs}{\partial t}(s,t) = \V{\Omega}(s, t) \times \Xs(s,t), 
+\end{equation}
+i.e. that the fiber evolution can be thought of as rotations of $\Xs$ on the unit sphere. Now, at each fiber point, we uniquely define an orthonormal coordinate system using Euler angles $\theta(s,t)$ and $\phi(s,t)$. We represent the unit tangent vector $\Xs(s,t)$ as
+\begin{equation}
+\Xs(s,t)=\Xs(\theta(s,t),\phi(s,t)) = \begin{pmatrix} \cos{\left(\theta(s,t)\right)} \cos{\left(\phi(s,t)\right)}\\[2 pt] \sin{\left(\theta(s,t)\right)} \cos{\left(\phi(s,t)\right)} \\[2 pt] \sin{\left(\phi(s,t)\right)} \end{pmatrix}.
+\end{equation}
+We define $\theta$ to be single-valued at $\phi=\pi/2$ by setting $\theta \left(\phi=\pm \pi/2\right)=0$. A choice of normal vectors that are always orthonormal to $\Xs$ on the unit sphere is
+\begin{equation}
+\label{eq:nangles}
+\V{n}_1 =  \begin{pmatrix} -\sin{\theta}\\[2 pt] \cos{\theta}\\[2 pt]0 \end{pmatrix} \qquad \V{n}_2 =  \begin{pmatrix} -\cos{\theta} \sin{\phi}\\[2 pt] -\sin{\theta} \sin{\phi} \\[2 pt] \cos{\phi} \end{pmatrix}. 
+\end{equation}
+Other choices are also possible. Because $\V{n}_1$ and $\V{n}_2$ can be determined uniquely from $\Xs$, we refer to their dependencies from here forward as $\V{n}_j[\Xs(s,t)]$, for $j=1, 2$. Since $\theta$ is single-valued at $\phi=\pi/2$, each component of the orthonormal coordinate system $(\Xs,\V{n}_1,\V{n}_2)$ is smooth when $\Xs$ is smooth. 
+
+Because $\Xs \times \Xs=\V{0}$, $\V{\Omega}(s,t)$ can be represented by linear combinations of $\V{n}_1$ and $\V{n_2}$. We let 
+\begin{equation}
+\label{eq:omdef}
+\V{\Omega}(s,t) \eqd \V{\Omega}\left(\Xs(s,t),\V{g}(s,t)\right) \eqd g_1(s,t)\V{n}_2[\Xs(x,t)]-g_2(s,t)\V{n}_1[\Xs(s,t)],  
+\end{equation}
+where $g_1(s,t)$ and $g_2(s,t)$ are two specific unknown functions in $L^2:[0,L]$. Eq.\ \eqref{eq:omdef} implies that, by the right-handedness of the coordinate system $(\V{X}_s, \V{n}_1, \V{n}_2)$, 
+\begin{equation}
+\label{eq:Xsupdate}
+\ddt{\Xs} = \V{\Omega}\left(\Xs(s,t),\V{g}(s,t)\right) \times \Xs(s,t) = g_1(s,t)\V{n}_1[\Xs(s,t)] + g_2(s,t)\V{n}_2[\Xs(s,t)]. 
+\end{equation}
+%The position of the fiber $\V{X}$ can be recovered by 
+%\begin{equation}
+%\label{eq:XfromXs}
+%\V{X}(s)= \V{X}(0)+\int_0^s \V{X}_s(\theta(s),\phi(s)) \, ds, 
+%\end{equation}
+The velocity of any given fiber centerline can now be written as 
+\begin{equation}
+\label{eq:velfib}
+\ddt{\V{X}}(s,t) = \V{U}(t)+\int_0^s  \sum_{j=1}^2 g_j(s',t)\V{n}_j[\Xs(s',t)] \,ds' . 
+\end{equation}
+where $\V{U}(t)$ is a rigid body translation. 
+
+%Here we have defined a linear operator $\bm{K}$ acting on a vector $\bm{g}=(g_1,g_2,\bm{U})$. 
+%Substituting Eq.\ \eqref{eq:defk} into Eq.\ \eqref{eq:fibevcont}, we have 
+%\begin{equation}
+%\label{eq:svcont}
+%\left(\bm{K}\bm{g}\right)(s) = \bm{M}\left(\bm{f}^E+\bm{\lambda}\right)+\bm{U}_0(\bm{X}). 
+%\end{equation}
+%Therefore, can be viewed as a rotational velocity for $\V{X}_s$ on the unit sphere. The notation here indicates that $\V{\alpha}$ determines $g_1$ and $g_2$ and therefore $\V{\Omega}$. We will use this to update the configuration in our temporal integration schemes by rotating the tangent vector $\V{X}_s$ and then computing $\V{X}$ using \eqref{eq:XfromXs}; this strictly enforces inextensibility.
+%Because our formulation involves integral rather than differential equations, we refer to it as a weak formulation of inextensibility. In fact, taking the derivative of Eq.\ \eqref{eq:svcont} with respect to $s$ and taking the inner product with $\bm{X}_s$ gives the line tension equation of \cite{ts04}. 
+
+\subsection{Principle of virtual work}
+So far, we have only laid out the new geometry we use to evolve the filament. In fact, the formulation of Section \ref{sec:geo} can still be coupled to a line tension equation to obtain the fiber velocity. We choose to close our formulation differently, in the process eliminating the need for an auxiliary line tension equation. 
+
+The principle of virtual work states that the constraint forces $\V{\lambda}(s,t)$ do no work for any choice of $\V{g}(s,t)$ \cite{varibook}. Because this constraint holds for all $t$, we drop for the moment the explicit dependence on $t$ in the notation. To impose this constraint, we use the $L^2$ inner product to compute the total dissipated power on the fluid from $\V{\lambda}$. 
+\begin{align}
+\label{eq:15}
+\mathcal{P}& =\Bigg{\langle} \V{\lambda},\ddt{\V{X}} \Bigg{\rangle} = \int_0^L \left(\V{U}+\int_0^{s'} g_1(s) \V{n}_1[\Xs(s)] + g_2(s)\V{n}_2[\Xs(s)] \,ds\right) \cdot \V{\lambda}\left(s'\right) \, ds'\\[2 pt] 
+\label{eq:16}
+& = \V{U} \cdot \int_0^L \V{\lambda}\left(s'\right) \, ds' +\int _0^L ds \int_{s}^L \left(g_1(s)\V{n}_1[\Xs(s)] + g_2(s) \V{n}_2[\Xs(s)] \right) \cdot \V{\lambda}(s') \, ds'\\[2 pt]
+\label{eq:Kstarcont}
+& = \V{U} \cdot \int_0^L \V{\lambda}\left(s'\right) \, ds' + \int_0^L \left(g_1(s)\V{n}_1[\Xs(s)] + g_2(s) \V{n}_2[\Xs(s)] \right) \cdot  \left(\int_{s}^L  \V{\lambda}(s') \, ds'\right) \, ds=0 
+\end{align}
+Here Eq.\ \eqref{eq:16} is obtained from Eq.\ \eqref{eq:15} via a simple change of integration variables. Since Eq.\ \eqref{eq:Kstarcont} must hold for all $\bm{U}$ and all sufficiently smooth $g_1$ and $g_2$, we must have that, for all $s$, 
+\begin{equation}
+\label{eq:noworkcont}
+\begin{pmatrix} \left(\int_s^L \V{\lambda}(s')\, ds'\right) \cdot \V{n}_1[\Xs(s)]\\[2 pt] \left(\int_s^L \V{\lambda}(s')\, ds'\right) \cdot\V{n}_2[\Xs(s)]\\[2 pt] \int_0^L \V{\lambda}(s') ds' \end{pmatrix} = \begin{pmatrix} 0 \\[2 pt] 0\\[2 pt] \bm{0}\end{pmatrix}. 
+\end{equation}
+This constraint can be used to obtain a closed form for $\V{\lambda}$. The first and second components of Eq.\ \eqref{eq:noworkcont} taken together tell us that $\left(\int_{s}^L  \V{\lambda}\left(s'\right) \, ds'\right)$ is orthogonal to both normal vectors. Therefore, $\left(\int_{s}^L  \V{\lambda}\left(s'\right) \, ds'\right)$ is in the direction of $\V{X}_s(s)$ and can be written as
+\begin{equation}
+\label{eq:tsalm}
+\int_{s}^L  \bm{\lambda}\left(s'\right) \, ds' = -T(s)\Xs,
+\end{equation}
+for some scalar function $T(s)$ with $T(s=L)=0$. Differentiating both sides of Eq.\ \eqref{eq:tsalm} with respect to $s$, we obtain 
+\begin{equation}
+\label{eq:lamval}
+\V{\lambda}(s) = \left(T(s)\Xs\right)_s, 
+\end{equation}
+which is the form of Tornberg and Shelley \cite{ts04}. Thus our derivation shows that the form of $\V{\lambda}$ taken in \cite{ts04} is equivalent to the principle that the constraint forces perform no virtual work \cite{varibook}. 
+
+Now, returning to the third constraint in Eq.\ \eqref{eq:noworkcont}, $\int_0^L \V{\lambda}(s) \, ds=\V{0}$, and substituting Eq.\ \eqref{eq:lamval} for $\V{\lambda}$, we obtain 
+\begin{equation}
+\label{eq:BCT}
+T(L)\Xs(L) - T(0)\Xs(0)=\V{0}. 
+\end{equation}
+Since $T(L)=0$, Eq.\ \eqref{eq:BCT} implies that $T(0)=0$ as well, since neither of the tangent vectors is identically 0. So we obtain $T(0)=T(L)=0$, which is exactly the boundary condition for the line tension equation in \cite{ts04}. 
+
+In this sense, the constraint equations \eqref{eq:15}$-$\eqref{eq:noworkcont} are all equivalent to the line tension equation used in prior work \cite{ts04}. Because we showed the equivalence by enforcing Eq.\ \eqref{eq:Kstarcont} ``for every choice of $g_1(s)$ and $g_2(s)$,'' we refer to our new formulation as a \textit{weak formulation of inextensibility}. In the next section, we show how choosing a suitable basis for $g_1(s)$ and $g_2(s)$  leads to a method with a Galerkin-like feel.  
+
+\subsection{$L^2$ weak formulation}
+\label{sec:numinex}
+In this section, we introduce an $L^2$ weak formulation that will later lead to a novel numerical method.
+
+The key idea is to expand the unknown functions $g_1(s,t)$ and $g_2(s,t)$ as, 
+\begin{equation}
+\label{eq:basis}
+g_j(s,t) = \sum_k \alpha_{jk}(t) T_k(s), \quad \text{for $j=1, 2$}, 
+\end{equation}
+where $T_k(s)$ are sufficiently smooth scalar-valued basis functions for $L^2:[0,L]$. Here we have re-introduced the dependence on time $t$ to show that the basis functions are constant in time while their coefficients vary. 
+
+Substituting the expansion of Eq.\ \eqref{eq:basis} into Eq.\ \eqref{eq:velfib}, we obtain
+\begin{equation}
+\label{eq:du}
+\ddt{\V{X}}(s,t) =\bm{U}(t) + \int_0^s \sum_{j=1}^2\sum_k \alpha_{jk}(t) T_k\left(s'\right) \V{n}_j[\Xs(s',t)] \, ds' \eqd (\Lop{K}\left[\V{X}(\cdot,t)\right]\V{\alpha}(t))(s),
+\end{equation}
+where the linear operator $\Lop{K}\left[\V{X}(\cdot,t)\right]$ acts on $\V{\alpha}(t)=(\alpha_{jk}(t),\bm{U}(t))$ to give an inextensible velocity on the filament centerline ($\V{\alpha}$ parameterizes inextensible fiber motions). Note the dependence of $\Lop{K}$ on $\V{X}$ since $\Lop{K}$ involves the normal vectors $\V{n}_1$ and $\V{n}_2$. Using Eq.\ \eqref{eq:du}, The dynamical equation, \eqref{eq:mobeqn}, now becomes
+\begin{equation}
+\label{eq:veleqn}
+(\Lop{K}\left[\V{X}(\cdot,t)\right]\V{\alpha}(t))(s) = \V{U}_0\left(\V{X}(s,t),t\right) + \left(\Lop{M}\left[\V{X}(\cdot,t)\right]\left(\V{f}^E(\cdot,t) +\V{\lambda}(\cdot,t)\right)\right)(s)
+\end{equation}
+
+This new dynamical equation, \eqref{eq:veleqn} is supplemented by enforcing Eq.\ \eqref{eq:noworkcont} in an $L^2$ weak sense. We begin by substituting the representation of $g_j$ in Eq.\ \eqref{eq:basis} into the power equation, \eqref{eq:15}, to obtain (again dropping the time dependence in the notation)
+\begin{align}
+\label{eq:26}
+\mathcal{P} & = \bigg{\langle} \V{\lambda}(\cdot),\Lop{K}[\V{X}(\cdot)]\V{\alpha}\bigg{\rangle}= 0 \\[2 pt]
+\label{eq:Kstardef}
+\mathcal{P} & = \V{U} \cdot \int_0^L \V{\lambda}(s) \, ds + \int_0^L \left(\int_0^{s} \sum_{j=1}^2\sum_{k} \alpha_{jk} T_k(s') \V{n}_j[\Xs(s')] \, ds'\right)\cdot \V{\lambda}\left(s\right) \, ds\\[2 pt]
+\nonumber & \eqd \bigg{\langle} \Lop{K}^*[\V{X}(\cdot)]\V{\lambda}(\cdot), \V{\alpha}\bigg{\rangle} =0. 
+\end{align}
+Eq.\ \eqref{eq:Kstardef} formally defines the $L^2$ adjoint of $\Lop{K}$ as $\Lop{K}^*$. Since the power from the constraint forces must be zero for any inextensible motion (any $\V{\alpha}$), we define $\Lop{K}^*$ by setting each term of Eq. \eqref{eq:Kstardef} to zero. That is,
+\begin{equation}
+\label{eq:noworkcontL2}
+\Lop{K}^*[\V{X}(\cdot)]\V{\lambda}(\cdot):=\begin{pmatrix} \int_0^L \left(\int_0^{s} T_k(s') \V{n}_1[\Xs(s')] \, ds'\right)\cdot \bm{\lambda}(s) \, ds\\[2 pt] \int_0^L \left(\int_0^{s} T_k(s') \V{n}_2[\Xs(s')] \, ds'\right)\cdot \bm{\lambda}(s) \, ds\\[2 pt] \int_0^L \bm{\lambda}(s) \, ds \end{pmatrix} = \begin{pmatrix} 0 \\[2 pt] 0\\[2 pt] \V{0}\end{pmatrix}, 
+\end{equation}
+where the first two vector components hold for all $k$ and the last vector component holds in each of the three directions.
+
+A saddle-point system can now be written for $\bm{\lambda}$ and $\bm{\alpha}$ by combining Eqs.\ \eqref{eq:veleqn} and \eqref{eq:noworkcontL2}. Dropping all dependencies on $s$ and $t$ and setting $\V{f}^E=\Lop{F}\V{X}$, we have
+\begin{equation}
+\label{eq:saddleL2}
+    \begin{pmatrix}
+    -\Lop{M}[\V{X}] & \Lop{K}[\V{X}]\\[4 pt]
+    \Lop{K}^*[\V{X}] & \bm{0}
+    \end{pmatrix}
+    \begin{pmatrix} 
+    \V{\lambda}\\[4 pt]
+    \V{\alpha}
+    \end{pmatrix} =  \begin{pmatrix} 
+    \Lop{M}[\V{X}]\left(\Lop{F}\V{X}\right)+\V{U}_0\left(\V{X}\right)\\[4 pt]
+    \bm{0}\end{pmatrix}.
+\end{equation}
+
+In continuum, solving this system for $\V{\lambda}$ and $\V{\alpha}$ is equivalent to solving the line tension equation for $T$ and letting $\V{\lambda}=(T\V{X}_s)_s$. Numerically, Eq.\ \eqref{eq:saddleL2} allows us to avoid solving the problematic line tension equation. \cmt{Summary of eqns?}
+
+\iffalse
+Now, we can eliminate $\bm{\lambda}$ by a Schur complement approach. Applying the formal (psuedo)inverse of $\bm{M}$ to both sides of Eq.\ \eqref{eq:veleq} and then applying $\bm{K}^*$ to both sides, we obtain
+\begin{equation}
+\left(\left(\bm{K}^*\bm{M}^{-1} \bm{K}\right)\bm{\alpha}\right)(s) = \bm{K}^*\left(\bm{f}^E+\bm{M}^{-1}\bm{U}_0\right)=\bm{K}^*\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right),
+\end{equation}
+where we have used Eq.\ \eqref{eq:noworkcontL2} to eliminate $\bm{\lambda}$. If we now apply the (pseudo)inverse of the operator $\bm{K}^*\bm{M}^{-1}\bm{K}$, then apply $\bm{K}$ on the left to both sides, we obtain a solution for the velocity of the fiber centerline of the form
+\begin{equation}
+\frac{\partial \bm{X}}{\partial t}(s) = \left(\bm{K}\bm{\alpha}\right)(s) = \left(\bm{K}\left(\bm{K}^*\bm{M}^{-1}\bm{K}\right)^{-1}\bm{K}^*\right)\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right):
+=\bm{N}\left(\bm{L}\bm{X}+\bm{M}^{-1}\bm{U}_0\right). 
+\end{equation}
+\fi

@@ -1,0 +1,124 @@
+Our goal in this section is to show how we can accelerate the sums over fibers that appear in Eq.\ \eqref{eq:fibevcont} so that they are linear in time. Eq.\ \eqref{eq:fibevcont} gives the velocity contribution at point $\V{X}^i(s_i)$ due to fibers $\V{X}^j(s_j)$ as 
+\begin{equation}
+\label{eq:otherfibs}
+\left(\M{M}_{J}\V{f}\right)(s_i) := \frac{1}{8\pi\mu}\sum_{j \neq i} \int_0^L \left(\frac{\V{I}+\hat{\V{R}}(s_i,s_j)\hat{\V{R}}(s_i,s_j)}{\norm{\V{R}(s_i,s_j)}} + (\epsilon L)^2 \frac{\V{I}-3\hat{\V{R}}(s_i,s_j)\hat{\V{R}}(s_i,s_j)}{\norm{\V{R}(s_i,s_j)}^3}\right)\V{f}^j(s_j) \, ds_j,
+\end{equation}
+where $\V{R}=\V{X}^i(s_i)-\V{X}^j(s_j)$. Now let us discretize each of the integrals in Eq.\ \eqref{eq:otherfibs} using a quadrature scheme with $N$ points. Then we have 
+\begin{equation}
+\label{eq:otherfibs2}
+\left(\M{M}_{J}\V{f}\right)(s_i) := \frac{1}{8\pi\mu}\sum_{j \neq i}\sum_{j=1}^N \left(\frac{\V{I}+\hat{\V{R}}(s_i,s_j)\hat{\V{R}}(s_i,s_j)}{\norm{\V{R}(s_i,s_j)}} + (\epsilon L)^2 \frac{\V{I}-3\hat{\V{R}}(s_i,s_j)\hat{\V{R}}(s_i,s_j)}{\norm{\V{R}(s_i,s_j)}^3}\right)\V{f}^j(s_j) \, w_j. 
+\end{equation}
+Temporarily disregarding the fact that this quadrature will not be accurarate for fibers sufficiently close to the target, we observe in Eq.\ \eqref{eq:otherfibs2} that we simply need to compute the velocity at point $\V{X}^i(s_i)$ due to a collection of other points positioned at $\V{X}^j(s_j)$. Because of the quadrature scheme, these points each have an associated ``force'' of $\V{f}^j(s_j)w_j$. Finally, the matrix kernel in the integrand of Eq.\ \eqref{eq:otherfibs2} is equivalent to the RPY kernel \cite{rpyOG, PSRPY} for spheres when the sphere radius $a=\sqrt{\frac{3}{2}}\epsilon L$. Our problem therefore reduces to using the RPY kernel to \textit{calculate the velocity at a collection of points due to forces at those points.} This well-studied problem can be treated with a number of fast algorithms. 
+
+Because we consider periodic BCs in general here, we choose Ewald summation to handle naive quadratic-complexity sums in linear time. We begin this section by describing Ewald splitting on a sheared periodic domain for a system of points. We then describe how we correct Eq.\ \eqref{eq:otherfibs2} for fibers that give near singular integrands. 
+
+\subsubsection{Sheared coordinate system}
+In order to implement a shear flow in periodic boundary conditions, a strained coordinate system is necessary. We assume (without loss of generality) that $x$ is the flow direction, $y$ is the gradient direction, and $z$ is the vorticity direction. 
+Let the total strain be $g(t)$. Then we define a strained coordinate system with axes
+\begin{equation}
+\label{eq:axes}
+\V{e}_{x'} = \V{e}_x \qquad \V{e}_{y'} = \V{e}_y+g(t)\V{e}_x \qquad \V{e}_{z'} = \V{e}_z,
+\end{equation}
+and strained wave numbers
+\begin{equation}
+\label{eq:swnums}
+k'_x=k_x \qquad k'_y = k_y+g(t)k_x \qquad k'_z = k_z.
+\end{equation}
+Here $k_x, k_y, k_z$ are the wave numbers when the periodicity is over the $x,y,$ and $z$ directions, while $k_x', k_y', k_z'$ are the wave numbers when the periodicity is over the $x',y',$ and $z'$ directions. 
+
+The transformation between the two coordinate systems is given by $x\V{e}_x+y\V{e}_y+z\V{e}_z=x'\V{e}'_x+y'\V{e}'_y+z'\V{e}'_z$ where
+\begin{gather}
+\label{eq:primes}
+x'=x-g(t)y \qquad y'=y \qquad z'=z \\[2 pt]
+x=x'+g(t)y' \qquad y=y' \qquad z=z'. 
+\end{gather}
+In Eq.\ \eqref{eq:primes}, $x'$, $y'$, and $z'$ are all periodic on $[0,L]$. 
+
+Now we use Eq.\ \eqref{eq:primes} to determine that 
+\begin{equation}
+\frac{\partial}{\partial x} = \frac{\partial}{\partial x'} \qquad \frac{\partial}{\partial y} = \frac{\partial}{\partial y'}-g(t)\frac{\partial}{\partial x'} \qquad \frac{\partial}{\partial z} = \frac{\partial}{\partial z'}. 
+\end{equation}
+
+We therefore have the Laplacian in the transformed space as \cite{moto11}
+\begin{equation}
+\Delta = \left(\frac{\partial^2}{\partial x'^2}+\left(\frac{\partial}{\partial y'}-g(t)\frac{\partial}{\partial x'}\right)^2+\frac{\partial^2}{\partial z'^2}\right). 
+\end{equation}
+In Fourier space, $\hat{\Delta} = \V{k}' \cdot \V{k}'$, where 
+
+\begin{equation}
+\label{eq:kprime}
+\bm{k}'= (k_x',k_y'-g(t)k_x',k_z'), 
+\end{equation}
+
+Using Eq.\ \eqref{eq:swnums}, it is easy to see that $k':=\norm{\bm{k}'}=\norm{(k_x,k_y,k_z)}:=k$. It follows that we can simply replace $k$ in isotropic Fourier calculations by $k'$. 
+
+\subsubsection{Ewald splitting for blobs \label{sec:ewblob}}
+In this section, we implement the Ewald splitting of \cite{PSRPY} for the RPY tensor on a periodic domain. The idea of Ewald splitting or Ewald summation is to split the mobility matrix into a smooth long-ranged part and a non-smooth short-ranged part. The smooth ``far field'' part is done by standard Fourier methods, and the non-smooth ``near field'' part is truncated so that it is nonzero for $\mathcal{O}(1)$ neighbors per point. 
+
+Applying this to the RPY kernel, the periodic RPY tensor for a blob with hydrodynamic radius $a$ can be written on the sheared domain as
+\begin{equation}
+\hat{\M{M}}(\V{x}_i',\V{x}_j')=\frac{1}{V\mu}\sum_{\small{\bm{k}'\neq \bm{0}}} e^{i\V{k}' \cdot (\V{x}'_i-\V{x}'_j)} \frac{1}{k'^2}\left(\bm{I}-\hat{\bm{k}'}\hat{\bm{k}'}^T\right)\text{sinc}^2\left(k'a\right).  
+\end{equation} 
+We next apply the screening function of Hasimoto \cite{Hsplit},
+\begin{equation}
+\label{eq:HspE}
+\hat{H}(k',\xi)=\left(1+\frac{k'^2}{4\xi^2}\right)e^{-k'^2/4\xi^2}, 
+\end{equation}
+to split the mobility $\hat{\M{M}}$ into a far field and near field, given in Fourier space respectively by
+\begin{equation}
+\hat{\M{M}}^f (\V{x}_i',\V{x}_j')= \hat{\M{M}} (\V{x}_i',\V{x}_j') H(k',\xi) \qquad \hat{\M{M}}^n (\V{x}_i',\V{x}_j') = \hat{\M{M}} (\V{x}_i',\V{x}_j') (1-H(k',\xi)). 
+\end{equation}
+Here $\xi$ is a splitting parameter that controls the decay of the far field in Fourier space and near field in real space. Assuming that the near field decays rapidly enough that Fourier series can be replaced by Fourier integrals, the near field mobility can be computed in real space by inverse transforming its Fourier space representation,
+\begin{equation}
+\label{eq:nearRPY}
+\bm{M}^n(\V{x}_i',\V{x}_j')=F(r,\xi)\left(\bm{I}-\hat{\bm{r}}\hat{\bm{r}}^T\right)+G(r,\xi)\hat{\bm{r}}\hat{\bm{r}}^T, 
+\end{equation}
+where $\V{r}=(\bm{x}_i-\bm{x}_j)_p$, $r=\norm{\bm{r}}$, and $p$ denotes the nearest periodic image in the slanted domain. While the nearest image is over the slanted domain, $\V{r}$ and $r$ are measured in undeformed space so that distances are computed using the Euclidean metric. The exact forms of $F$ and $G$ are given in \cite[Appendix~A]{PSRPY}.
+
+Moving on to the far field mobility, its full expression as a function of the sheared wave numbers is given by
+\begin{equation}
+\M{M}^f (\V{x}_i',\V{x}_j')=\frac{1}{\mu V}\sum_{\small{\bm{k}'\neq \bm{0}}}  e^{i\V{k}' \cdot (\V{x}'_i-\V{x}'_j)} \frac{1}{k'^2}\left(\bm{I}-\hat{\bm{k}'}\hat{\bm{k}'}^T\right)\text{sinc}^2\left(k'a\right)H(k',\xi). 
+\end{equation}
+
+For multiple interacting particles, we have that 
+\begin{equation}
+\V{U}(\V{x}'_i) = \frac{1}{\mu V}\sum_{\small{\bm{k}'\neq \bm{0}}} \sum_j \left(\M{M}^{f}(\V{x}_i',\V{x}_j')+\M{M}^{n}(\V{x}_i',\V{x}_j')\right)\V{F}(\V{x}'_j). 
+\end{equation} 
+
+The algorithm to compute the far field velocity at the set of blobs positioned at $\V{x}_i$ with forces $\V{F}_i$ is therefore
+\begin{enumerate}
+\item Compute the coordinates of each of the blobs in $(x',y',z')$ space; denote these as $\V{x}'_i$
+\item Perform a type 1 (nonuniform to uniform) NUFFT to obtain the sum
+\begin{equation}
+\sum_j e^{-\V{k}' \cdot \V{x}'_j} \V{F}(\V{x}'_j).
+\end{equation}
+\item Multiply each wave number $\V{k}' \neq 0$ in Fourier space by 
+\begin{equation}
+\frac{1}{\mu V k'^2}\left(\bm{I}-\hat{\bm{k}'}\hat{\bm{k}'}^T\right)\text{sinc}^2\left(k'a\right)H(k',\xi), 
+\end{equation}
+and denote this intermediate result by $\V{u}(\V{k}')$. 
+\item Perform a type 2 (uniform to nonuniform) NUFFT to obtain the sum 
+\begin{equation}
+\V{U}(\V{x}_i') = \sum_{\V{k}' \neq 0} e^{\V{k}' \cdot \V{x}'_i} \V{u}(\V{k}').
+\end{equation}
+\end{enumerate}
+See \cite{barnettES} for more information on computing these sums efficiently. 
+
+The near field velocity is then added to the far field velocity. The near field velocity is computed at each point by summing Eq.\ \eqref{eq:nearRPY} over neighboring points whose distance is less than a precomputed value $r^*$. We choose $r^*$ so that the velocity at $r^*$ due to a unit force in the $\hat{\V{r}}$ direction is less than $10^{-3}$. 
+
+\subsubsection{Corrections to Ewald}
+The use of Ewald splitting for \textit{blobs} to compute the non-local velocity brings about a few problems. First, the velocity from a fiber onto itself is included in the total Ewald velocity. But this velocity is treated with the free space RPY kernel (which knows only about spherical shapes), rather than the SBT kernel (which more accurately treats the fiber slenderness). A similar problem exists for close fibers. In this case, however, it is the quadrature scheme in Eq.\ \eqref{eq:otherfibs2} that gives incorrect results, as $N$ points are not enough to integrate a nearly singular kernel and special quadrature is usually required (see Appendix \ref{sec:nearfibtests} for the precise distances where direct quadrature breaks down).  
+
+In both of these cases, the answer we obtain for the velocity at point $\V{X}^i(s_i)$ due to \textit{the nearest periodic copy of} fiber $\V{X}^j$ is computed incorrectly by discretizing into blobs. For this reason, we subtract the free space RPY kernel \cite{rpyOG}
+\begin{gather}
+\label{eq:RPY}
+\M{M}_{RPY}(\bm{X}^i(s_i), \V{X}^j) = \sum_{j=1}^N \left(C_1\left(\norm{\bm{R}}\right)\bm{I}+C_2\left(\norm{\bm{R}}\right)\hat{\bm{R}}\hat{\bm{R}}^T\right) \bm{f}^j(s_j) w_j,
+\end{gather}
+where $\V{R}=\V{X}^i(s_i)-\V{X}^j(s_j)$ and
+\begin{gather}
+C_1(r) = \begin{cases} \frac{1}{r}+\frac{2a^2}{3r^3} & r > 2a\\[2 pt] \frac{4}{3a}-\frac{3r}{8a^2} & r \leq 2a\end{cases} \qquad
+C_2(r) = \begin{cases} \frac{1}{r}-\frac{2a^2}{3r^3} & r > 2a\\[2 pt] \frac{4}{3a}-\frac{r}{82a^2} & r \leq 2a\end{cases}. 
+\end{gather}
+After subtracting the free space RPY kernel discretized with $N$ points, for fiber $i \neq j$ we then apply the special quadrature scheme of Section \ref{sec:specquad} and the decision tree of Fig.\ \ref{fig:algflow} to compute the velocity at target $\V{X}^i(s_i)$ due to fiber $\V{X}^j$, given in Eq.\ \eqref{eq:jf1}, to a guaranteed accuracy of 3 digits. The non-local contribution of fiber $i$ to itself (i.e. the finite part integral) is treated by the scheme discussed in Section \ref{sec:tornFP}. 
+
+
