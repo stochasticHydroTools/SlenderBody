@@ -1,5 +1,4 @@
 import numpy as np
-import TargetFiberCorrector as TFibCorVec
 from DiscretizedFiber import DiscretizedFiber
 from SpatialDatabase import SpatialDatabase, ckDSpatial
 import EwaldUtils as ewc
@@ -123,14 +122,6 @@ class fiberCollection(object):
                         forces,np.array(methods),shifts,centerVels);
         print(np.amax(np.abs(corVels)));
         print('Time to do first method %f' %(time.time()-t));
-        t = time.time();
-        corVels2 = self.CorrectEwaldSpecialQuad2(np.array(fibers),np.array(targs),X_nonLoc,forceDs,\
-                        forces,np.array(methods),shifts,centerVels);
-        print(np.amax(np.abs(corVels2)));
-        print('Time to do second method %f' %(time.time()-t));
-        print('Difference %f' %(np.amax(np.abs(corVels-corVels2)))); 
-        #import sys
-        #sys.exit()
         EwaldVelocity+=corVels;
         # Return the velocity due to the other fibers + the finite part integral velocity
         return np.reshape(EwaldVelocity+BkgrndFlow,totnum*3)+finitePart;
@@ -291,61 +282,6 @@ class fiberCollection(object):
         (Local + FP integral) on the fiber centerline for each point
         Output: a tot#ofpts x 3 array of correction velocites
         """
-        subVels = np.zeros((self._Npf*self._Nfib,3));
-        nUpsample = self._fiberDisc.getNumUpsample();
-        w_upsampled = np.reshape(self._fiberDisc.getUpsampledWeights(),(nUpsample,1));
-        #targets = targets[np.argsort(fibers)];
-        #methods = methods[np.argsort(fibers)];
-        #shifts = shifts[np.argsort(fibers),:];
-        #fibers = fibers[np.argsort(fibers)];
-        for iFib in range(self._Nfib):
-            targNums = targets[fibers==iFib];
-            targPts = X_nonLoc[targNums,:]-shifts[fibers==iFib,:];
-            rowinds = self.getRowInds(iFib);
-            # Subtract the Ewald value at all the targets (free space RPY kernel)
-            subVels[targNums,:]-= np.reshape(ewc.RPYSBTKernel(len(targNums),targPts[:,0],targPts[:,1],targPts[:,2],\
-                self._Npf,X_nonLoc[rowinds,0],X_nonLoc[rowinds,1],X_nonLoc[rowinds,2],\
-                forces[rowinds,0],forces[rowinds,1],forces[rowinds,2],self._mu,self._aRPY,0),(len(targNums),3));
-            # Upsample the fiber
-            Xup = self._fiberDisc.upsampleGlobally(X_nonLoc[rowinds,:]);
-            forceDUp = self._fiberDisc.upsampleGlobally(forceDs[rowinds,:]);
-            cVelUpsamp = self._fiberDisc.upsampleGlobally(centerVels[rowinds,:]);
-            forceUp = forceDUp*w_upsampled;
-            qtypesAll = methods[fibers==iFib];
-            # Do method 1 targets directly
-            t1Targs = targNums[qtypesAll==1];
-            # Direct quadrature using C++ function
-            subVels[t1Targs,:]+= np.reshape(ewc.RPYSBTKernel(len(t1Targs),targPts[qtypesAll==1,0],\
-                targPts[qtypesAll==1,1],targPts[qtypesAll==1,2],\
-                nUpsample,Xup[:,0],Xup[:,1],Xup[:,2],forceUp[:,0],forceUp[:,1],forceUp[:,2],self._mu,\
-                self._aRPY,1),(len(t1Targs),3));
-            # The ones left over are for special quadrature
-            t2Targs = targNums[qtypesAll==2];
-            target2Points = targPts[qtypesAll==2,:];
-            if (len(t2Targs) > 0):
-                # Upsample to 2 panels
-                X2Pan = self._fiberDisc.upsample2Panels(X_nonLoc[rowinds,:]);
-                forceD2Pan = self._fiberDisc.upsample2Panels(forceDs[rowinds,:]);
-                # Vectorized version for special quadrature values
-                cvelsV = TFibCorVec.SpecQuadVel(len(t2Targs),target2Points,self._fiberDisc,
-                        Xup, X2Pan,forceUp,forceDUp,forceD2Pan,\
-                        centerVels[rowinds,:],cVelUpsamp,w_upsampled,\
-                        self._epsilon,self._Lf,self._aRPY,self._mu,self._Npf,nUpsample);
-                subVels[t2Targs,:]+=cvelsV; 
-        return subVels;
-
-    def CorrectEwaldSpecialQuad2(self,fibers,targets,X_nonLoc,forceDs,forces,methods,shifts,centerVels):
-        """
-        Method to correct the results of Ewald splitting with special quadrature. 
-        Inputs: fibers, targets = one-d integer arrays that have, respectively, the fiber number and 
-        target number that need to be corrected with some new form of quadratur. 
-        X_nonLoc = position arguments as tot#pts x 3 array, forceDs = force densities as tot#pts x 3 array, 
-        forces = forceDs*weights on N point grid as a tot#pts x 3 array, methods = types of corrections for 
-        each pair (1 for 32 point upsampled direct quad, 2 for special quad), shifts = periodic shifts in the
-        targets as a #ofcorrections x 3 array, centerVels = tot#ofpts x 3 array that has the velocity 
-        (Local + FP integral) on the fiber centerline for each point
-        Output: a tot#ofpts x 3 array of correction velocites
-        """
         subVels = np.zeros((self._Nfib*self._Npf,3));
         numTsbyFib = np.zeros(self._Nfib,dtype=int);
         # Sort the targets
@@ -399,12 +335,12 @@ class fiberCollection(object):
             t2dstars = dstars[trange[sqrange==1]];
             target2Points = targPts[trange[sqrange==1],:];
             # Upsample to 2 panels
-            X2Pan = self._fiberDisc.upsample2Panels(X_nonLoc[rowinds,:]);
-            forceD2Pan = self._fiberDisc.upsample2Panels(forceDs[rowinds,:]);
-            # Vectorized version for special quadrature values
-            cvelsV = TFibCorVec.SpecQuadVel2(len(t2dstars),target2Points,self._fiberDisc,
-                     X2Pan,forceD2Pan,w_upsampled,t2dstars,self._epsilon,self._Lf,self._aRPY,self._mu,nUpsample);
-            subVels[sortedTargs[trange[sqrange==1]],:]+=cvelsV; 
+            if (len(t2dstars > 0)):
+                X2Pan = self._fiberDisc.upsample2Panels(X_nonLoc[rowinds,:]);
+                forceD2Pan = self._fiberDisc.upsample2Panels(forceDs[rowinds,:]);
+                # Vectorized version for special quadrature values
+                cvelsV = self.SpecQuadVel2Pan(len(t2dstars),target2Points,X2Pan,forceD2Pan,t2dstars);
+                subVels[sortedTargs[trange[sqrange==1]],:]+=cvelsV; 
             tstart+= numTsbyFib[iFib];
         print('Time doing special quad %f' %(time.time()-t));
         return subVels;
@@ -586,3 +522,88 @@ class fiberCollection(object):
         fibers = qtypes.col;
         methods = qtypes.data;
         return targs, fibers, methods, shifts
+    
+    ## ====================================================
+    ##    PRIVATE METHODS FOR USE WITH SPECIAL QUADRATURE
+    ## ====================================================
+    def SpecQuadVel2Pan(self,Ntarg,tpts,X2pan,f2pan,dstars):
+        """
+        In progress. 
+        """
+        SBTvels = np.zeros((Ntarg,3));
+        # How far are we from the fiber in a non-dimensional sense?
+        dstars = dstars/(self._epsilon*self._Lf);
+        # If the point is inside the fiber "cross section," which we define as
+        # dstar < dstarCenterLine, compute the centerline velocity at the approximate
+        # closest point and return (in fact we need it when cdist/(epsilon*L) < dstarInterpolate;
+        # in that case we are going to interpolate. How this is implemented is to set
+        # wtCL > 0 if we need to interpolate
+        wtsCL = np.zeros(Ntarg);
+        wtsCL+= np.logical_and(dstars < dstarInterpolate,dstars > dstarCenterLine)\
+                *(dstarInterpolate-dstars)/(dstarInterpolate-dstarCenterLine);  # points that get an interpolation 
+        wtsCL+= (dstars < dstarCenterLine)*1.0; # points that get only centerline vel
+        wtsSBT = 1.0-wtsCL;
+        # Now we are dealing with the case where we need special quad.
+        # 2 possible options: 1 panel of 32 is ok or need 2 panels of 32
+        specNodes = self._fiberDisc.getSpecialQuadNodes();
+        nUpsample = self._fiberDisc.getNumUpsample();
+        wup = np.reshape(self._fiberDisc.getUpsampledWeights(),(nUpsample,1));
+        for iTwoPan in range(Ntarg):
+            # Special quad w 2 panels
+            for iPan in range(2): # looping over the panels
+                indpan = np.arange(nUpsample)+iPan*nUpsample;
+                # Points and force densities for the panel
+                Xpan = X2pan[indpan,:];
+                fdpan = f2pan[indpan,:];
+                # Calculate the root. 
+                tr, conv = self.calcRoot(tpts[iTwoPan,:],Xpan);
+                br = fiberCollection.bernstein_radius(tr);
+                # Do we need special quad for this panel? (Will only need for 1 panel,
+                # whatever one has the fiber section closest to the target).
+                sqneeded = conv and (br < rho_crit);
+                if (not sqneeded):
+                    # Directly do the integral for 1 panel (weights have to be halved because
+                    # we cut the fiber in 2)
+                    forcePan = fdpan*wup*0.5;
+                    SBTvels[iTwoPan,:]+= np.reshape(ewNum.RPYSBTK(1,np.array([tpts[iTwoPan,:]]),nUpsample,\
+                            Xpan,forcePan,self._mu,self._aRPY,sbt=1),3);
+                else:
+                    # Compute special quad weights (divide weights by 2 for 2 panels)
+                    wts = 0.5*np.reshape(sq.specialWeights(nUpsample,specNodes,tr,self._Lf),(3,nUpsample)).T;
+                    SBTvels[iTwoPan,:]+= ewNum.SBTKSpl(tpts[iTwoPan,:],nUpsample,Xpan,fdpan,self._mu,self._epsilon,\
+                                self._Lf,wts[:,0],wts[:,1],wts[:,2]);  
+        return np.reshape(wtsSBT,(Ntarg,1))*SBTvels;
+
+
+    def calcRoot(self,tpt,X):
+        """
+        Compute the root troot using special quadrature. 
+        Inputs: Ntarg = number of targets, tpt = Ntarg x 3 array target point 
+        where we seek the velocity due to the fiber, 
+        fiber = fiber object we seek the velocity due to, X = nptsUpsample x 3 array of fiber points,
+        Outputs: troot = complex root for special quad, converged = 1 if we actually
+        converged to that root, 0 if we didn't (or if the initial guess was so far that
+        we didn't need to), cdist = approximate distance from the fiber centerline 
+        to the point, clvel_close = 3 array of velocity at the closest centerline point
+        """
+        # Initial guess (C++ function)
+        specNodes = self._fiberDisc.getSpecialQuadNodes();
+        nUpsample = self._fiberDisc.getNumUpsample();
+        # C++ function to compute the roots
+        tinit = sq.rf_iguess(specNodes,X[:,0],X[:,1],X[:,2],nUpsample,tpt[0],tpt[1],tpt[2]);
+        # If initial guess is too far, do nothing
+        if (fiberCollection.bernstein_radius(tinit) > 1.5*rho_crit):
+            return 0+0*1j, 0;
+        # Compute the Chebyshev coefficients and the coefficients of the derivative
+        pos_coeffs, deriv_cos = self._fiberDisc.upsampledCoefficients(X);
+        # C++ function to compute the roots and convergence
+        trconv = sq.rootfinder(pos_coeffs[:,0],pos_coeffs[:,1],pos_coeffs[:,2],\
+                    deriv_cos[:,0],deriv_cos[:,1],deriv_cos[:,2],nUpsample, \
+                    tpt[0],tpt[1],tpt[2],tinit);
+        troot = np.reshape(np.array(trconv[0]),1);
+        converged = np.reshape(np.array(trconv[1]),1);
+        return troot, converged;
+        
+    @staticmethod
+    def bernstein_radius(z):
+        return np.abs(z + np.sqrt(z - 1.0)*np.sqrt(z+1.0));

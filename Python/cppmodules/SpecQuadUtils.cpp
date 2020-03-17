@@ -11,66 +11,14 @@
 #endif
 
 #define MAX_EXPANSION_ORDER 16
+#define ROOT_FINDER_TOL 1e-4
+#define MAX_RF_ITERS 10
 
 
 // The initial guess for the rootfinder.
 // Inputs: quadrature nodes tj, fiber points xj, yj, zj, number of fiber 
-// points n, and target points x0, y0, z0. Ntarg = number of targets
-// Outputs: an Ntarg vector of the initial guesses for each target
-std::vector<std::complex<double>> rootfinder_initial_guess(const std::vector<double> &tj,
-          const std::vector<double> &xj,const std::vector<double> &yj,
-          const std::vector<double> &zj,int n, std::vector<double> x0, 
-          std::vector<double> y0, std::vector<double> z0, int Ntarg)
-{
-    // Find two closest point
-    std::vector < std::complex <double> > allGuesses(Ntarg);
-    for (int iTarg = 0; iTarg < Ntarg; iTarg++){
-        double Rsqmin1 = INFINITY;
-        double Rsqmin2 = INFINITY;
-        int imin1, imin2;
-        for (int i=0; i<n; i++)
-        {
-            double dx = xj[i]-x0[iTarg];
-            double dy = yj[i]-y0[iTarg];
-            double dz = zj[i]-z0[iTarg];
-            double Rsq = dx*dx + dy*dy + dz*dz;
-            if (Rsq < Rsqmin1)
-            {
-                Rsqmin2 = Rsqmin1;
-                imin2 = imin1;
-                Rsqmin1 = Rsq;
-                imin1 = i;
-            }
-            else if (Rsq < Rsqmin2)
-            {
-                Rsqmin2 = Rsq;
-                imin2 = i;
-            }
-        }
-        // Now compute initial guess
-        int i1 = imin1;
-        int i2 = imin2;
-        double t1 = tj[i1];
-        double t2 = tj[i2];
-        double p[3];
-        p[1] = xj[i1]-xj[i2];
-        p[2] = yj[i1]-yj[i2];
-        p[3] = zj[i1]-zj[i2];
-        double pnorm = sqrt(p[1]*p[1] + p[2]*p[2] + p[3]*p[3]);
-        double r[3];
-        r[1] = x0[iTarg]-xj[i1];
-        r[2] = y0[iTarg]-yj[i1];
-        r[3] = z0[iTarg]-zj[i1];
-        double rnormsq = r[1]*r[1] + r[2]*r[2] + r[3]*r[3];  
-        double rdotp = r[1]*p[1] + r[2]*p[2] + r[3]*p[3];
-        double a = (t1-t2)*rdotp/(pnorm*pnorm);
-        double b = sqrt(std::abs(rnormsq-rdotp*rdotp/(pnorm*pnorm))) * (t1-t2)/pnorm;
-        std::complex<double> tinit(t1+a,b);
-        allGuesses[iTarg]= tinit;
-    }
-    return allGuesses;
-}
-
+// points n, and target point x0, y0, z0. 
+// Outputs: the initial guess for the rootfinder
 std::complex<double> Onerootfinder_initial_guess(const std::vector<double> &tj,
           const std::vector<double> &xj,const std::vector<double> &yj,
           const std::vector<double> &zj,int n, double x0, double y0, double z0)
@@ -125,6 +73,9 @@ std::complex<double> Onerootfinder_initial_guess(const std::vector<double> &tj,
 // we evaluate the polynomial at (in this frame the fiber is 
 // parameterized on x in [-1,1]), and N = number of fiber
 // coefficients
+// There is one method to evaluate the series on the complex
+// plane. This is used in rootfinding and in that case the 
+// expansion is capped at MAX_EXPANSION_ORDER.
 std::complex<double> eval_cheb(const std::vector<double> &fhat,
                                std::complex<double> x, int N){
     // Compute the complex theta
@@ -138,6 +89,8 @@ std::complex<double> eval_cheb(const std::vector<double> &fhat,
     return val;
 }
 
+// Second method to evaluate the series on the real line. 
+// No cap on the number of coefficients. 
 double eval_cheb(const std::vector<double> &fhat, double x, int N){
     // Compute the complex theta
     double theta = std::acos(x);
@@ -149,135 +102,17 @@ double eval_cheb(const std::vector<double> &fhat, double x, int N){
     return val;
 }
 
+// Bernstein radius for a complex root z. 
 double bernstein_radius(std::complex<double> z){
     return std::abs(z + std::sqrt(z - 1.0)*std::sqrt(z+1.0));
 }
 
-
-// Routine to find the roots at the target points. 
-// Inputs: xhat, yhat, zhat = fiber coefficients in the Chebyshev basis 
-// (could be implemented using Legendre by changing eval_cheb routine). 
-// dxhat, dyhat, dzhat = fiber derivative (Xs) coefficients in the Chebyshev
-// basis. x0, y0, z0 = list of target coordinates. Ntarg = number of targets. 
-// tinit = vector of initial guesses at the targets
-// Outputs: 2 vectors, one with the roots and the other with whether or not 
-// we converged for each target
-std::tuple<std::vector<std::complex <double>>, std::vector<int> >rootfinder
-    (const std::vector<double> &xhat,const std::vector<double> &yhat,
-     const std::vector<double> &zhat,const std::vector<double> &dxhat,
-     const std::vector<double> &dyhat,const std::vector<double> &dzhat,
-     int n,std::vector<double> x0,std::vector<double> y0,std::vector<double> z0,
-     int Ntarg,std::vector<std::complex<double>> tinit)
-{
-    // Declare output arrays
-    std::vector < std::complex <double> > allRoots(Ntarg);
-    std::vector < int>  allConverged(Ntarg);
-    for (int iTarg=0; iTarg < Ntarg; iTarg++){
-        // Find roots using Newton and Muller
-        std::complex <double> t = tinit[iTarg];
-        double tol = 1e-10;
-        int maxiter_newton = 10;
-        int maxiter_muller = 10;
-        // === Newton
-        // Setup history variables (needed in Muller)
-        std::complex <double> Fp, tp, Fpp, tpp;
-        std::complex <double> dt, F, Fprime;
-        int converged = 0;
-        int iter;
-        double absres;
-        
-        for (iter=0; iter<maxiter_newton; iter++)
-        {
-            std::complex <double> x, y, z, xp, yp, zp;
-            std::complex <double> dx, dy, dz;
-            // Chebyshev eval
-            x = eval_cheb(xhat, t, n);
-            y = eval_cheb(yhat, t, n);
-            z = eval_cheb(zhat, t, n);
-            xp = eval_cheb(dxhat, t, n);
-            yp = eval_cheb(dyhat, t, n);
-            zp = eval_cheb(dzhat, t, n);
-            // Compute F and F'
-            dx = x-x0[iTarg];
-            dy = y-y0[iTarg];
-            dz = z-z0[iTarg];
-            F = dx*dx + dy*dy + dz*dz;
-            Fprime = 2.0*(dx*xp + dy*yp + dz*zp);
-            dt = -F/Fprime;
-            // Update history
-            tpp = tp;
-            Fpp = Fp;
-            Fp = F;
-            tp = t;
-            // Update root
-            t = t+dt;
-            absres = std::abs(dt);
-            if (absres < tol)
-            {
-                converged = 1;
-                break;
-            }
-        }
-        if (converged==1)
-        {
-            VERBINFO("Newton converged in %d iterations.\n", iter);
-            //std::cout << "The root " << t << "\n";
-            //return std::make_tuple(t,converged);
-        } else { 
-            // === Muller
-            VERBINFO("Newton did not converge after %d iterations (abs(dt)=%g), switching to Muller\n", iter, absres);
-            converged = 0;
-            for (iter=0; iter<maxiter_muller; iter++)
-            {
-                std::complex <double> x, y, z;
-                std::complex <double> dx, dy, dz;
-                std::complex <double> q, A, B, C, d1, d2;
-                // Chebyshev eval
-                x = eval_cheb(xhat, t, n);
-                y = eval_cheb(yhat, t, n);
-                z = eval_cheb(zhat, t, n);
-                dx = x-x0[iTarg];
-                dy = y-y0[iTarg];
-                dz = z-z0[iTarg];
-                F = dx*dx + dy*dy + dz*dz;
-                // Mullers method
-                q = (t-tp)/(tp - tpp);
-                A = q*F - q*(q+1.0)*Fp + q*q*Fpp;
-                B = (2.0*q+1.0)*F - (1.0+q)*(1.0+q)*Fp + q*q*Fpp;
-                C =(1.0+q)*F;
-                d1 = B + std::sqrt(B*B-4.0*A*C);
-                d2 = B - std::sqrt(B*B-4.0*A*C);
-                if (std::abs(d1) > std::abs(d2))
-                dt = -(t-tp)*2.0*C/d1;
-                else
-                dt = -(t-tp)*2.0*C/d2;
-                // Update history
-                tpp = tp;
-                Fpp = Fp;
-                Fp = F;
-                tp = t;
-                // Update root
-                t = t+dt;
-                absres = std::abs(dt);
-                if (absres < tol)
-                {
-                    converged = 1;
-                    break;
-                }
-            }
-            if (converged){
-                VERBINFO("Muller converged in %d iterations.\n", iter);
-            } else{
-            VERBINFO("Muller did not converge after %d iterations. abs(dt)=%g",
-                     iter, absres);
-            }
-        }
-        allRoots[iTarg] = t;
-        allConverged[iTarg] = converged;
-    }
-    return std::make_tuple(allRoots,allConverged);
-}
-
+// Rootfinding function. Inputs: (xhat, yhat, zhat) are vectors of the 
+// Chebyshev coefficients for the function. Likewise (dxhat, dyhat, dzhat)
+// are vectors of the Chebyshev coefficients for the derivative. 
+// n = number of Chebyshev coefficients. (x0,y0,z0) = coordinates of the target
+// point. tinit = initial guess, t = the root (initialized to tinit). 
+// Ouputs: int converged = whether root finder converged. t is also modified to be the root
 int Onerootfinder(const std::vector<double> &xhat,const std::vector<double> &yhat,
      const std::vector<double> &zhat,const std::vector<double> &dxhat,
      const std::vector<double> &dyhat,const std::vector<double> &dzhat,
@@ -285,9 +120,9 @@ int Onerootfinder(const std::vector<double> &xhat,const std::vector<double> &yha
      std::complex<double> &t)
 {
     // Find roots using Newton and Muller
-    double tol = 1e-10;
-    int maxiter_newton = 10;
-    int maxiter_muller = 10;
+    double tol = ROOT_FINDER_TOL;
+    int maxiter_newton = MAX_RF_ITERS;
+    int maxiter_muller = MAX_RF_ITERS;
     // === Newton
     // Setup history variables (needed in Muller)
     std::complex <double> Fp, tp, Fpp, tpp;
@@ -381,6 +216,7 @@ int Onerootfinder(const std::vector<double> &xhat,const std::vector<double> &yha
     return converged;
 }
 
+// Integrals for a given root. 
 void rsqrt_pow_integrals(std::complex<double> z, int N,
         std::vector <double> &I1,std::vector <double> &I3, std::vector <double> &I5)
 {
@@ -540,6 +376,10 @@ void pvand(int n, const std::vector<double> &alpha, std::vector<double> &x, cons
 
 }
 
+// Algorithm to actually compute the special quadrature weights. 
+// Inputs: n = number of nodes (usually 32), tnodes = coordinates on [-1,1] of the 
+// nodes, troot = complex root, w1s, w3s, w5s = initially empty n vectors that are filled 
+// to be the special quadrature weights, Lf = length of the fiber
 void specialWeights(int n, const std::vector <double> &tnodes, std::complex <double> troot,
             std::vector <double> &w1s, std::vector<double> &w3s, std::vector <double> &w5s, double Lf){
         // Compute the integrals
@@ -557,6 +397,8 @@ void specialWeights(int n, const std::vector <double> &tnodes, std::complex <dou
         }
 }
 
+// Python wrapper for specialWeights function above. This function 
+// actually returns the weights. 
 std::vector <double> specWtsPython(int n, const std::vector <double> &tnodes, std::complex <double> troot, double Lf){
     std::vector <double> w1s(n), w3s(n), w5s(n);
     specialWeights(n,tnodes,troot,w1s,w3s,w5s,Lf); // computes the weights
@@ -567,13 +409,30 @@ std::vector <double> specWtsPython(int n, const std::vector <double> &tnodes, st
     
 }
 
+// Python wrapper to find the root at the target point. 
+// See Onerootfinder for documentation. 
+// This routine returns the root and whether the solver converged as 
+// a tuple. 
+std::tuple<std::complex <double>, int >rootfinder
+    (const std::vector<double> &xhat,const std::vector<double> &yhat,
+     const std::vector<double> &zhat,const std::vector<double> &dxhat,
+     const std::vector<double> &dyhat,const std::vector<double> &dzhat,
+     int n,double x0,double y0,double z0, std::complex<double> tinit)
+{
+    // Declare output arrays
+    // Find roots using Newton and Muller
+    std::complex <double> t = tinit;
+    int converged = Onerootfinder(xhat,yhat,zhat,dxhat,dyhat,dzhat,n,
+        x0,y0,z0,tinit,t);
+    return std::make_tuple(t,converged);
+}
 
 
 
 PYBIND11_MODULE(SpecQuadUtils, m) {
     m.doc() = "C++ functions for the special quadrature"; // optional module docstring
 
-    m.def("rf_iguess", &rootfinder_initial_guess, "Initial guess for the rootfinder");
+    m.def("rf_iguess", &Onerootfinder_initial_guess, "Initial guess for the rootfinder");
     m.def("rootfinder", &rootfinder, "Find the root using Chebyshev series");
     m.def("specialWeights",&specWtsPython, "Integrals for special quadrature");
     

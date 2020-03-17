@@ -1,39 +1,54 @@
-         31035592 function calls (30457797 primitive calls) in 109.222 seconds
+         27811549 function calls (27031851 primitive calls) in 76.293 seconds
 
    Ordered by: internal time
+   List reduced from 6955 to 20 due to restriction <20>
 
    ncalls  tottime  percall  cumtime  percall filename:lineno(function)
-    28000   26.591    0.001   26.591    0.001 {built-in method EwaldUtils.RPYSBTKernel}
-    14232    5.788    0.000    5.788    0.000 {built-in method SpecQuadUtils.rootfinder}
-       84    5.276    0.063    5.276    0.063 {built-in method finufftpy_cpp.finufft3d1_cpp}
-       28    4.014    0.143   57.356    2.048 fiberCollection.py:254(CorrectEwaldSpecialQuad)
-   475618    3.335    0.000    3.335    0.000 {built-in method numpy.dot}
-    99924    3.235    0.000    3.235    0.000 EwaldNumba.py:117(SBTKSpl)
-    17774    3.233    0.000    3.241    0.000 ffi.py:112(__call__)
-       84    3.219    0.038    3.219    0.038 {built-in method finufftpy_cpp.finufft3d2_cpp}
-    99924    2.776    0.000    7.739    0.000 FibCollocationDiscretization.py:118(specialWeightsfromIntegrals)
-  1255926    2.555    0.000    2.555    0.000 {built-in method numpy.array}
-    14000    2.492    0.000    8.140    0.001 FibCollocationDiscretization.py:375(calcM)
-     7000    2.272    0.000   29.058    0.004 TargetFiberCorrector.py:22(SpecQuadVel)
-       28    1.932    0.069    1.932    0.069 {built-in method EwaldUtils.RPYNKerPairs}
-       28    1.836    0.066    1.836    0.066 {method 'query_ball_tree' of 'scipy.spatial.ckdtree.cKDTree' objects}
-   284780    1.604    0.000    2.227    0.000 numerictypes.py:578(_can_coerce_all)
-   112000    1.500    0.000    1.500    0.000 {built-in method FiberUtils.FPDensity}
-     7000    1.483    0.000    1.627    0.000 linalg.py:2104(lstsq)
-   128388    1.471    0.000    5.338    0.000 decomp_lu.py:90(lu_solve)
-       28    1.465    0.052   10.255    0.366 RPYVelocityEvaluator.py:97(EwaldFarVel)
-    23502    1.455    0.000    1.764    0.000 linalg.py:327(solve)
-   252488    1.295    0.000    1.678    0.000 numeric.py:1121(outer)
-     7000    0.980    0.000    3.840    0.001 FibCollocationDiscretization.py:297(calcFPVelocity)
-   448033    0.824    0.000    1.414    0.000 twodim_base.py:154(eye)
-   566043    0.815    0.000    0.815    0.000 {built-in method numpy.zeros}
-    14232    0.791    0.000   10.817    0.001 TargetFiberCorrector.py:95(calcRoots)
-    28464    0.790    0.000    1.281    0.000 chebfcns.py:150(evalSeries)
-       28    0.754    0.027    0.754    0.027 {built-in method SpecQuadUtils.determineCorQuad}
-   511388    0.720    0.000    3.808    0.000 fromnumeric.py:54(_wrapfunc)
-    14000    0.695    0.000    1.875    0.000 special_matrices.py:473(block_diag)
-       28    0.689    0.025   12.426    0.444 fiberCollection.py:111(linSolveAllFibers)
-   128390    0.677    0.000    3.666    0.000 blas.py:297(_get_funcs)
-       28    0.671    0.024    9.557    0.341 fiberCollection.py:222(_calcSelfNLVelocities)
-   511947    0.610    0.000    0.610    0.000 {method 'reshape' of 'numpy.ndarray' objects}
-       28    0.570    0.020    0.571    0.020 {method 'query_pairs' of 'scipy.spatial.ckdtree.cKDTree' objects}
+       28   21.726    0.776   21.726    0.776 {built-in method EwaldUtils.RPYSBTAllFibers}
+       84    6.172    0.073    6.172    0.073 {built-in method finufftpy_cpp.finufft3d1_cpp}
+       84    5.126    0.061    5.126    0.061 {built-in method finufftpy_cpp.finufft3d2_cpp}
+    17924    3.226    0.000    3.233    0.000 ffi.py:112(__call__)
+    14000    2.268    0.000    8.185    0.001 FibCollocationDiscretization.py:375(calcM)
+     7000    2.043    0.000    2.173    0.000 linalg.py:2127(lstsq)
+1336022/1328427    1.602    0.000    8.792    0.000 {built-in method numpy.core._multiarray_umath.implement_array_function}
+       28    1.479    0.053    1.479    0.053 {built-in method EwaldUtils.RPYNKerPairs}
+   913410    1.452    0.000    1.454    0.000 {built-in method numpy.array}
+   112000    1.371    0.000    1.371    0.000 {built-in method FiberUtils.FPDensity}
+       28    1.335    0.048   24.891    0.889 fiberCollection.py:273(CorrectEwaldSpecialQuad)
+       28    1.171    0.042   12.678    0.453 RPYVelocityEvaluator.py:97(EwaldFarVel)
+       28    1.051    0.038    1.051    0.038 {method 'query_ball_tree' of 'scipy.spatial.ckdtree.cKDTree' objects}
+   224024    0.961    0.000    1.271    0.000 numeric.py:824(outer)
+     7000    0.883    0.000    3.618    0.001 FibCollocationDiscretization.py:297(calcFPVelocity)
+    23502    0.866    0.000    1.159    0.000 linalg.py:323(solve)
+   448033    0.801    0.000    1.313    0.000 twodim_base.py:154(eye)
+       28    0.652    0.023   10.658    0.381 fiberCollection.py:129(linSolveAllFibers)
+    14000    0.646    0.000    2.041    0.000 special_matrices.py:474(block_diag)
+       28    0.626    0.022    9.014    0.322 fiberCollection.py:241(calcSelfNLVelocities)
+
+         27811549 function calls (27031851 primitive calls) in 76.293 seconds
+
+   Ordered by: cumulative time
+   List reduced from 6955 to 20 due to restriction <20>
+
+   ncalls  tottime  percall  cumtime  percall filename:lineno(function)
+    984/1    0.030    0.000   76.302   76.302 {built-in method builtins.exec}
+        1    0.002    0.002   76.302   76.302 SBTMain.py:1(<module>)
+       10    0.014    0.001   63.390    6.339 TemporalIntegrator.py:39(updateAllFibers)
+       28    0.112    0.004   51.344    1.834 fiberCollection.py:84(nonLocalBkgrndVelocity)
+       28    1.335    0.048   24.891    0.889 fiberCollection.py:273(CorrectEwaldSpecialQuad)
+       28   21.726    0.776   21.726    0.776 {built-in method EwaldUtils.RPYSBTAllFibers}
+       28    0.083    0.003   14.605    0.522 RPYVelocityEvaluator.py:74(calcBlobTotalVel)
+    651/8    0.003    0.000   12.850    1.606 <frozen importlib._bootstrap>:966(_find_and_load)
+    651/8    0.002    0.000   12.849    1.606 <frozen importlib._bootstrap>:936(_find_and_load_unlocked)
+    635/8    0.003    0.000   12.847    1.606 <frozen importlib._bootstrap>:651(_load_unlocked)
+    538/7    0.001    0.000   12.846    1.835 <frozen importlib._bootstrap_external>:672(exec_module)
+    929/9    0.001    0.000   12.842    1.427 <frozen importlib._bootstrap>:211(_call_with_frames_removed)
+       28    1.171    0.042   12.678    0.453 RPYVelocityEvaluator.py:97(EwaldFarVel)
+        1    0.000    0.000   12.229   12.229 fiberCollection.py:1(<module>)
+        1    0.000    0.000   11.743   11.743 EwaldNumba.py:1(<module>)
+    63/45    0.000    0.000   10.885    0.242 decorators.py:183(wrapper)
+  1294/11    0.003    0.000   10.877    0.989 compiler_lock.py:29(_acquire_compile_lock)
+    72/10    0.001    0.000   10.851    1.085 dispatcher.py:744(compile)
+    23/10    0.000    0.000   10.850    1.085 dispatcher.py:76(compile)
+    23/10    0.000    0.000   10.850    1.085 dispatcher.py:83(_compile_cached)
+
