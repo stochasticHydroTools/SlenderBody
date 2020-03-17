@@ -421,6 +421,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self._w = cf.chebWts(self._N,[0,self._L],chebGridType);
         # Chebyshev initializations
         self._Lmat = cf.CoeffstoValuesMatrix(self._N,self._N,chebGridType);
+        self._LUCoeffs = lu_factor(self._Lmat);
         self.initIs();
         self.initFPMatrix();
         self.initLocalcvals();
@@ -490,9 +491,21 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         Inputs: Xarg = upsampled fiber representation
         Outputs: the coefficients and derivative coefficients of the upsampled
         representation
+        THIS METHOD SHOULD BE REMOVED LATER
         """
         Xcoeffs= lu_solve(self._UpsampCoeffLU,Xarg,check_finite=False);
         Xprimecoeffs = cf.diffCoefficients(Xcoeffs,self._nptsUpsample);
+        return Xcoeffs,Xprimecoeffs;
+    
+    def Coefficients(self,Xarg):
+        """
+        Get the coefficients of the fiber represenation. 
+        Inputs: Xarg = fiber representation
+        Outputs: the coefficients and derivative coefficients of the
+        representation
+        """
+        Xcoeffs= lu_solve(self._LUCoeffs,Xarg,check_finite=False);
+        Xprimecoeffs = cf.diffCoefficients(Xcoeffs,self._N);
         return Xcoeffs,Xprimecoeffs;
 
     def evaluatePosition(self,tapprox,coeffs):

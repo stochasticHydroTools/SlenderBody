@@ -2,12 +2,19 @@
 #include <pybind11/stl.h>
 #include <stdio.h>
 #include <math.h>
+#include <omp.h>
+#include <algorithm>
+#include "SpecQuadUtils.cpp"
 
 //This is a pybind11 module of C++ functions that are being used
 //for non-local velocity calculations in the SBT code.
 
 //The RPY near field can be written as M_near = F(r,xi,a)*I+G(r,xi,a)*(I-RR)
 //The next 2 functions are those F and G functions.
+#pragma omp declare reduction(vec_double_plus : std::vector<double> : \
+    std::transform(omp_out.begin(), omp_out.end(), omp_in.begin(), omp_out.begin(), std::plus<double>())) \
+    initializer(omp_priv = decltype(omp_orig)(omp_orig.size()))
+
 double Fnear(double r, double xi, double a){
 	double sqrtpi = sqrt(M_PI);
 	if (r < 1e-10){ // Taylor series
@@ -235,11 +242,11 @@ std::vector<double> RPYTot(std::vector<double> rvec, std::vector<double> force,
 // (force densities * weights) along the fiber, mu = fluid viscosity, a = radius of the blobs,
 // SBT = 1 for SBT kernel, 0 for RPY kernel
 // Return: velocity at the targets as an array (stacked by point)
-std::vector<double> RPYSBTKernel(int Ntarg, std::vector<double> xtarg, std::vector<double> ytarg,
-                            std::vector<double> ztarg, int Nsrc, std::vector<double> xsrc,
-                            std::vector<double> ysrc, std::vector<double> zsrc,
-                            std::vector<double> fx, std::vector<double> fy, std::vector<double> fz,
-                            double mu, double a, int SBT){
+std::vector<double> RPYSBTKernel(int Ntarg, const std::vector<double> &xtarg, const std::vector<double> &ytarg,
+                            const std::vector<double> &ztarg, int Nsrc, const std::vector<double> &xsrc,
+                            const std::vector<double> &ysrc, const std::vector<double> &zsrc,
+                            const std::vector<double> &fx, const std::vector<double> &fy, 
+                            const std::vector<double> &fz, double mu, double a, int SBT){
     std::vector<double> rvec(3);
     std::vector<double> forces(3);
     std::vector<double> utargs(Ntarg*3,0.0);
@@ -259,6 +266,40 @@ std::vector<double> RPYSBTKernel(int Ntarg, std::vector<double> xtarg, std::vect
         }
     }
     return utargs;
+}
+
+std::vector<double> OneRPYSBTKernel(double xtarg, double ytarg,double ztarg,int Nsrc,
+                            const std::vector<double> &xsrc,const std::vector<double> &ysrc,
+                            const std::vector<double> &zsrc,const std::vector<double> &fx,
+                            const std::vector<double> &fy,
+                            const std::vector<double> &fz, double mu, double a, int SBT){
+    std::vector<double> rvec(3);
+    std::vector<double> forces(3);
+    std::vector<double> utargs(3,0.0);
+    std::vector<double> uadd(3);
+    for (int iSrc=0; iSrc < Nsrc; iSrc++){
+        rvec[0]=xtarg-xsrc[iSrc];
+        rvec[1]=ytarg-ysrc[iSrc];
+        rvec[2]=ztarg-zsrc[iSrc];
+        forces[0]=fx[iSrc];
+        forces[1]=fy[iSrc];
+        forces[2]=fz[iSrc];
+        uadd = RPYTot(rvec,forces,mu,a,SBT);
+        for (int d=0; d<3; d++){
+            utargs[d]+=uadd[d];
+        }
+    }
+    return utargs;
+}
+
+template<typename T>
+std::vector<T> slice(std::vector<T> const &v, int m, int n)
+{
+	auto first = v.cbegin() + m;
+	auto last = v.cbegin() + n + 1;
+
+	std::vector<T> vec(first, last);
+	return vec;
 }
 
 std::vector<double> SBTKernelSplit(std::vector<double> targpt, int N, std::vector<double> xsrc,
@@ -288,6 +329,153 @@ std::vector<double> SBTKernelSplit(std::vector<double> targpt, int N, std::vecto
         }
     }
     return utarg;
+}
+
+// This method currently does all the special quad except for the targets which need 2 panels. 
+// Those are assumed to be such a small number that they can be done in Python. 
+std::tuple < std::vector <double>, std::vector<int>, std::vector <std::complex <double>>, std::vector <double> >
+            RPYSBTAllFibers(int Nfib, int Ntarg, int Ncors, const std::vector <int> &numTargbyFib,
+            const std::vector <int> &cumTargbyFib, const std::vector <int> sortedTargs,
+            const std::vector<double> &xtarg,const std::vector<double> &ytarg, 
+            const std::vector<double> &ztarg, int NperFib, const std::vector<double> &xAllFibs, 
+            const std::vector<double> &yAllFibs, const std::vector<double> &zAllFibs, 
+            const std::vector<double> &fxall, const std::vector<double> &fyall, 
+            const std::vector<double> &fzall, const std::vector<double> &xUpFibs, 
+            const std::vector<double> &yUpFibs, const std::vector<double> &zUpFibs, 
+            const std::vector<double> &fxUp, const std::vector<double> &fyUp, 
+            const std::vector<double> &fzUp,const std::vector<double> &forceDxUp, const std::vector<double> &forceDyUp, 
+            const std::vector<double> &forceDzUp,int nUpsample, const std::vector<int> sortedMethods,
+            int nCoeffs, const std::vector<double> &xHatAllFibs, const std::vector<double> &yHatAllFibs,
+            const std::vector<double> &zHatAllFibs, const std::vector<double> &dxHatAllFibs, 
+            const std::vector<double> &dyHatAllFibs,const std::vector<double> &dzHatAllFibs,
+            const std::vector<double> &CLxHatAllFibs,const std::vector<double> &CLyHatAllFibs,
+            std::vector<double> &CLzHatAllFibs,const std::vector<double> tnodes, double rho_crit, double mu, double a,
+            double dstarCL, double dstarInterp, double dstar2panels, double Lf, double epsilon){
+    std::vector <double> allus(3*Ntarg,0.0);
+    std::vector <int> sqneeded(Ncors,0);
+    std::vector <std::complex <double>> allRoots(Ncors); 
+    std::vector <double> dstars(Ncors);
+    //#pragma omp parallel for reduction(vec_double_plus : allus)
+    for (int iFib=0; iFib < Nfib; iFib++){
+        int nT = numTargbyFib[iFib];
+        int targStart = cumTargbyFib[iFib];
+        // Fill arrays for points and forces for fiber
+        std::vector <double> fibptsX = slice(xAllFibs,iFib*NperFib,(iFib+1)*NperFib);
+        std::vector <double> fibptsY = slice(yAllFibs,iFib*NperFib,(iFib+1)*NperFib);
+        std::vector <double> fibptsZ = slice(zAllFibs,iFib*NperFib,(iFib+1)*NperFib);
+        std::vector <double> fibforceX = slice(fxall,iFib*NperFib,(iFib+1)*NperFib);
+        std::vector <double> fibforceY = slice(fyall,iFib*NperFib,(iFib+1)*NperFib);
+        std::vector <double> fibforceZ = slice(fzall,iFib*NperFib,(iFib+1)*NperFib);
+        std::vector <double> fibUpforceDX = slice(forceDxUp,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> fibUpforceDY = slice(forceDyUp,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> fibUpforceDZ = slice(forceDzUp,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> fibUpX = slice(xUpFibs,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> fibUpY = slice(yUpFibs,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> fibUpZ = slice(zUpFibs,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> forceUpX = slice(fxUp,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> forceUpY = slice(fyUp,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> forceUpZ = slice(fzUp,iFib*nUpsample,(iFib+1)*nUpsample);
+        std::vector <double> fibhatX = slice(xHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibhatY = slice(yHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibhatZ = slice(zHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibhatdX = slice(dxHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibhatdY = slice(dyHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibhatdZ = slice(dzHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibCLvhatX = slice(CLxHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibCLvhatY = slice(CLyHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        std::vector <double> fibCLvhatZ = slice(CLzHatAllFibs,iFib*nCoeffs,(iFib+1)*nCoeffs);
+        for (int iT=0; iT < nT; iT++){
+            std::vector <double> uRPY(3,0.0);
+            std::vector <double> uSBT(3,0.0);
+            std::vector <double> CLpart(3,0.0);
+            double CLwt = 0.0;
+            double SBTwt = 1.0;
+            // Subtract RPY kernel
+            uRPY = OneRPYSBTKernel(xtarg[targStart+iT],ytarg[targStart+iT],
+                ztarg[targStart+iT],NperFib,fibptsX,fibptsY,fibptsZ,fibforceX,
+                fibforceY,fibforceZ,mu,a,0);
+            if (sortedMethods[targStart+iT]==1){
+                // Correct with upsampling (SBT kernel)
+                uSBT = OneRPYSBTKernel(xtarg[targStart+iT],ytarg[targStart+iT],
+                    ztarg[targStart+iT],nUpsample,fibUpX,fibUpY,fibUpZ,forceUpX,
+                    forceUpY,forceUpZ,mu,a,1);
+            } else if (sortedMethods[targStart+iT]==2){
+                // Special quadrature
+                // Calculate root
+                std::complex<double> tinit = Onerootfinder_initial_guess(tnodes,fibUpX,fibUpY,fibUpZ,nUpsample,
+                    xtarg[targStart+iT],ytarg[targStart+iT],ztarg[targStart+iT]);
+                if (bernstein_radius(tinit) > 1.5*rho_crit){
+                    // Direct quad if initial guess is too far
+                    uSBT = OneRPYSBTKernel(xtarg[targStart+iT],ytarg[targStart+iT],
+                        ztarg[targStart+iT],nUpsample,fibUpX,fibUpY,fibUpZ,forceUpX,
+                        forceUpY,forceUpZ,mu,a,1);
+                } else{
+                    // Compute root
+                    std::complex <double> troot = tinit;
+                    int converged = Onerootfinder(fibhatX,fibhatY,fibhatZ,fibhatdX,fibhatdY,fibhatdZ,
+                        nCoeffs,xtarg[targStart+iT],ytarg[targStart+iT],ztarg[targStart+iT],tinit,troot);
+                    if (converged){
+                        sqneeded[targStart+iT] = 1;
+                        allRoots[targStart+iT] = troot;
+                        double tapprox = real(troot);
+                        if (tapprox < -1.0){
+                            tapprox = -1.0;
+                        } else if (tapprox > 1.0){
+                            tapprox = 1.0;
+                        }
+                        // Compute the closest point on the fiber
+                        double dxFib = eval_cheb(fibhatX,tapprox,nCoeffs)-xtarg[targStart+iT];
+                        double dyFib = eval_cheb(fibhatY,tapprox,nCoeffs)-ytarg[targStart+iT];
+                        double dzFib = eval_cheb(fibhatZ,tapprox,nCoeffs)-ztarg[targStart+iT];
+                        double dstar = sqrt(dxFib*dxFib+dyFib*dyFib+dzFib*dzFib);
+                        dstars[targStart+iT] = dstar;
+                        CLwt = std::min((dstarInterp-dstar)/(dstarInterp-dstarCL),1.0); // takes care of very close ones
+                        CLwt = std::max(CLwt,0.0); // far ones
+                        SBTwt = 1.0-CLwt;
+                        if (dstar < dstarInterp){
+                            // Centerline velocity combo
+                            CLpart[0] =  eval_cheb(fibCLvhatX,tapprox,nCoeffs);
+                            CLpart[1] =  eval_cheb(fibCLvhatY,tapprox,nCoeffs);
+                            CLpart[2] =  eval_cheb(fibCLvhatZ,tapprox,nCoeffs);
+                            if (dstar < dstarCL){ //no need to continue with special quad
+                                sqneeded[targStart+iT] = 0; 
+                            }
+                        }
+                        if (bernstein_radius(troot) > rho_crit){
+                            // Direct quad if possible to 3 digits
+                            uSBT = OneRPYSBTKernel(xtarg[targStart+iT],ytarg[targStart+iT],
+                                ztarg[targStart+iT],nUpsample,fibUpX,fibUpY,fibUpZ,forceUpX,
+                                forceUpY,forceUpZ,mu,a,1);
+                            sqneeded[targStart+iT] = 0;
+                        }
+                        if (sqneeded[targStart+iT] > 0 && dstar > dstar2panels){
+                            // Compute the weights for 1 panel direct
+                            std::vector <double> w1(nUpsample,0.0);
+                            std::vector <double> w3(nUpsample,0.0);
+                            std::vector <double> w5(nUpsample,0.0);
+                            specialWeights(nUpsample,tnodes,troot,w1,w3,w5,Lf);
+                            std::vector <double> target(3);
+                            target[0] = xtarg[targStart+iT];
+                            target[1] = ytarg[targStart+iT];
+                            target[2] = ztarg[targStart+iT];
+                            uSBT = SBTKernelSplit(target,nUpsample,fibUpX,fibUpY,fibUpZ,fibUpforceDX, 
+                                fibUpforceDY, fibUpforceDZ, mu, epsilon, Lf, w1, w3, w5);
+                            sqneeded[targStart+iT] = 0; 
+                        } // end special quad needed
+                    } else {
+                        uSBT = OneRPYSBTKernel(xtarg[targStart+iT],ytarg[targStart+iT],
+                        ztarg[targStart+iT],nUpsample,fibUpX,fibUpY,fibUpZ,forceUpX,
+                        forceUpY,forceUpZ,mu,a,1);
+                    } // end if initial root converged
+                }
+            }
+            for (int d=0; d < 3; d++){
+                allus[3*sortedTargs[targStart+iT]+d]+= SBTwt*uSBT[d] + CLwt*CLpart[d] -uRPY[d];
+            }
+        }
+        targStart+= nT;
+    }
+    return std::make_tuple(allus,sqneeded,allRoots, dstars);
 }
 
 std::tuple<int, std::vector<double>> findQtype(std::vector<double> targ, int Npts, std::vector<double> xfib,
@@ -320,6 +508,78 @@ std::tuple<int, std::vector<double>> findQtype(std::vector<double> targ, int Npt
     }
     return std::make_tuple(qtype,shift);
 }
+
+// Method to determine the quadrature for Chebyshev and uniform points. 
+// Inputs: numNeighbs = vector with the number of uniform neighbors for each Chebyshev point, 
+// sortedNeighbs = stacked vector of neighbors sorted for each Chebyshev point,
+// xCheb, yCheb, zCheb = Chebyshev point coordinates, NCheb = number of Chebyshev points,
+// xUni, yUni, zUni = uniform point coordinates, NuniperFib = number of uniform points on each fiber, 
+// g = strain in the coordinate system, Lens = vector of periodic Lenghts, q1cut = cutoff for type 1
+// special quad, q2cut = cutoff for type 2 special quad. 
+std::tuple <std::vector<int>, std::vector<int>, std::vector<int>, std::vector<double>>
+determineCorQuad(std::vector<int> numNeighbs, std::vector<int> sortedNeighbs, std::vector<double> xCheb,
+    std::vector<double> yCheb,std::vector<double> zCheb, int NCheb, std::vector<double> xUni,
+    std::vector<double> yUni,std::vector<double> zUni, int NuniperFib, double g, std::vector<double> Lens,
+    double q1cut, double q2cut){
+    std::vector <int> targets;
+    std::vector <int> fibers;
+    std::vector <int> methods;
+    std::vector <double> shifts;
+    std::vector <double> rvec(3,0.0);
+    double xShift, yShift, zShift;
+    int qtype = 0;
+    int NoTwoFound = 1;
+    int nePt, neFib, iFib;
+    int neighbStart=0;
+    double nr;
+    double rmin = q1cut;
+    for (int iPt=0; iPt < NCheb; iPt++){ // loop over points
+        iFib = iPt / NuniperFib;
+        for (int iNe=0; iNe < numNeighbs[iPt]; iNe++){ // loop over neighbors
+            nePt = sortedNeighbs[neighbStart+iNe];
+            neFib = nePt/NuniperFib;
+            if (NoTwoFound && neFib!=iFib){
+                rvec[0] = xCheb[iPt]-xUni[nePt];
+                rvec[1] = yCheb[iPt]-yUni[nePt];
+                rvec[2] = zCheb[iPt]-zUni[nePt];
+                rvec = calcShifted(rvec,g,Lens[0],Lens[1],Lens[2]);
+                nr = sqrt(rvec[0]*rvec[0]+rvec[1]*rvec[1]+rvec[2]*rvec[2]);
+                if (nr < q2cut){
+                    NoTwoFound = 0;
+                    qtype = 2;
+                    xShift = xCheb[iPt] - xUni[nePt] - rvec[0];
+                    yShift = yCheb[iPt] - yUni[nePt] - rvec[1];
+                    zShift = zCheb[iPt] - zUni[nePt] - rvec[2];
+                } else if (nr < rmin){
+                    rmin = nr;
+                    qtype = 1;
+                    xShift = xCheb[iPt] - xUni[nePt] - rvec[0];
+                    yShift = yCheb[iPt] - yUni[nePt] - rvec[1];
+                    zShift = zCheb[iPt] - zUni[nePt] - rvec[2];
+                }
+            } // end determine quad
+            // Stop once we reach the end of the neFib uniform points
+            if (iNe==numNeighbs[iPt]-1 || sortedNeighbs[neighbStart+iNe+1]/NuniperFib != neFib){
+                if (qtype > 0){
+                    // Add to the lists
+                    //std::cout << "Doint point " << iPt << " and fiber " << neFib << "  with qtype " << qtype << "\n";
+                    targets.push_back(iPt);
+                    fibers.push_back(neFib);
+                    methods.push_back(qtype);
+                    shifts.push_back(xShift);
+                    shifts.push_back(yShift);
+                    shifts.push_back(zShift);
+                }
+                // Reset variables
+                rmin = q1cut;
+                qtype = 0;
+                NoTwoFound = 1;
+            }
+        }
+        neighbStart+=numNeighbs[iPt];
+    }
+    return std::make_tuple(targets,fibers,methods,shifts);
+}
                                             
 
 
@@ -333,8 +593,10 @@ PYBIND11_MODULE(EwaldUtils, m) {
     m.def("RPYNKer", &RPYNKer, "Near field kernel for the RPY tensor");
     m.def("RPYTot", &RPYTot, "Total kernel for the RPY tensor");
     m.def("RPYSBTKernel", &RPYSBTKernel, "RPY/SBT quadrature");
+    m.def("RPYSBTAllFibers", &RPYSBTAllFibers, "Many fiber");
     m.def("calcShifted", &calcShifted, "Shift in primed variables to [-L/2, L/2]^3");
     m.def("RPYNKerPairs", &RPYNKerPairs, "RPY near sum done in pairs");
     m.def("findQtype", &findQtype, "select the near field quad");
     m.def("SBTKernelSplit",&SBTKernelSplit,"Compute SBT kernel with special wts");
+    m.def("determineCorQuad",&determineCorQuad, "Make list of needed quadrature routines");
 }

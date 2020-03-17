@@ -11,6 +11,11 @@ from math import sqrt
 # Definitions
 upsampneeded = 0.15*1.05; # upsampneeded*Lfiber = distance where upsampling is needed
 specneeded = 0.06*1.20; #specneed*Lfiber = distance where special quad is needed
+rho_crit = 1.114; # critical Bernstein radius for special quad
+dstarCenterLine = 2.2; # dstarCenterLine*eps*L is distance where we set v to centerline v
+dstarInterpolate = 4.4; # dstarInterpolate*eps*L is distance where we start blending centerline
+                        # and quadrature result
+dstar2panels = 8.8; #dstar2panels*eps*L is distance below which we need 2 panels for special quad
 
 class fiberCollection(object):
 
@@ -111,9 +116,21 @@ class fiberCollection(object):
         # First determine which sets of points and targets need corrections
         targs, fibers, methods, shifts = self.determineQuadLists(X_nonLoc,uniPoints,Dom);
         # Loop over the points that need corrections and do the corrections
+        import time
         centerVels = np.reshape(finitePart+onlyLocal,(self._Npf*self._Nfib,3)); # argument for corrections
+        t =time.time();
         corVels = self.CorrectEwaldSpecialQuad(np.array(fibers),np.array(targs),X_nonLoc,forceDs,\
                         forces,np.array(methods),shifts,centerVels);
+        print(np.amax(np.abs(corVels)));
+        print('Time to do first method %f' %(time.time()-t));
+        t = time.time();
+        corVels2 = self.CorrectEwaldSpecialQuad2(np.array(fibers),np.array(targs),X_nonLoc,forceDs,\
+                        forces,np.array(methods),shifts,centerVels);
+        print(np.amax(np.abs(corVels2)));
+        print('Time to do second method %f' %(time.time()-t));
+        print('Difference %f' %(np.amax(np.abs(corVels-corVels2)))); 
+        #import sys
+        #sys.exit()
         EwaldVelocity+=corVels;
         # Return the velocity due to the other fibers + the finite part integral velocity
         return np.reshape(EwaldVelocity+BkgrndFlow,totnum*3)+finitePart;
@@ -277,6 +294,10 @@ class fiberCollection(object):
         subVels = np.zeros((self._Npf*self._Nfib,3));
         nUpsample = self._fiberDisc.getNumUpsample();
         w_upsampled = np.reshape(self._fiberDisc.getUpsampledWeights(),(nUpsample,1));
+        #targets = targets[np.argsort(fibers)];
+        #methods = methods[np.argsort(fibers)];
+        #shifts = shifts[np.argsort(fibers),:];
+        #fibers = fibers[np.argsort(fibers)];
         for iFib in range(self._Nfib):
             targNums = targets[fibers==iFib];
             targPts = X_nonLoc[targNums,:]-shifts[fibers==iFib,:];
@@ -301,15 +322,91 @@ class fiberCollection(object):
             # The ones left over are for special quadrature
             t2Targs = targNums[qtypesAll==2];
             target2Points = targPts[qtypesAll==2,:];
+            if (len(t2Targs) > 0):
+                # Upsample to 2 panels
+                X2Pan = self._fiberDisc.upsample2Panels(X_nonLoc[rowinds,:]);
+                forceD2Pan = self._fiberDisc.upsample2Panels(forceDs[rowinds,:]);
+                # Vectorized version for special quadrature values
+                cvelsV = TFibCorVec.SpecQuadVel(len(t2Targs),target2Points,self._fiberDisc,
+                        Xup, X2Pan,forceUp,forceDUp,forceD2Pan,\
+                        centerVels[rowinds,:],cVelUpsamp,w_upsampled,\
+                        self._epsilon,self._Lf,self._aRPY,self._mu,self._Npf,nUpsample);
+                subVels[t2Targs,:]+=cvelsV; 
+        return subVels;
+
+    def CorrectEwaldSpecialQuad2(self,fibers,targets,X_nonLoc,forceDs,forces,methods,shifts,centerVels):
+        """
+        Method to correct the results of Ewald splitting with special quadrature. 
+        Inputs: fibers, targets = one-d integer arrays that have, respectively, the fiber number and 
+        target number that need to be corrected with some new form of quadratur. 
+        X_nonLoc = position arguments as tot#pts x 3 array, forceDs = force densities as tot#pts x 3 array, 
+        forces = forceDs*weights on N point grid as a tot#pts x 3 array, methods = types of corrections for 
+        each pair (1 for 32 point upsampled direct quad, 2 for special quad), shifts = periodic shifts in the
+        targets as a #ofcorrections x 3 array, centerVels = tot#ofpts x 3 array that has the velocity 
+        (Local + FP integral) on the fiber centerline for each point
+        Output: a tot#ofpts x 3 array of correction velocites
+        """
+        subVels = np.zeros((self._Nfib*self._Npf,3));
+        numTsbyFib = np.zeros(self._Nfib,dtype=int);
+        # Sort the targets
+        sortedTargs = targets[np.argsort(fibers)];
+        sortedMethods = methods[np.argsort(fibers)];
+        sortedShifts = shifts[np.argsort(fibers),:];
+        targPts = X_nonLoc[sortedTargs,:]-sortedShifts;
+        nUpsample = self._fiberDisc.getNumUpsample();
+        w_upsampled = np.reshape(self._fiberDisc.getUpsampledWeights(),(nUpsample,1));
+        allFibsUpsampled = np.zeros((nUpsample*self._Nfib,3));
+        allForceDsUpsampled = np.zeros((nUpsample*self._Nfib,3));
+        allForcesUpsampled = np.zeros((nUpsample*self._Nfib,3));
+        X_coeffs = np.zeros((self._Npf*self._Nfib,3));
+        deriv_cos = np.zeros((self._Npf*self._Nfib,3));
+        CLv_cos = np.zeros((self._Npf*self._Nfib,3));
+        for iFib in range(self._Nfib):
+            numTsbyFib[iFib] = len(targets[fibers==iFib]);
+            rowinds = self.getRowInds(iFib);
+            uprowinds = range(iFib*nUpsample,(iFib+1)*nUpsample);
+            allFibsUpsampled[uprowinds,:] = self._fiberDisc.upsampleGlobally(X_nonLoc[rowinds,:]);
+            allForceDsUpsampled[uprowinds,:] = self._fiberDisc.upsampleGlobally(forceDs[rowinds,:]);
+            allForcesUpsampled[uprowinds,:] = self._fiberDisc.upsampleGlobally(forceDs[rowinds,:])*w_upsampled;
+            X_coeffs[rowinds,:], deriv_cos[rowinds,:] = self._fiberDisc.Coefficients(X_nonLoc[rowinds,:]);
+            CLv_cos[rowinds,:], _ = self._fiberDisc.Coefficients(centerVels[rowinds,:]);
+        cumTsbyFib = np.cumsum(numTsbyFib);
+        cumTsbyFib[1:] = cumTsbyFib[0:len(cumTsbyFib)-1].copy();
+        cumTsbyFib[0] = 0;
+        # Subtract the Ewald value at all the targets (free space RPY kernel)
+        updatesSpecial = ewc.RPYSBTAllFibers(self._Nfib,self._Nfib*self._Npf,len(sortedTargs),numTsbyFib,cumTsbyFib,sortedTargs,\
+            targPts[:,0],targPts[:,1],targPts[:,2],self._Npf,X_nonLoc[:,0],X_nonLoc[:,1],X_nonLoc[:,2],\
+            forces[:,0],forces[:,1],forces[:,2],allFibsUpsampled[:,0],allFibsUpsampled[:,1],\
+            allFibsUpsampled[:,2],allForcesUpsampled[:,0],allForcesUpsampled[:,1],allForcesUpsampled[:,2],\
+            allForceDsUpsampled[:,0],allForceDsUpsampled[:,1],allForceDsUpsampled[:,2],\
+            nUpsample,sortedMethods,self._Npf,X_coeffs[:,0],X_coeffs[:,1],X_coeffs[:,2],deriv_cos[:,0],\
+            deriv_cos[:,1],deriv_cos[:,2],CLv_cos[:,0],CLv_cos[:,1],CLv_cos[:,2],self._fiberDisc.getSpecialQuadNodes(),\
+            rho_crit,self._mu,self._aRPY,dstarCenterLine*self._epsilon*self._Lf,dstarInterpolate*self._epsilon*self._Lf,\
+            dstar2panels*self._epsilon*self._Lf,self._Lf, self._epsilon);
+        subVels = np.reshape(updatesSpecial[0],(self._Nfib*self._Npf,3));
+        sqneeded = np.array(updatesSpecial[1]);
+        roots = np.array(updatesSpecial[2]);
+        dstars = np.array(updatesSpecial[3]);
+        tstart = 0;
+        import time
+        t = time.time();
+        for iFib in range(self._Nfib):
+            rowinds = self.getRowInds(iFib);
+            trange = np.arange(tstart,tstart+numTsbyFib[iFib]);
+            sqrange = sqneeded[trange];
+            # Upsample the fiber (RE-DO THIS PART and only 2 panels if we need!)
+            # The ones left over are for special quadrature
+            t2dstars = dstars[trange[sqrange==1]];
+            target2Points = targPts[trange[sqrange==1],:];
             # Upsample to 2 panels
             X2Pan = self._fiberDisc.upsample2Panels(X_nonLoc[rowinds,:]);
             forceD2Pan = self._fiberDisc.upsample2Panels(forceDs[rowinds,:]);
             # Vectorized version for special quadrature values
-            cvelsV = TFibCorVec.SpecQuadVel(len(t2Targs),target2Points,self._fiberDisc,
-                    Xup, X2Pan,forceUp,forceDUp,forceD2Pan,\
-                    centerVels[rowinds,:],cVelUpsamp,w_upsampled,\
-                    self._epsilon,self._Lf,self._aRPY,self._mu,self._Npf,nUpsample);
-            subVels[t2Targs,:]+=cvelsV; 
+            cvelsV = TFibCorVec.SpecQuadVel2(len(t2dstars),target2Points,self._fiberDisc,
+                     X2Pan,forceD2Pan,w_upsampled,t2dstars,self._epsilon,self._Lf,self._aRPY,self._mu,nUpsample);
+            subVels[sortedTargs[trange[sqrange==1]],:]+=cvelsV; 
+            tstart+= numTsbyFib[iFib];
+        print('Time doing special quad %f' %(time.time()-t));
         return subVels;
 
     def determineQuadLists(self, XnonLoc, Xuniform, Dom):
@@ -340,7 +437,7 @@ class fiberCollection(object):
         # the targets, fibers, methods, and shifts.
         nNeighbors = [len(n) for n in neighborList];
         sortedNeighbs = [neighb for n in neighborList for neighb in sorted(n)];
-        outputs = sq.determineCorQuad(nNeighbors, sortedNeighbs, XnonLoc[:,0], XnonLoc[:,1], XnonLoc[:,2], \
+        outputs = ewc.determineCorQuad(nNeighbors, sortedNeighbs, XnonLoc[:,0], XnonLoc[:,1], XnonLoc[:,2], \
             len(nNeighbors),Xuniform[:,0],Xuniform[:,1],Xuniform[:,2],self._Nunifpf,g,Lens,q1cut,q2cut);
         targets = outputs[0];
         fibers = outputs[1];

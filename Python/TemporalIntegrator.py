@@ -2,7 +2,7 @@ import numpy as np
 import copy
 
 # Definitions (for fixed point iteration)
-itercap = 10;
+itercap = 1;
 fixedpointtol=1e-6;
 
 class TemporalIntegrator(object):
