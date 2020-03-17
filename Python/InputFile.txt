@@ -1,5 +1,5 @@
 # Inputs for the slender body simulation
-nFib=250		# number of fibers
+nFib=500		# number of fibers
 nCL=0		# number of cross linkers
 N=16		# number of points per fiber
 Lf=2		# length of each fiber
@@ -15,7 +15,7 @@ dt=1e-2		# timestep
 exacinex=1	# whether to do inextensbility exactly
 omega=1		# frequency of oscillations
 gam0=0.1	# base rate of strain 
-tf=0.10		# final time
+tf=0.05		# final time
 grav=0		# value of gravity if it exists
 Kspring=10	# cross linker stiffness
 rl=0.25		# cross linker rest length
