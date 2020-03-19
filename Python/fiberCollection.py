@@ -178,8 +178,22 @@ class fiberCollection(object):
         return self._tanvecs;
     
     def getLambdas(self):
-        return self._lambdas;   
+        return self._lambdas; 
 
+    def FiberStress(self, lams,Lens):
+        totnum = self._Nfib*self._Npf;
+        X = self._ptsCheb;
+        # Compute the total force density from lambda, and also
+        # the bending force, which can be determined from X and the fiber discretization. 
+        forceDs = self.evalBendForceDensity(X) + np.reshape(lams,(totnum,3));
+        # Multiply by the weights to get force from force density. 
+        forces = forceDs*np.reshape(np.tile(self._fiberDisc.getw(),self._Nfib),(totnum,1));
+        stress = np.zeros((3,3));
+        for iPt in range(totnum):
+            stress-= np.outer(X[iPt,:],forces[iPt,:]);
+        stress/=np.prod(Lens);
+        return stress;
+        
     def converged(self, lambdasm1,fptol):
         """
         Check whether any of the fibers are not converged (i.e. whether
@@ -226,6 +240,20 @@ class fiberCollection(object):
         """
         g = 1.0*self._gam0/self._omega*np.sin(self._omega*t);
         return g;
+    
+    def getUniformSpatialData(self):
+        return self._SpatialUni;
+    
+    def getFiberDisc(self):
+        return self._fiberDisc;
+    
+    def getRowInds(self,iFib):
+        """
+        Method to get the row indices in any (Nfib x Nperfib) x 3 arrays
+        for fiber number iFib. This method could easily be modified to allow
+        for a bunch of fibers with different numbers of points. 
+        """
+        return range(iFib*self._Npf,(iFib+1)*self._Npf);
 
     def writeFiberLocations(self,of):
         """
@@ -283,7 +311,8 @@ class fiberCollection(object):
         Output: a tot#ofpts x 3 array of correction velocites
         """
         numTsbyFib = np.zeros(self._Nfib,dtype=int);
-        # Sort the targets
+        if (len(targets)==0):
+            return np.zeros((self._Nfib*self._Npf,3));
         sortedTargs = targets[np.argsort(fibers)];
         sortedMethods = methods[np.argsort(fibers)];
         sortedShifts = shifts[np.argsort(fibers),:];
@@ -429,15 +458,7 @@ class fiberCollection(object):
             print(np.amax(np.abs(shifts1-np.array(shifts))))
         return targets, fibers, methods, shifts;
     
-    
-    def getRowInds(self,iFib):
-        """
-        Method to get the row indices in any (Nfib x Nperfib) x 3 arrays
-        for fiber number iFib. This method could easily be modified to allow
-        for a bunch of fibers with different numbers of points. 
-        """
-        return range(iFib*self._Npf,(iFib+1)*self._Npf);
-    
+        
     def getStackInds(self,iFib):
         """
         Method to get the row indices in any (Nfib x Nperfib x 3) long arrays

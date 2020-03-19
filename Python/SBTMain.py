@@ -5,7 +5,7 @@ from RPYVelocityEvaluator import EwaldSplitter
 from Domain import Domain, PeriodicShearedDomain
 from TemporalIntegrator import TemporalIntegrator, BackwardEuler, CrankNicolsonLMM
 from FibInitializer import makeCurvedFiber, makeFallingFibers
-from CrossLinkedNetwork import CrossLinkedNetwork
+from CrossLinkedNetwork import CrossLinkedNetwork, KMCCrossLinkedNetwork
 import numpy as np
 
 def prepareOutFile(name):
@@ -44,9 +44,10 @@ allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0,Dom);
 #fibList = makeFallingFibers(nFib,Lf,eps,ellipsoidal,Eb,mu,N);
 fibList = [None]*nFib;
 allFibers.initFibList(fibList,Dom);
+allFibers.fillPointArrays();
 
 # Initialize the network of cross linkers
-CLNet = CrossLinkedNetwork(nFib,N,Lf,grav,nCL,Kspring,rl);
+CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,grav,nCL,Kspring,rl,konCL,koffCL);
 
 # Initialize the temporal integrator
 if (solver==2):
