@@ -69,7 +69,7 @@ if (stopcount - tf/dt) > 1e-10:
 # Time loop
 for iT in range(stopcount): 
     print('Time %f' %(float(iT)*dt));
-    TIntegrator.updateAllFibers(iT,dt,Dom,Ewald,of);
+    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,of);
 
 # Destruction and cleanup
 of.close();

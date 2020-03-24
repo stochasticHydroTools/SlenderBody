@@ -16,9 +16,9 @@ function [Xnp1,Xtm1,lambdas,fE,fext,lambdasm1,links,Xsp1,Xstm1] = getXp1(Xt,Xtm1
         [U0,g] = EvalU0(gam0,omega,t+dt/2,1.5*Xt-0.5*Xtm1,L);
         % Making and breaking CL links over step dt/2
         links = breakCLinks(reshape(Xt,3,N*nFib)',...
-            links,nFib,N,rl,Lf,L,gnetupdate);
+            links,nFib,N,rl,Lf,L,gnetupdate,dt/2);
         links = makeCLinks(links,reshape(Xt,3,N*nFib)',...
-            nFib,N,rl,Lf,nCL,L,gnetupdate);
+            nFib,N,rl,Lf,nCL,L,gnetupdate,dt/2);
         fext = reshape(getCLforce(links,reshape(1.5*Xt-0.5*Xtm1,3,N*nFib)',...
             N,s0,w0,Lf, Kspring,rl,g,L)',3*N*nFib,1);
     else % other explicit / first order solvers
@@ -83,4 +83,13 @@ function [Xnp1,Xtm1,lambdas,fE,fext,lambdasm1,links,Xsp1,Xstm1] = getXp1(Xt,Xtm1
     end
     Xtm1=Xt;
     Xstm1=Xst;
+    % Another update
+    if (solver==2)
+        [~,gnetupdate] = EvalU0(gam0,omega,t+dt,Xnp1,L);
+        % Making and breaking CL links over step dt/2
+        links = breakCLinks(reshape(Xnp1,3,N*nFib)',...
+            links,nFib,N,rl,Lf,L,gnetupdate,dt/2);
+        links = makeCLinks(links,reshape(Xnp1,3,N*nFib)',...
+            nFib,N,rl,Lf,nCL,L,gnetupdate,dt/2);
+    end
 end

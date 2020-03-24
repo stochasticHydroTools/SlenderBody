@@ -133,7 +133,9 @@ class CrossLinkedNetwork(object):
         """
         rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
         shift = uniPts[iPt,:]-uniPts[jPt,:] - rvec;
-        print('Making link between %d and %d with distance %f' %(iPt, jPt, np.linalg.norm(rvec)));
+        #print('Making link between %d and %d with distance %f' %(iPt, jPt, np.linalg.norm(rvec)));
+        if (self._added[iPt]==1 or self._added[jPt]==1):
+            raise ValueError('Bug - trying to make link in already occupied site');
         self._added[iPt]=1;
         self._added[jPt]=1;
         self._iPts.append(iPt);
@@ -148,7 +150,7 @@ class CrossLinkedNetwork(object):
         Update self._added array and remove the elements from
         self._iPts and self._jPts
         """
-        print('Breaking link between %d and %d' %(self._iPts[iL], self._jPts[iL]));
+        #print('Breaking link between %d and %d' %(self._iPts[iL], self._jPts[iL]));
         self._numLinks-=1;
         self._added[self._iPts[iL]]=0;
         self._added[self._jPts[iL]]=0;
@@ -221,74 +223,112 @@ class KMCCrossLinkedNetwork(CrossLinkedNetwork):
         Dom = Domain object, tstep = the timestep we are updating the network
         by (a different name than dt)
         This is an event-driven algorithm. We sample a time for binding/unbinding
-        and then update the network to that state
+        and then update the network to that state. 
+        This needs to be implemented (1) efficiently, and (2) in C++ if 
+        necessary. 
         """
+        import time
         if (self._nCL==0):
             return; # do nothing if there are no CLs
         # Obtain Chebyshev points and uniform points, and get
         # the neighbors of the uniform points
+        t=time.time();
         chebPts = fiberCol.getX();
         uniPts = fiberCol.getUniformPoints(chebPts);
         SpatialDatabase = fiberCol.getUniformSpatialData();
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
         # Form two column array of possible pairs for linking. 
         uniNeighbs = SpatialDatabase.selfNeighborList(self._clcut);
+        #print('Time to get neighbor list %f' %(time.time()-t));
         # Filter the list of neighbors to exclude those on the same fiber
+        t=time.time();
         iFibs = uniNeighbs[:,0] // self._NsitesPerf;
         jFibs = uniNeighbs[:,1] // self._NsitesPerf;
         delInds = np.arange(len(iFibs));
-        uniNeighbs = np.delete(uniNeighbs,delInds[iFibs==jFibs],axis=0);
-        nPairs, _ = uniNeighbs.shape;
-        # Event-driven algorithm
+        newLinks = np.delete(uniNeighbs,delInds[iFibs==jFibs],axis=0);
+        nPairs, _ = newLinks.shape;
+        #print('Time to remove same fibers %f' %(time.time()-t));
+        t=time.time();
+        # Calculate binding rates and times 
+        rateUnbind = self.calcKoff(uniPts,Dom);
+        rateBind = clinks.calcKon(nPairs, newLinks[:,0], newLinks[:,1], np.reshape(uniPts,\
+            3*self._nFib*self._NsitesPerf),self._clcut,self._kon,Dom.getg(),Dom.getLens()); 
+        allRates = np.concatenate((rateUnbind,rateBind));
+        randNums = -np.log(1-np.random.rand(len(allRates)));
+        #print('Time to calc rates %f' %(time.time()-t));
+        # Make lists of pairs of points and events
+        totiPts = np.concatenate((np.array(self._iPts,dtype=int),newLinks[:,0]));
+        totjPts = np.concatenate((np.array(self._jPts,dtype=int),newLinks[:,1]));
+        nowBound = np.concatenate((np.ones(len(self._iPts),dtype=int),np.zeros(nPairs,dtype=int)));
+        #print('Rates')
+        #print(allRates)
+        times = randNums/allRates;
         systime = 0;
-        while (systime < tstep):
-            # Remove rows of uniNeighbs that have points already bound -
-            # those have to unbind first before they can be linked 
-            BadPairs = [];
-            for iPair in range(nPairs):
-                if (self._added[uniNeighbs[iPair,0]] or self._added[uniNeighbs[iPair,1]]):
-                    BadPairs.append(iPair);
-            print('Pairs that are already taken')
-            print(BadPairs)
-            # Find the pairs that can link to each other
-            Goodpairs = np.setdiff1d(np.arange(nPairs),np.array(BadPairs));
-            newLinks = uniNeighbs[Goodpairs,:];
-            print('Possible new links')
-            print(newLinks)
-            # Compute the rates of binding and unbinding
-            rateUnbind = self.calcKoff(uniPts,Dom);
-            rateBind = self.calcKon(newLinks,uniPts,Dom);
-            print('Rates of unbinding')
-            print(rateUnbind)
-            print('Rates of binding')
-            print(rateBind)
-            # Compute random times for binding and unbinding
-            tUnbind = -np.log(np.random.rand(len(self._iPts)))/rateUnbind; # unbinding times
-            tfirstUnbind = float("inf");
-            if (len(tUnbind) > 0):
-                tfirstUnbind = min(tUnbind);
-            tBind = -np.log(np.random.rand(len(Goodpairs)))/rateBind; # binding times
-            tfirstBind = float("inf");
-            if (len(tBind) > 0):
-                tfirstBind = min(tBind);
-            print('Binding times')
-            print(tBind)
-            print('Unbinding times')
-            print(tUnbind)
-            # Unbind first if that's what happens or if all the CLs are occupied
-            if (tfirstUnbind < tfirstBind or self._numLinks==self._nCL):
-                print('Unbinding first, moving to %f' %min(tUnbind));
-                systime+= min(tUnbind);
-                if (systime < tstep): # actually remove link if not over timestep
-                    iL = np.argmin(tUnbind);
-                    self.removeLink(iL);
-            else: # Bind first
-                print('Binding first, moving to %f' %min(tBind))
-                systime+= min(tBind)
-                if (systime < tstep): # actually add link if not over timestep
-                    pair = newLinks[np.argmin(tBind)];
-                    self.addLink(pair[0],pair[1],uniPts,Dom);
-            print('New time %f' %systime);
+        t=time.time();
+        added = self._added.copy();
+        nLinks = self._numLinks; # local copy
+        events = clinks.newEventsCL(times, totiPts, totjPts, nowBound, added,nLinks, self._nCL,\
+            np.reshape(uniPts,3*self._nFib*self._NsitesPerf),Dom.getg(), Dom.getLens(),tstep, \
+            self._kon, self._koff, self._clcut);
+        if (False): # Python version
+            events = [];
+            #print('Possibles')
+            #print(np.concatenate(([totiPts],[totjPts])))
+            while (systime < tstep):
+                #print('Number of links %d' %nLinks);
+                nowtimes = self.updateTimes(times.copy(),totiPts,totjPts,nowBound,added,nLinks);
+                #print('Current times')
+                #print(nowtimes);
+                #print('Bound states')
+                #print(nowBound)
+                # Find the minimum
+                nextEvent = np.argmin(nowtimes);
+                #print('Next event %d' %nextEvent);
+                iPt = totiPts[nextEvent];
+                jPt = totjPts[nextEvent];
+                systime+= nowtimes[nextEvent];
+                #print('The next time %f' %systime);
+                # Add the event to the list of events
+                if (systime < tstep):
+                    if (nextEvent in events): # already done, now going back, remove from list
+                        print('Removing event already in the list')
+                        events.remove(nextEvent);
+                    else:
+                        events.append(nextEvent);
+                    nowBound[nextEvent] = 1 - nowBound[nextEvent]; # change bound state
+                    added[iPt]=1-added[iPt]; # local copy
+                    added[jPt]=1-added[jPt];
+                    nLinks+=2*nowBound[nextEvent]-1; # -1 if now unbound, 1 if now bound
+                    if (nowBound[nextEvent]): # just became bound, calc rate to unbind
+                        allRates[nextEvent] = self.calcKoffOne(iPt,jPt,uniPts,Dom);
+                    else: # just became unbound, calculate rate to bind back
+                        if (nextEvent < len(self._iPts)): # those originally bound
+                            allRates[nextEvent] = 0; # ones that unbind cannot rebind (avoid double count)
+                        else:
+                            allRates[nextEvent] = self.calcKonOne(iPt,jPt,uniPts,Dom);
+                    # Redraw random time for that event
+                    #r=1-np.random.rand();
+                    #print('Python rand %f' %r)
+                    #times[nextEvent] = -np.log(r)/allRates[nextEvent];
+                    times[nextEvent] = 0.1/allRates[nextEvent];
+            if (len(events) > 0):
+                if (np.amax(np.abs(np.array(events)-np.array(eventscpp))) > 0):
+                    raise ValueError('Cpp and python dont match!')
+        print('Time to evolve %f' %(time.time()-t));
+        t=time.time();
+        # Post process to do the events
+        events = np.array(events,dtype=int);
+        breakLinks = -np.sort(-events[events < len(self._iPts)]); # links to break
+        #print('Links to break (in descending order)');
+        #print(breakLinks);
+        # Break some links
+        for iL in breakLinks:
+            self.removeLink(iL);
+        for newL in np.setdiff1d(events,breakLinks):
+            iPt = totiPts[newL];
+            jPt = totjPts[newL];
+            self.addLink(iPt,jPt,uniPts,Dom);
+        print('Time to post-process %f' %(time.time()-t));             
         
     def calcKoff(self,uniPts,Dom):
         """
@@ -309,6 +349,11 @@ class KMCCrossLinkedNetwork(CrossLinkedNetwork):
             Koffs[iL] = self._koff;
         return Koffs;
     
+    def calcKoffOne(self,iPt,jPt,uniPts,Dom):
+        """
+        """
+        return self._koff;
+    
     def calcKon(self,newLinks,uniPts,Dom):
         """
         Method to calculate the rate of binding for 
@@ -325,12 +370,30 @@ class KMCCrossLinkedNetwork(CrossLinkedNetwork):
         for iL in range(nNew):
             iPt = newLinks[iL,0];
             jPt = newLinks[iL,1];
-            # Find nearest periodic image
-            rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
-            # For now link with uniform probability if less than 
-            # the CL cutoff distance
-            r = np.linalg.norm(rvec);
-            if (r < self._clcut):
-                Kons[iL] = self._kon; # otherwise will stay 0
+            Kons[iL] = self.calcKonOne(iPt,jPt,uniPts,Dom); # otherwise will stay 0
         return Kons;
+    
+    def calcKonOne(self,iPt,jPt,uniPts,Dom):
+        """
+        """
+        rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
+        r = np.linalg.norm(rvec);
+        if (r < self._clcut):
+            return self._kon;
+        return 0;
+    
+    def updateTimes(self,times,totiPts,totjPts,nowBound,added,nLinks):
+        for iL in range(len(nowBound)):
+            # Sort the times that are incompatible
+            # If link is bound at a point, cannot bind there
+            if (nowBound[iL]==0): # currently not bound, want to bind
+                if (nLinks == self._nCL or\
+                    added[totiPts[iL]] or added[totjPts[iL]]):
+                    # Can't bind if no links available or if site blocked
+                    times[iL] = float('inf'); # will never happen
+            else: # want to unbind
+                if (not added[totiPts[iL]] or not added[totjPts[iL]]):
+                    # Cannot unbind if there is nothing there to unbind
+                    times[iL] = float('inf'); # will never happen
+        return times;
             

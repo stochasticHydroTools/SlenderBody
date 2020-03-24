@@ -38,13 +38,16 @@ class TemporalIntegrator(object):
         return 0;
         
     def NetworkUpdate(self,Dom,t,tstep):
+        if (tstep==0):
+            return;
+        print('Network update time %f' %tstep);
         Dom.setg(self._allFibers.getg(t));
         self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
     
     def getLambdaN(self,iT):
         return self._allFibers.getLambdas();
 
-    def updateAllFibers(self,iT,dt,Dom,Ewald,outfile,write=1):
+    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,outfile,write=1):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the domain
@@ -53,7 +56,7 @@ class TemporalIntegrator(object):
         output file to write to, write=1 to write to it, 0 otherwise.  
         """           
         # Update the network (first time)
-        self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt));
+        self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt,iT));
         # Set domain strain and fill up the arrays of points
         tvalSolve = self.gettval(iT,dt);
         Dom.setg(self._allFibers.getg(tvalSolve));
@@ -75,7 +78,7 @@ class TemporalIntegrator(object):
         # Copy individual fiber objects into large arrays of points, forces
         self._allFibers.fillPointArrays();
         # Update the network (second time)
-        self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt));
+        self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt,iT,numSteps));
         if (write):
             self._allFibers.writeFiberLocations(outfile);
         # Compute stress at time n+1
@@ -126,9 +129,13 @@ class CrankNicolsonLMM(TemporalIntegrator):
     def gettval(self,iT,dt):
         return (iT+0.5)*dt;
     
-    def getFirstNetworkStep(self,dt):
-        return dt*0.5;
+    def getFirstNetworkStep(self,dt,iT):
+        if (iT==0):
+            return dt*0.5;
+        return dt; # interpret as a midpoint step
     
-    def getSecondNetworkStep(self,dt):
-        return dt*0.5;
+    def getSecondNetworkStep(self,dt,iT,numSteps):
+        if (iT==numSteps-1):
+            return dt*0.5;
+        return 0;
 
