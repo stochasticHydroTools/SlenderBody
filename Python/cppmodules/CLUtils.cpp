@@ -75,49 +75,25 @@ std::vector <double> CLForces(int nLinks, std::vector<int> iPts, std::vector<int
     return forces;
 }
 
-std::vector <double> calcKon(int nPairs, const std::vector<int> &iPts, const std::vector<int> &jPts, 
-    const std::vector <double> uniPoints, double cl_cut, double kon0, double g, 
-    const std::vector <double> &Lens){
-    std::vector <double> Kons(nPairs,0.0);
-    for (int iPair=0; iPair < nPairs; iPair++){
-        std::vector <double> rvec(3);
-        for (int d=0; d< 3; d++){
-            rvec[d]=uniPoints[3*iPts[iPair]+d]-uniPoints[3*jPts[iPair]+d];
-        }
-        std::vector <double> rshifted = calcShifted(rvec,g,Lens[0],Lens[1],Lens[2]);
-        double r = normalize(rshifted);
-        if (r < cl_cut){
-            Kons[iPair] = kon0;
-        }
-    }
-    return Kons;
-}
-
-std::vector <double> updateTimes(const std::vector <double> &times, const std::vector<int> &iPts, 
-    const std::vector<int> &jPts,const std::vector<int> &nowBound, const std::vector<int> &added,
-    int nLinks, int nCL){
-    std::vector<double> newTimes(times.begin(), times.end()); 
-    for (int iPair=0; iPair < nowBound.size(); iPair++){
-        if (nowBound[iPair]==0){ // want to bind
-            if (nLinks == nCL || added[iPts[iPair]]==1 || added[jPts[iPair]]==1){
-                newTimes[iPair] = std::numeric_limits<double>::infinity();
-            }
-        } else{ // want to unbind
-            if (added[iPts[iPair]]==0 || added[jPts[iPair]]==0){
-                newTimes[iPair] = std::numeric_limits<double>::infinity();
-            }
-        }
-    }
-    return newTimes;
-}
-
+// Calculate the rate of unbinding for a single link. 
+// Inputs: (iPt,jPt) = the two ends of the link, uniPts = 3*N row-stacked array
+// of locations corresponding to the binding sites, g = strain in the coordinate
+// system, Lens = periodic lengths, koff0 = base unbinding rate
+// Output: the rate of unbinding for that link
 double calcKoffOne(int iPt,int jPt,const std::vector <double> &uniPts, double g,
     const std::vector <double> &Lens, double koff0){
     return koff0;
 }
 
+// Calculate the rate of binding for a single link. 
+// Inputs: (iPt,jPt) = the two ends of the link, uniPts = 3*N row-stacked array
+// of locations corresponding to the binding sites, g = strain in the coordinate
+// system, Lens = periodic lengths, kon0 = base binding rate, cl_cut = cutoff 
+// distance for CL to form
+// Output: the rate of binding for that link
 double calcKonOne(int iPt, int jPt,const std::vector <double> &uniPts,double g,
     const std::vector <double> &Lens, double kon0, double cl_cut){
+    // Compute displacement vector and nearest image
     std::vector <double> rvec(3);
     for (int d=0; d < 3; d++){
         rvec[d] = uniPts[3*iPt+d]-uniPts[3*jPt+d];
@@ -130,6 +106,59 @@ double calcKonOne(int iPt, int jPt,const std::vector <double> &uniPts,double g,
     return 0;
 }
 
+// Method to calculate the rate of binding for a set of possible newLinks.  
+// Inputs: nPairs = # of new potential new binding locations, (iPts, jPts) = the endpoints
+// of the potential new links. uniPoints = 3*N x 1 row-stacked array of the locations of the 
+// uniform points on the fiber, cl_cut = cutofff distance for CLs to form, kon0 = base binding 
+// rate, g = strain in domain, Lens = periodic lengths
+// Outputs: the rates of binding for each pair, Kons
+std::vector <double> calcKon(int nPairs, const std::vector<int> &iPts, const std::vector<int> &jPts, 
+    const std::vector <double> &uniPoints, double cl_cut, double kon0, double g, 
+    const std::vector <double> &Lens){
+    std::vector <double> Kons(nPairs,0.0);
+    for (int iPair=0; iPair < nPairs; iPair++){
+        // Call single link method
+        Kons[iPair] = calcKonOne(iPts[iPair],jPts[iPair],uniPoints,g,Lens,kon0,cl_cut);
+    }
+    return Kons;
+}
+
+// Update the times of binding for changed states of the network. 
+// Inputs: times = array or original times for each event
+// (iPts, jPts) = the endpoints of each event, 
+// nowBound =  bound state for each event (1 if bound, 0 if unbound),
+// added = Nsites*Nfib array indicating whether there is a link at each site
+// nLinks = current number of links in the system, nCL = number of cross-linkers
+// Output: the new updated array of times
+std::vector <double> updateTimes(const std::vector <double> &times, const std::vector<int> &iPts, 
+    const std::vector<int> &jPts,const std::vector<int> &nowBound, const std::vector<int> &added,
+    int nLinks, int nCL){
+    std::vector<double> newTimes(times.begin(), times.end()); // vector newTimes that is copy of times
+    for (int iPair=0; iPair < nowBound.size(); iPair++){
+        if (nowBound[iPair]==0){ // want to bind
+            // Can't bind if no links available or if site blocked
+            if (nLinks == nCL || added[iPts[iPair]]==1 || added[jPts[iPair]]==1){
+                newTimes[iPair] = std::numeric_limits<double>::infinity();
+            }
+        } else{ // want to unbind
+            // Can't unbind if there is nothing there to unbind
+            if (added[iPts[iPair]]==0 || added[jPts[iPair]]==0){
+                newTimes[iPair] = std::numeric_limits<double>::infinity();
+            }
+        }
+    }
+    return newTimes;
+}
+
+// Master method that determines the events that occur in a given timestep. 
+// Inputs: times = vector of time each event should happen, (iPts, jPts) = endpoints
+// for each event (points on the fibers), nowBound = whether each pair is currently 
+// bound with a CL or not, added = whether each fiber point has a link attached to it
+// or not. nLinks = initial number of links, nCL = number of possible CLs, 
+// uniPts = 3*N row-stacked array of locations, g = strain in the coordinate system, 
+// Lens = periodic lengths, tstep = timestep for move, kon0, koff0 = base rates of 
+// binding and unbinding, cl_cut = cutoff distance for CL formulation
+// Output: vector of events in order they occur. Each "event" is an index in iPts, jPts, etc.
 std::vector <int> newEventsCL(std::vector <double> times, const std::vector<int> &iPts, 
     const std::vector<int> &jPts, std::vector<int> &nowBound, std::vector<int> &added,
     int nLinks, int nCL,std::vector<double> uniPts, double g, std::vector <double> Lens, double tstep,
@@ -138,19 +167,21 @@ std::vector <int> newEventsCL(std::vector <double> times, const std::vector<int>
     std::random_device rd;  //Will be used to obtain a seed for the random number engine
     std::mt19937 gen(0); //Standard mersenne_twister_engine seeded with rd()
     std::uniform_real_distribution<> dis(0.0, 1.0);
+    // Initialize times and events
     double systime = 0.0;
     std::vector <int> events;
-    const int nAlreadyBound = nLinks;
+    const int nAlreadyBound = nLinks; // the first nAlreadyBound events are already bound links
     while (systime < tstep){
+        // Update the vector of times
         std::vector <double> newTimes = updateTimes(times,iPts,jPts,nowBound,added,nLinks,nCL);
-        // Find the minimum
+        // Find the minimum time and the nextEvent
         int nextEvent = std::distance(newTimes.begin(), std::min_element(newTimes.begin(), newTimes.end()));
         int iPt = iPts[nextEvent];
         int jPt = jPts[nextEvent];
         systime+= newTimes[nextEvent];
-        // Add the event to the list of events
+        // Add the event to the list of events if possible
         if (systime < tstep){
-            auto iF = std::find(events.begin(), events.end(), nextEvent);
+            auto iF = std::find(events.begin(), events.end(), nextEvent); 
             if (iF != events.end()){ 
                 // already done, now going back, remove from list
                 events.erase(iF);
@@ -161,12 +192,12 @@ std::vector <int> newEventsCL(std::vector <double> times, const std::vector<int>
             added[iPt]=1-added[iPt]; // change local copy of added
             added[jPt]=1-added[jPt];
             nLinks+=2*nowBound[nextEvent]-1; // -1 if now unbound, 1 if now bound
-            double newRate;
+            double newRate; // the rate for the next event
             if (nowBound[nextEvent]){ // just became bound, calc rate to unbind
                 newRate = calcKoffOne(iPt,jPt,uniPts,g,Lens,koff0);
             } else {// just became unbound, calculate rate to bind back
                 if (nextEvent < nAlreadyBound){ // those originally bound
-                    newRate = 0; // ones that unbind cannot rebind (avoid double count)
+                    newRate = 0; // original pairs cannot rebind (avoid double count)
                 } else { 
                     newRate = calcKonOne(iPt,jPt,uniPts,g,Lens,kon0,cl_cut);
                 }
