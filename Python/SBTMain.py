@@ -5,7 +5,7 @@ from RPYVelocityEvaluator import EwaldSplitter
 from Domain import Domain, PeriodicShearedDomain
 from TemporalIntegrator import TemporalIntegrator, BackwardEuler, CrankNicolsonLMM
 from FibInitializer import makeCurvedFiber, makeFallingFibers
-from CrossLinkedNetwork import CrossLinkedNetwork, KMCCrossLinkedNetwork
+#from CrossLinkedNetwork import CrossLinkedNetwork, KMCCrossLinkedNetwork
 import numpy as np
 
 def prepareOutFile(name):
@@ -17,7 +17,8 @@ def prepareOutFile(name):
 
 
 # Seed random number generator (for reproducibility)
-np.random.seed(0);
+#for CLseed in range(1,11):
+np.random.seed(1);
 
 # Read the input file
 infile = open('InputFile.txt','r');
@@ -30,7 +31,7 @@ infile.close();
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize Ewald for non-local velocities
-Ewald = EwaldSplitter(np.sqrt(1.5)*eps*Lf,mu,xi,Dom);
+Ewald = EwaldSplitter(np.sqrt(1.5)*eps*Lf,mu,xi,Dom,N*nFib);
 
 # Initialize fiber discretization
 fibDisc = ChebyshevDiscretization(Lf,eps,ellipsoidal,Eb,mu,N);
@@ -47,11 +48,15 @@ allFibers.initFibList(fibList,Dom);
 allFibers.fillPointArrays();
 
 # Initialize the network of cross linkers
-CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,grav,nCL,Kspring,rl,konCL,koffCL);
+# New seed for CLs
+CLseed=0;
+np.random.seed(CLseed);
+print('Seeding with %d' %CLseed);
+#CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,grav,nCL,Kspring,rl,konCL,koffCL,CLseed);
 
 # Initialize the temporal integrator
 if (solver==2):
-    TIntegrator = CrankNicolsonLMM(allFibers, CLNet);
+    TIntegrator = CrankNicolsonLMM(allFibers, None);
 elif (solver==1):
     TIntegrator = BackwardEuler(allFibers, CLNet);
 else:
@@ -59,6 +64,8 @@ else:
 
 # Prepare the output file and write initial locations
 of = prepareOutFile('Locations.txt');
+ofCL = prepareOutFile('CrossLinkers_SSAcppConst_dt3_'+str(CLseed)+'.txt');
+#ofCL = prepareOutFile('CrossLinkers.txt');
 allFibers.writeFiberLocations(of);
 
 # Compute the endtime
@@ -68,8 +75,11 @@ if (stopcount - tf/dt) > 1e-10:
 
 # Time loop
 for iT in range(stopcount): 
-    print('Time %f' %(float(iT)*dt));
-    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,of);
+    if (iT%1 == 0):
+        print('Time %f' %(float(iT)*dt));
+        TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,of,ofCL);
+    else:
+        TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,of,write=0);
 
 # Destruction and cleanup
 of.close();
@@ -77,6 +87,6 @@ del Dom;
 del Ewald;
 del fibDisc;
 del allFibers;
-del CLNet;
+#del CLNet;
 del TIntegrator;
 

@@ -1,9 +1,7 @@
 import numpy as np
 import scipy.linalg as sp
 import chebfcns as cf
-import EwaldUtils as ewc
-import FiberUtils as fc
-import EwaldNumba as ewnb
+import ManyFiberMethods as FinitePartCpp
 from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
 
@@ -39,7 +37,7 @@ class FibCollocationDiscretization(object):
         self._Eb = Eb;
         self._mu = mu;
         self._N = N;
-        self._nptsUpsample = nptsUpsample
+        self._nptsUpsample = nptsUpsample;
         self._nptsUniform = nptsUniform;
 
     def initIs(self):
@@ -104,6 +102,9 @@ class FibCollocationDiscretization(object):
         The number of updampled points should have been set in the precomputation.
         """
         return np.dot(self._MatfromNtoUpsamp,Xarg);
+    
+    def getUpsamplingMatrix(self):
+        return self._MatfromNtoUpsamp;
     
     # Note: In theory the number of panels could be an argument and then all the resampling
     # matrices precomputed, then a bunch of if statements. But we are being lazy...
@@ -207,6 +208,16 @@ class FibCollocationDiscretization(object):
     
     def getepsilonL(self):
         return self._epsilon, self._L;
+    
+    def getValstoCoeffsMatrix(self):
+        """
+        Return the N x N matrix that gives the coefficients of 
+        a Chebyshev series from the values
+        """
+        return np.linalg.inv(self._Lmat);
+    
+    def getDiffMat(self):
+        return self._Dmat;
 
     def calcfE(self,X):
         """
@@ -307,14 +318,14 @@ class FibCollocationDiscretization(object):
         FPvel = np.zeros((3,self._N));
         Xss = np.dot(self._Dmat,Xsarg);
         fprime = np.dot(self._Dmat,forceDs);
-        for iPt in range(self._N):
-            # Call the C++ function to compute the correct density,
-            # 1/(s[j]-s[i])*((I+Rhat*Rhat)*f[j]*abs(s[j]-s[i])/R - (I+Xs*Xs)*f[i])
-            gloc = fc.FPDensity(self._N,Xarg[:,0],Xarg[:,1],Xarg[:,2],Xsarg[iPt,:],Xss[iPt,:],fprime[iPt,:],\
-                    forceDs[:,0],forceDs[:,1],forceDs[:,2],self._s,iPt);
-            gloc = np.reshape(gloc,(self._N,3)).T;
-            FPvel[:,iPt]=0.5*self._L*np.dot(gloc,self._FPMatrix[:,iPt]);
-        return 1.0/(8.0*np.pi*self._mu)*np.reshape(FPvel.T,3*self._N);
+        # Call the C++ function to compute the correct density,
+        # 1/(s[j]-s[i])*((I+Rhat*Rhat)*f[j]*abs(s[j]-s[i])/R - (I+Xs*Xs)*f[i])
+        FPvel = FinitePartCpp.FinitePartVelocity(Xarg, forceDs, Xsarg);
+        #return 1.0/(8.0*np.pi*self._mu)*np.reshape(FPvel.T,3*self._N);
+        return FPvel;
+    
+    def getFPMatrix(self):
+        return 1.0/(8.0*np.pi*self._mu)*0.5*self._L*self._FPMatrix.T;
     
     def calcLocalVelocity(self,Xsarg,forceDs):
         """
@@ -484,19 +495,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
 
     ## ====================================================
     ##  METHODS FOR RESAMPLING AND ACCESS BY OTHER CLASSES
-    ## ====================================================
-    def upsampledCoefficients(self,Xarg):
-        """
-        Get the coefficients of an upsampled representation of the fiber.
-        Inputs: Xarg = upsampled fiber representation
-        Outputs: the coefficients and derivative coefficients of the upsampled
-        representation
-        THIS METHOD SHOULD BE REMOVED LATER
-        """
-        Xcoeffs= lu_solve(self._UpsampCoeffLU,Xarg,check_finite=False);
-        Xprimecoeffs = cf.diffCoefficients(Xcoeffs,self._nptsUpsample);
-        return Xcoeffs,Xprimecoeffs;
-    
+    ## ====================================================   
     def Coefficients(self,Xarg):
         """
         Get the coefficients of the fiber represenation. 
@@ -506,6 +505,17 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         """
         Xcoeffs= lu_solve(self._LUCoeffs,Xarg,check_finite=False);
         Xprimecoeffs = cf.diffCoefficients(Xcoeffs,self._N);
+        return Xcoeffs,Xprimecoeffs;
+
+    def upsampledCoefficients(self,Xarg):
+        """
+        Get the coefficients of an upsampled representation of the fiber.
+        Inputs: Xarg = upsampled fiber representation
+        Outputs: the coefficients and derivative coefficients of the upsampled
+        representation
+        """
+        Xcoeffs= lu_solve(self._UpsampCoeffLU,Xarg,check_finite=False);
+        Xprimecoeffs = cf.diffCoefficients(Xcoeffs,self._nptsUpsample);
         return Xcoeffs,Xprimecoeffs;
 
     def evaluatePosition(self,tapprox,coeffs):
@@ -530,6 +540,10 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         RMatrix = cf.ResamplingMatrix(Nrs,self._N,typetarg,chebGridType);
         Xrs = np.dot(RMatrix,Xarg);
         return Xrs;
+    
+    def get2PanelUpsamplingMatrix(self):
+        return cf.ResamplingMatrix(self._N,self._N,chebGridType,chebGridType,\
+                    nPantarg=2);
 
     def newNodes(self,Nrs,typetarg=chebGridType, numPanels=1):
         """

@@ -1,5 +1,5 @@
 import numpy as np
-import EwaldUtils as ewc
+import DomainCpp as DomCpp
 from math import sqrt
 
 class Domain(object):
@@ -56,6 +56,7 @@ class Domain(object):
         undeformed coordinates
         For a general free space domain, do nothing.
         """
+        print('Calling calc shifted')
         return dvec;
 
     def MinPrimeShiftInPrimeCoords(self,rprime):
@@ -118,6 +119,14 @@ class Domain(object):
         kyPrime = kyUP;
         kzPrime = kzUP;
         return kxPrime, kyPrime, kzPrime;
+    
+    def setg(self,ing):
+        if (ing > 0):
+            raise ValueError('Cannot set g (strain) in a non periodic domain');
+        self._g = 0;
+    
+    def getg(self):
+        return self._g;
         
 class PeriodicShearedDomain(Domain):
     
@@ -134,6 +143,8 @@ class PeriodicShearedDomain(Domain):
     ## ===================================
     def __init__(self,Lx,Ly,Lz):
         super().__init__(Lx,Ly,Lz);
+        DomCpp.initLengths(Lx,Ly,Lz); # initialize C++ variables
+        print('Lengths initialized')
         self._g = 0; # Deformation factor due to the shear
 
     ## ===================================
@@ -166,7 +177,7 @@ class PeriodicShearedDomain(Domain):
         necessary to estimate the minimum norm)
         """
         # Just call the C++ function (the python was unbelievably slow!)
-        newvec = ewc.calcShifted(dvec, self._g, self._Lx, self._Ly, self._Lz);
+        newvec = DomCpp.calcShifted(dvec, self._g);
         if (False):
             shift = 0*dvec;
             ## Shift in oblique y and z
@@ -192,7 +203,9 @@ class PeriodicShearedDomain(Domain):
         """
         Shift input to [0,L] (see super docstring)
         """
-        return np.mod(rprime,self._Lens);
+        shifted = np.mod(rprime,self._Lens);
+        shifted[shifted==self._Lens] = 0;
+        return shifted;
 
     def getPeriodicLens(self):
         return self._Lens;

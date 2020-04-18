@@ -55,7 +55,7 @@ def makeCurvedFiber(Lf,N,fibDisc):
     return fibList;
 
 def makeFallingFibers(Lf,N,fibDisc):
-    s,w=cf.chebpts(N,[0,Lf],1);
+    s=cf.chebPts(N,[0,Lf],1);
     # Falling fibers
     Xs = np.concatenate(([np.zeros(N)],[np.zeros(N)],[np.ones(N)]),axis=0).T;
     Xs = np.reshape(Xs,3*N);
@@ -65,8 +65,25 @@ def makeFallingFibers(Lf,N,fibDisc):
     X3 = np.concatenate(([np.zeros(N)-d],[np.zeros(N)],[s-1]),axis=0).T;
     X4 = np.concatenate(([np.zeros(N)],[np.zeros(N)-d],[s-1]),axis=0).T;
     fibList = [None]*4;
-    fibList[0] = Fiber(fibDisc,np.reshape(X1,3*N),Xs);
-    fibList[1] = Fiber(fibDisc,np.reshape(X2,3*N),Xs);
-    fibList[2] = Fiber(fibDisc,np.reshape(X3,3*N),Xs);
-    fibList[3] = Fiber(fibDisc,np.reshape(X4,3*N),Xs);
+    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(X1,3*N),Xs);
+    fibList[1] = DiscretizedFiber(fibDisc,np.reshape(X2,3*N),Xs);
+    fibList[2] = DiscretizedFiber(fibDisc,np.reshape(X3,3*N),Xs);
+    fibList[3] = DiscretizedFiber(fibDisc,np.reshape(X4,3*N),Xs);
     return fibList;
+
+def makeThreeSheared(Lf,N,fibDisc):
+    s=cf.chebPts(N,[0,Lf],1);
+    # Falling fibers
+    Xs13 = np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T;
+    Xs2 = np.concatenate(([np.zeros(N)],[np.ones(N)],[np.zeros(N)]),axis=0).T;
+    Xs13 = np.reshape(Xs13,3*N);
+    Xs2 = np.reshape(Xs2,3*N);
+    X1 = np.concatenate(([s-2.01],[np.zeros(N)-0.8],[np.zeros(N)]),axis=0).T;
+    X2 = np.concatenate(([np.zeros(N)],[s-1],[np.zeros(N)]),axis=0).T;
+    X3 = np.concatenate(([s+0.01],[np.zeros(N)+0.8],[np.zeros(N)]),axis=0).T;
+    fibList = [None]*3;
+    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(X1,3*N),Xs13);
+    fibList[1] = DiscretizedFiber(fibDisc,np.reshape(X2,3*N),Xs2);
+    fibList[2] = DiscretizedFiber(fibDisc,np.reshape(X3,3*N),Xs13);
+    return fibList;
+

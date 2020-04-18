@@ -3,10 +3,27 @@
 #include <stdio.h>
 #include <math.h>
 #include <random>
-#include "EwaldUtils.cpp"
+#include <chrono>
+#include "Domain.cpp"
 
 //This is a pybind11 module of C++ functions that are being used
 //for cross linker related calculations in the C++ code
+// initialize a lobal uniform distribution between 0 and 1
+std::uniform_real_distribution<double> unif(0.0, 1.0);
+std::mt19937_64 rng;
+
+void seedRandomCLs(int myseed){
+    // Seed random number generator
+    if (myseed==0){
+        // initialize the random number generator with time-dependent seed
+        static uint64_t timeSeed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
+        static std::seed_seq ss{uint32_t(timeSeed & 0xffffffff), uint32_t(timeSeed>>32)};
+        rng.seed(ss);
+    } else {
+        rng.seed(myseed);
+    }
+}
+        
 
 // Density function in the force/energy of crosslinking.
 double deltah(double a,double sigma){
@@ -98,7 +115,7 @@ double calcKonOne(int iPt, int jPt,const std::vector <double> &uniPts,double g,
     for (int d=0; d < 3; d++){
         rvec[d] = uniPts[3*iPt+d]-uniPts[3*jPt+d];
     }
-    rvec = calcShifted(rvec,g,Lens[0],Lens[1],Lens[2]);
+    calcShifted(rvec,g);
     double r = normalize(rvec);
     if (r < cl_cut){
         return kon0;
@@ -143,11 +160,27 @@ std::vector <double> updateTimes(const std::vector <double> &times, const std::v
         } else{ // want to unbind
             // Can't unbind if there is nothing there to unbind
             if (added[iPts[iPair]]==0 || added[jPts[iPair]]==0){
+                std::cout << "Triggered error " << std::endl;
                 newTimes[iPair] = std::numeric_limits<double>::infinity();
             }
         }
     }
     return newTimes;
+}
+
+std::vector <double> updateBlockedTimes(double PrevStep,const std::vector<int> &iPts, 
+    const std::vector<int> &jPts,const std::vector<int> &nowBound, const std::vector<int> &added,
+    int nLinks, int nCL){
+    std::vector<double> BlockedTimes(nowBound.size(), 0.0); // vector newTimes that is copy of times
+    for (int iPair=0; iPair < nowBound.size(); iPair++){
+        if (nowBound[iPair]==0){ // want to bind
+            // Can't bind if no links available or if site blocked
+            if (nLinks == nCL || added[iPts[iPair]]==1 || added[jPts[iPair]]==1){
+                BlockedTimes[iPair]=PrevStep;
+            }
+        } 
+    }
+    return BlockedTimes;
 }
 
 // Master method that determines the events that occur in a given timestep. 
@@ -159,55 +192,52 @@ std::vector <double> updateTimes(const std::vector <double> &times, const std::v
 // Lens = periodic lengths, tstep = timestep for move, kon0, koff0 = base rates of 
 // binding and unbinding, cl_cut = cutoff distance for CL formulation
 // Output: vector of events in order they occur. Each "event" is an index in iPts, jPts, etc.
-std::vector <int> newEventsCL(std::vector <double> times, const std::vector<int> &iPts, 
+std::vector <int> newEventsCL(std::vector <double> &rates, const std::vector<int> &iPts, 
     const std::vector<int> &jPts, std::vector<int> &nowBound, std::vector<int> &added,
     int nLinks, int nCL,std::vector<double> uniPts, double g, std::vector <double> Lens, double tstep,
     double kon0, double koff0, double cl_cut){
-    // Seed random number generator
-    std::random_device rd;  //Will be used to obtain a seed for the random number engine
-    std::mt19937 gen(0); //Standard mersenne_twister_engine seeded with rd()
-    std::uniform_real_distribution<> dis(0.0, 1.0);
     // Initialize times and events
+    std::vector <double> times(rates.size()); 
+    // Compute times from rates
+    for (int iPair = 0; iPair < rates.size(); iPair++){
+        times[iPair] = -log(1.0-unif(rng))/rates[iPair];
+    }
     double systime = 0.0;
     std::vector <int> events;
-    const int nAlreadyBound = nLinks; // the first nAlreadyBound events are already bound links
+    int nEvents=0;
     while (systime < tstep){
-        // Update the vector of times
-        std::vector <double> newTimes = updateTimes(times,iPts,jPts,nowBound,added,nLinks,nCL);
         // Find the minimum time and the nextEvent
-        int nextEvent = std::distance(newTimes.begin(), std::min_element(newTimes.begin(), newTimes.end()));
+        int nextEvent = std::distance(times.begin(), std::min_element(times.begin(), times.end()));
         int iPt = iPts[nextEvent];
         int jPt = jPts[nextEvent];
-        systime+= newTimes[nextEvent];
+        systime = times[nextEvent];
         // Add the event to the list of events if possible
         if (systime < tstep){
-            auto iF = std::find(events.begin(), events.end(), nextEvent); 
-            if (iF != events.end()){ 
-                // already done, now going back, remove from list
-                events.erase(iF);
-            } else{
-                events.push_back(nextEvent);
-            }
-            nowBound[nextEvent] = 1 - nowBound[nextEvent]; // change bound state
-            added[iPt]=1-added[iPt]; // change local copy of added
-            added[jPt]=1-added[jPt];
-            nLinks+=2*nowBound[nextEvent]-1; // -1 if now unbound, 1 if now bound
-            double newRate; // the rate for the next event
-            if (nowBound[nextEvent]){ // just became bound, calc rate to unbind
-                newRate = calcKoffOne(iPt,jPt,uniPts,g,Lens,koff0);
-            } else {// just became unbound, calculate rate to bind back
-                if (nextEvent < nAlreadyBound){ // those originally bound
-                    newRate = 0; // original pairs cannot rebind (avoid double count)
-                } else { 
-                    newRate = calcKonOne(iPt,jPt,uniPts,g,Lens,kon0,cl_cut);
+            // Check if the event can actually happen
+            if (nowBound[nextEvent]==1 || (added[iPt]==0 && added[jPt]==0 && nLinks < nCL)){
+                nEvents++;
+                auto iF = std::find(events.begin(), events.end(), nextEvent); 
+                if (iF != events.end()){ 
+                    // already done, now going back, remove from list
+                    events.erase(iF);
+                } else{
+                    events.push_back(nextEvent);
+                }
+                nowBound[nextEvent] = 1 - nowBound[nextEvent]; // change bound state
+                added[iPt]=1-added[iPt]; // change local copy of added
+                added[jPt]=1-added[jPt];
+                nLinks+=2*nowBound[nextEvent]-1; // -1 if now unbound, 1 if now bound
+                if (nowBound[nextEvent]){ // just became bound, calc rate to unbind
+                    rates[nextEvent] = calcKoffOne(iPt,jPt,uniPts,g,Lens,koff0);
+                } else {// just became unbound, calculate rate to bind back
+                    rates[nextEvent] = calcKonOne(iPt,jPt,uniPts,g,Lens,kon0,cl_cut);
                 }
             }
             // Redraw random time for that event
-            //std::cout << "Random number " << 1.0-dis(gen) << "\n";
-            times[nextEvent] = -log(1.0-dis(gen))/newRate;
-            //times[nextEvent] = 0.1/newRate; // temp to compare w python
+            times[nextEvent] = -log(1.0-unif(rng))/rates[nextEvent]+systime;
         }
     }
+    //std::cout << "Number of events " << nEvents << std::endl;
     return events;
 }
    
@@ -220,4 +250,5 @@ PYBIND11_MODULE(CLUtils, m) {
     m.def("CLForces", &CLForces, "Forces due to the cross linkers");
     m.def("calcKon", &calcKon, "Rate binding constants");
     m.def("newEventsCL", &newEventsCL, "Vector of new events");
+    m.def("seedRandomCLs", &seedRandomCLs, "Seed random number generator");
 }

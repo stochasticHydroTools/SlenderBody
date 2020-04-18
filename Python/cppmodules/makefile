@@ -1,16 +1,13 @@
-all: EwaldUtils SpecQuadUtils CLUtils FiberUtils
+all: RPYKernels ManyFiberMethods DomainCpp
 
-EwaldUtils: 
-	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` EwaldUtils.cpp -o EwaldUtils.so
+DomainCpp:
+	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` Domain.cpp -o DomainCpp.so
 
-SpecQuadUtils:
-	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` SpecQuadUtils.cpp -o SpecQuadUtils.so
+RPYKernels: 
+	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` pyRPYKernels.cpp -o RPYKernels.so
 
-CLUtils:
-	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` CLUtils.cpp -o CLUtils.so
-
-FiberUtils:
-	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` FiberUtils.cpp -o FiberUtils.so
+ManyFiberMethods: 
+	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` pyManyFiberMethods.cpp -o ManyFiberMethods.so
 
 clean:
 	rm *.so

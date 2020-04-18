@@ -1,5 +1,6 @@
 import numpy as np
 import copy
+import time
 
 # Definitions (for fixed point iteration)
 itercap = 1;
@@ -37,26 +38,25 @@ class TemporalIntegrator(object):
     def getSecondNetworkStep(self,dt):
         return 0;
         
-    def NetworkUpdate(self,Dom,t,tstep):
+    def NetworkUpdate(self,Dom,t,tstep,of=None):
         if (tstep==0):
             return;
-        print('Network update time %f' %tstep);
         Dom.setg(self._allFibers.getg(t));
-        self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
+        self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep,of);
     
     def getLambdaN(self,iT):
         return self._allFibers.getLambdas();
 
-    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,outfile,write=1):
+    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,outfile,outfileCL=None,write=1):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the domain
         object we are solving on, Dom, Ewald = the Ewald splitter object
         we need to do the Ewald calculations, outfile = handle to the 
         output file to write to, write=1 to write to it, 0 otherwise.  
-        """           
+        """   
         # Update the network (first time)
-        self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt,iT));
+        #self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt,iT));
         # Set domain strain and fill up the arrays of points
         tvalSolve = self.gettval(iT,dt);
         Dom.setg(self._allFibers.getg(tvalSolve));
@@ -65,12 +65,17 @@ class TemporalIntegrator(object):
         itmax = self.getMaxIters(iT);
         # Get relevant arguments
         XforNL, XsforNL = self.getXandXsNonLoc();
-        forceExt = self._CLNetwork.CLForce(self._allFibers._fiberDisc,XforNL,Dom);
+        # forceExt = self._CLNetwork.CLForce(self._allFibers._fiberDisc,XforNL,Dom);
+        forceExt = np.zeros(self._allFibers._Nfib*16*3); # TEMPORARY: CL network not done yet
         while (not converged and iters < itmax):
+            t = time.time();
             lamforNL = self.getLamNonLoc(iT,iters);  
             uNonLoc = self._allFibers.nonLocalBkgrndVelocity(XforNL,XsforNL,lamforNL, tvalSolve, \
                         forceExt,Dom,Ewald);
+            print('Time for NL velocity calculation %f' %(time.time()-t));
+            t = time.time();
             self._allFibers.linSolveAllFibers(XsforNL,uNonLoc,forceExt,dt,self._impco);
+            print('Time for all linear solve %f' %(time.time()-t));
             converged = self._allFibers.converged(lamforNL,fixedpointtol);
             iters+=1;
         # Converged, update the fiber positions
@@ -78,9 +83,10 @@ class TemporalIntegrator(object):
         # Copy individual fiber objects into large arrays of points, forces
         self._allFibers.fillPointArrays();
         # Update the network (second time)
-        self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt,iT,numSteps));
+        #self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt,iT,numSteps));
         if (write):
             self._allFibers.writeFiberLocations(outfile);
+        # self.NetworkUpdate(Dom,0,dt,outfileCL);
         # Compute stress at time n+1
         #fibStress = self._allFibers.FiberStress(self.getLambdaN(iT),Dom.getLens());
         #CLstress = self._CLNetwork.CLStress(self._allFibers,self._allFibers.getFiberDisc(),Dom);
