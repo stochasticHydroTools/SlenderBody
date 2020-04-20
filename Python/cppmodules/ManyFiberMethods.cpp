@@ -160,6 +160,11 @@ void RPYFiberKernel(const vec &Targets, const vec &FibPts, const vec &Forces, ve
 void OneRPYKernel(const vec3 &targ, const vec &sourcePts, const vec &ForceDs, const vec &wts, 
                   int first, int last, vec3 &utarg){
     /**
+    Donev: What is the difference with the previous OneRPYKernel routine above?
+    I would suggest against naming routines the same thing as it leads to confusion for someone reading the code
+    The compiler can read protypes/signatures of routines and figure out which to call but humans like to be able to search for a name
+    and use names to understand what things are
+    
     Compute the RPY kernel at a specific target due to a fiber. 
     @param targ = the target position (3 array)
     @param sourcePts = fiber points along which we are summing the kernel (row stacked vector)
@@ -425,6 +430,7 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                              const vec &FinitePartVelocities, double g,const intvec &numTargsbyFib, 
                              const intvec &allTargetNums, vec &correctionUs, int nThreads){
     /**
+    Donev: Sorry, this is too complicated/long for me to follow. As long as you checked that it gives the same results (for a given input) as the previous python code I am fine with it...
     Method to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
     @param ChebFiberPoints = vector (row stacked) of Chebyshev points on ALL fibers
     @param UniformFiberPoints = vector (row stacked) of uniform points on ALL fibers
@@ -432,6 +438,8 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
     @param FinitePartVelocities = vector (row stacked) of velocities due to the finite part integral on 
         ALL fibers (necessary when the fibers are close togther and the centerline velocity is used)
     @param g = strain in coordinate system
+    Donev: The wording "on each fiber" appears several times but it confuses me -- I believe you mean "for each fiber"
+    That is, for each fiber there is a list of targets (on other fibers) for which we need to subtract RPY and then do special quad, right?
     @param numTargsbyFib = int vector of the number of targets that require correction on each fiber
     @param allTargetNums = vector of the target indices that need correction in sequential order
     @param correctionUs = vector (row stacked) of correction velocities (modified here) . 
@@ -442,7 +450,8 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
     // Cumulative sum of the number of targets by fiber to figure out where to start
     intvec endTargNum(numTargsbyFib.begin(),numTargsbyFib.end());
     std::partial_sum(endTargNum.begin(), endTargNum.end(),endTargNum.begin());
-    omp_set_num_threads(nThreads);
+    omp_set_num_threads(nThreads); // Donev: I believe that you can do this inside the omp parallel pragma, instead of like this. Then no need to reset
+    // Donev: Why is the schedule here fixed to dynamic?
     #pragma omp parallel for schedule(dynamic)
     for (int iFib=0; iFib < NFib; iFib++){
         // Initialize fiber specific quantities
@@ -506,7 +515,7 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                             }
                             sqneeded = calculateRoot(upsampledNodes, Pan2Pts,Pan2Coeffs,Pan2DCoeffs,targetPoint, troot);
                             if (sqneeded==1 && sqneeded1==1){
-                                throw std::runtime_error("Special quad needed for both panels!");
+                                throw std::runtime_error("Special quad needed for both panels!"); // Donev: Why can't we do this?
                             }
                             if (sqneeded){
                                 specialWeights(upsampledNodes,troot,w1,w3,w5,L);
@@ -528,7 +537,8 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
             } // end if correction needed
         } // end loop over targets
     } // end parallel loop over fibers
-    omp_set_num_threads(1); // todo: check if re-setting nThreads is necessary
+    omp_set_num_threads(1); // todo: check if re-setting nThreads is necessary 
+    // Donev: I think you should just set n_threads in the omp pragma itself -- I believe you can use variables inside the pragma too, not just constants. Try it
 }
 
 void FinitePartVelocity(const vec &ChebPoints, const vec &FDens,const vec &Xs,vec &uFP){

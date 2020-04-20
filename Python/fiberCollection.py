@@ -100,31 +100,44 @@ class fiberCollection(object):
         Outputs: non-local velocity as a tot#ofpts*3 one-dimensional array.
         This includes the background flow and finite part integrals. 
         """
+        # Donev: I suggest using spacing to break this down into pieces instead of one long routine.
+        # Just like we put paragraphs in writing spacing helps structure code into sections. I did it for this routine
         BkgrndFlow = self.evalU0(X_nonLoc,t);
         # If not doing non-local hydro, return just background flow and stop.
         totnum = self._Nfib*self._Npf;
         if (not self._nonLocal):
             return np.reshape(BkgrndFlow,totnum*3);
+            
         # Compute the total force density from lambda, the external force, and also
         # the bending force, which can be determined from X and the fiber discretization. 
         thist=time.time();
         forceDs = np.reshape(self.evalBendForceDensity(X_nonLoc) + exForceDen+lam_nonLoc,(totnum,3));
+        # Donev: I suggest that you introduce a global "verbocity" variable which controls how and what is printed to screen
+        # For example, -1 means don't print stuff for long "real" runs, 0 means print timing, 1 means print some more, etc.
+        # This way you can have code that can run in debug mode and also run in production mode
         print('Time to eval bend forces %f' %(time.time()-thist));
+        
         # Calculate finite part velocity
         thist=time.time();
         finitePart = ManyFibCpp.FinitePartVelocity(X_nonLoc, forceDs, Xs_nonLoc);
         print('Time to eval finite part %f' %(time.time()-thist));
+        # Donev: I added space here
+        # While it does not make sense physically, for testing which terms contribute to the physics it is useful to have an option
+        # where we include the finite part but not the fiber-fiber interactions. So make self._nonLocal be an integer not logical with 
+        # 0=local, 1=local+FP, >1 all terms or something like that
+        
         # Update the spatial objects for Chebyshev and uniform
         self._SpatialCheb.updateSpatialStructures(X_nonLoc,Dom);
         uniPoints = self.getUniformPoints(X_nonLoc);
         self._SpatialUni.updateSpatialStructures(uniPoints,Dom);
         # Ewald splitting to compute the far field and near field
-        nThreads=4;
+        nThreads=4; # Donev: This variable should be higher up and come in as input or be part of the class and set in Init.
         # Multiply by the weights to get force from force density. 
         thist=time.time();
         forces = forceDs*np.reshape(np.tile(self._fiberDisc.getw(),self._Nfib),(totnum,1));
         RPYVelocity = RPYEval.calcBlobTotalVel(X_nonLoc,forces,Dom,self._SpatialCheb,nThreads);
         print('Total Ewald time %f' %(time.time()-thist));
+        
         # Corrections for fibers that are close together
         # First determine which sets of fibers and targets need corrections
         thist=time.time();
@@ -135,6 +148,7 @@ class fiberCollection(object):
         corVels = ManyFibCpp.CorrectNonLocalVelocity(X_nonLoc,uniPoints,forceDs,finitePart, Dom.getg(),numTbyFib,alltargets, nThreads)
         print('Correction quadrature time %f' %(time.time()-thist));
         print('Maximum correction velocity %f' %np.amax(np.abs(corVels)));
+        
         RPYVelocity+=corVels;
         # Return the velocity due to the other fibers + the finite part integral velocity
         return np.reshape(RPYVelocity+BkgrndFlow,totnum*3)+finitePart;
