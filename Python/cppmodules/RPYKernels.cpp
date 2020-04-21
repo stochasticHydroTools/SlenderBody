@@ -181,6 +181,7 @@ vec RPYNKerPairs(int Npairs,const intvec &PairPts, const vec &Points, const vec 
     } // end looping over pairs
     }
     return NearFieldVelocity;
+    omp_set_num_threads(1);
 }
 
 // The near field kernel, multiplies M_near * f

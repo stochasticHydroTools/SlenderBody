@@ -1,5 +1,5 @@
 # Inputs for the slender body simulation
-nFib=40		# number of fibers
+nFib=512		# number of fibers
 nCL=0		# number of cross linkers
 N=16		# number of points per fiber
 Lf=2		# length of each fiber
