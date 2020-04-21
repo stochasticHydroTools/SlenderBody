@@ -10,6 +10,8 @@
 // ================================================
 // GLOBAL VARIABLES AND THEIR INITIALIZATION
 // ================================================
+// Donev: These global variables seem unwise -- what if we had fibers of different thickness?
+// No need to change it (it is not easy to fix, which is the problem) but just FYI in terms of programming choices
 double a; // hydrodynamic radius
 double mu; // fluid viscosity
 double mu_inv;
@@ -18,6 +20,7 @@ vec NearFieldVelocity;
 double outFront; // 1/(6*pi*mu*a)
 double sqrtpi = sqrt(M_PI);
 
+// Donev: Every routine that allocates memory must have a corresponding routine that deallocates it
 void initRPYVars(double ain, double muin, int NEwaldPtsin, vec3 Lengths){
     /**
     Initialize the global variables for the RPY Ewald calculations. 
@@ -30,12 +33,13 @@ void initRPYVars(double ain, double muin, int NEwaldPtsin, vec3 Lengths){
     mu = muin;
     mu_inv = 1.0/mu;
     NEwaldPts = NEwaldPtsin;
-    NearFieldVelocity = vec(NEwaldPtsin*3);
+    NearFieldVelocity = vec(NEwaldPtsin*3); // Donev: Where is this memory freed/deallocated?
+    // Imagine you had fibers growing and shrinking, so points were added/removed so one would need to re-initialize later
     initLengths(Lengths[0],Lengths[1],Lengths[2]);
     outFront = 1.0/(6.0*M_PI*mu*a);
 }
 
-//The RPY near field can be written as M_near = F(r,xi,a)*I+G(r,xi,a)*(I-RR)
+//The split RPY near field can be written as M_near = F(r,xi,a)*I+G(r,xi,a)*(I-RR)
 //The next 2 functions are those F and G functions.
 double Fnear(double r, double xi){
     /**
@@ -143,12 +147,13 @@ vec RPYNKerPairs(int Npairs,const intvec &PairPts, const vec &Points, const vec 
     double nearSelfMobility = outFront*Fnear(0.0,xi);
     #pragma omp parallel
     {
+    // Donev: Why is the schedule fixed to static here?
     #pragma omp for schedule(static)
     for (int iPtDir=0; iPtDir < 3*NEwaldPts; iPtDir++){
         NearFieldVelocity[iPtDir]=nearSelfMobility*Forces[iPtDir];
     }
     // Pairs
-    #pragma omp barrier
+    #pragma omp barrier 
     #pragma omp for schedule(static)
     for (int iPair=0; iPair < Npairs; iPair++){
         int iPt = PairPts[2*iPair];
@@ -205,6 +210,12 @@ void RPYNKer(vec3 &rvec, const vec3 &force, double xi, vec3 &unear){
     }
 }
 
+//-------------------------------------------------------
+// Plain unsplit RPY kernel evaluation
+//-------------------------------------------------------
+// Donev: Suggest breaking long codes up into sections, here it seems you switch from split RPY (PSE method) to plain RPY
+
+// Donev: I think the next line of documentation is wrong -- no chi here since this is just "plain" RPY
 //The RPY kernel can be written as M = Ft(r,xi,a)*I+Gt(r,xi,a)*(I-RR)
 //The next 2 functions are those Ft and Gt functions.
 double FtotRPY(double r){
