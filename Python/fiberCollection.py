@@ -2,6 +2,7 @@ import numpy as np
 from DiscretizedFiber import DiscretizedFiber
 from SpatialDatabase import SpatialDatabase, ckDSpatial
 import ManyFiberMethods as ManyFibCpp
+import FiberUpdateNumba as NumbaColloc
 import scipy.sparse as sp
 import time
 from math import sqrt
@@ -152,7 +153,7 @@ class fiberCollection(object):
         RPYVelocity+=corVels;
         # Return the velocity due to the other fibers + the finite part integral velocity
         return np.reshape(RPYVelocity+BkgrndFlow,totnum*3)+finitePart;
-    
+     
     def linSolveAllFibers(self,XsforNL,nLvel,forceExt,dt,implic_coeff):
         """
         Compute alpha and lambda on all the fibers for a given RHS
@@ -161,15 +162,28 @@ class fiberCollection(object):
         dt = timestep, implic_coeff = implicit coefficient for the matrix solve
         """
         # Linear solve on each fiber
-        for iFib in range(self._Nfib):
-            fib = self._fibList[iFib];
-            stackinds = self.getStackInds(iFib);
-            rowinds = self.getRowInds(iFib);
-            alphaInds = range(iFib*(2*self._Npf-2),(iFib+1)*(2*self._Npf-2));
-            Xin = np.reshape(self._ptsCheb[rowinds,:],self._Npf*3); # X^n is the input, not XnonLoc!!
-            Xsin = np.reshape(XsforNL[rowinds,:],self._Npf*3);
-            self._alphas[alphaInds], self._velocities[stackinds], self._lambdas[stackinds] = \
-                self._fiberDisc.alphaLambdaSolve(Xin,Xsin,dt,implic_coeff,nLvel[stackinds],forceExt[stackinds]);
+        if False: # pure python
+            t=time.time()
+            for iFib in range(self._Nfib):
+                stackinds = self.getStackInds(iFib);
+                rowinds = self.getRowInds(iFib);
+                alphaInds = range(iFib*(2*self._Npf-2),(iFib+1)*(2*self._Npf-2));
+                Xin = np.reshape(self._ptsCheb[rowinds,:],self._Npf*3); # X^n is the input, not XnonLoc!!
+                Xsin = np.reshape(XsforNL[rowinds,:],self._Npf*3);
+                self._alphas[alphaInds], self._velocities[stackinds], self._lambdas[stackinds] = \
+                    self._fiberDisc.alphaLambdaSolve(Xin,Xsin,dt,implic_coeff,nLvel[stackinds],forceExt[stackinds]);
+            print('Serial time %f' %(time.time()-t));
+            t=time.time()
+        XAll = np.reshape(self._ptsCheb,self._Npf*self._Nfib*3);
+        XsAll = np.reshape(XsforNL,self._Npf*self._Nfib*3);
+        fD = self._fiberDisc;
+        self._alphas, self._velocities, self._lambdas = NumbaColloc.linSolveAllFibers(self._Nfib,self._Npf,XAll,\
+            XsforNL,XsAll,nLvel,forceExt,dt,implic_coeff, \
+            fD._leadordercs, self._mu, fD._Lmat, fD._MatfromNto2N, fD._Matfrom2NtoN, fD._Dpinv2N, fD._w,fD._D4BC,fD._I,fD._wIt)
+        #print('Numba time %f' %(time.time()-t));
+        #print(np.amax(alphs-self._alphas));
+        #print(np.amax(vels-self._velocities));
+        #print(np.amax(lams-self._lambdas));
         
     def updateAllFibers(self,dt,XsforNL,exactinex=1):
         """
@@ -178,14 +192,26 @@ class fiberCollection(object):
         Inputs: dt = timestep, XsforNL = the tangent vectors we use to compute the 
         Rodriguez rotation, exactinex = whether to preserve exact inextensibility
         """
-        for iFib in range(self._Nfib):
-            stackinds = self.getStackInds(iFib);
-            rowinds = self.getRowInds(iFib);
-            fib = self._fibList[iFib];
-            XsforOmega = np.reshape(XsforNL[rowinds,:],self._Npf*3);
-            alphaInds = range(iFib*(2*self._Npf-2),(iFib+1)*(2*self._Npf-2));
-            fib.updateXsandX(dt,self._velocities[stackinds],XsforOmega,self._alphas[alphaInds],exactinex);    
-
+        t=time.time()
+        if (exactinex==0):
+            for iFib in range(self._Nfib):
+                stackinds = self.getStackInds(iFib);
+                rowinds = self.getRowInds(iFib);
+                fib = self._fibList[iFib];
+                XsforOmega = np.reshape(XsforNL[rowinds,:],self._Npf*3);
+                alphaInds = range(iFib*(2*self._Npf-2),(iFib+1)*(2*self._Npf-2));
+                fib.updateXsandX(dt,self._velocities[stackinds],XsforOmega,self._alphas[alphaInds],exactinex);
+        else:
+            fD = self._fiberDisc;
+            AllXs, AllX = NumbaColloc.updateXsNumba(self._Nfib,self._Npf,self._ptsCheb,\
+                self._tanvecs,XsforNL,fD._MatfromNto2N, fD._Matfrom2NtoN,\
+                fD._Lmat,self._alphas,self._velocities,dt,self._Lf)
+            for iFib in range(self._Nfib):
+                fib = self._fibList[iFib];
+                rowinds = self.getRowInds(iFib);
+                fib.passXsandX(AllX[rowinds,:],AllXs[rowinds,:])
+        print('Rodrigez time %f' %(time.time()-t));
+        
     def fillPointArrays(self):
         """
         Copy the X and Xs arguments from self._fibList (list of fiber

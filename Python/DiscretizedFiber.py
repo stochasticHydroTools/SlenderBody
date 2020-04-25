@@ -72,6 +72,11 @@ class DiscretizedFiber(object):
         self._X = np.reshape(Xnp1,3*N);
         self._Xs = np.reshape(Xsp1,3*N);
     
+    def passXsandX(self,X,Xs):
+        N = self._fibDisc.getN();
+        self._X = np.reshape(X,3*N)
+        self._Xs = np.reshape(Xs,3*N);
+        
     def writeLocs(self,of):
         """
         Write the locations to a file object of. 

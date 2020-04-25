@@ -2,6 +2,7 @@ import numpy as np
 import scipy.linalg as sp
 import chebfcns as cf
 import ManyFiberMethods as FinitePartCpp
+import time
 from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
 
@@ -248,6 +249,7 @@ class FibCollocationDiscretization(object):
         dt = timestep, impco = implicit coefficient (coming from the temporal integrator)
         nLvel = non-local velocity as a 3N vector, exF = external forces as a 3N vector
         """
+        tim = time.time();
         M = self.calcM(Xsarg);
         K, Kt = self.calcKs(Xsarg);
         # Schur complement solve
@@ -268,7 +270,8 @@ class FibCollocationDiscretization(object):
         lambdas = np.linalg.solve(M,vel-nLvel)-fE-exF- \
                 impco*dt*np.dot(self._D4BC,vel);
         return alphaU[:2*self._N-2], vel, lambdas;
-                
+        
+    
     def XFromXs(self, XsNow, XsOneHalf, alpha, dt):
         """
         Compute the new tangent vectors. 
