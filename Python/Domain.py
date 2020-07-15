@@ -38,14 +38,15 @@ class Domain(object):
         return 1.0;
        
     def getLens(self):
-        # Get lengths of the bounded domain
         return self._Lens;
     
     def getVol(self):
         return 1.0*self._Lx*self._Ly*self._Lz;
 
     def getPeriodicLens(self):
-        # Get periodic lengths (none for general domain)
+        """
+        Get periodic lengths (none for general domain)
+        """
         return [None,None,None];
     
     def calcShifted(self,dvec):
@@ -56,7 +57,6 @@ class Domain(object):
         undeformed coordinates
         For a general free space domain, do nothing.
         """
-        print('Calling calc shifted')
         return dvec;
 
     def MinPrimeShiftInPrimeCoords(self,rprime):
@@ -133,7 +133,7 @@ class PeriodicShearedDomain(Domain):
     """
     Child class of Domain that handles periodic BCs and shear
     In this implementation the domain deformation is limited to be simple shear
-    The domain is assumed to be a potentially deformed (non-orthogonal) parallelpiped
+    The domain is assumed to be a potentially deformed (non-orthogonal) parallelepiped
     Unprimed coordinates denote positions in the undeformed (orthogonal) domain and 
     primed in the deformed domain
     """
@@ -144,7 +144,6 @@ class PeriodicShearedDomain(Domain):
     def __init__(self,Lx,Ly,Lz):
         super().__init__(Lx,Ly,Lz);
         DomCpp.initLengths(Lx,Ly,Lz); # initialize C++ variables
-        print('Lengths initialized')
         self._g = 0; # Deformation factor due to the shear
 
     ## ===================================
@@ -161,8 +160,13 @@ class PeriodicShearedDomain(Domain):
         return 1+0.5*g*g+0.5*sqrt(g*g*(g*g+4.0));
     
     def setg(self,ing):
-        ing-=round(ing); # Now g is in [-1/2,1/2]
         self._g = ing;
+    
+    def roundg(self):
+        """
+        Shift g so it's on [-1/2,1/2]
+        """
+        self._g-=round(self._g);
     
     def getg(self):
         return self._g;
@@ -214,7 +218,7 @@ class PeriodicShearedDomain(Domain):
         """
         Method to calculate the coordinates of a vector 
         in the shifted coordinate system. Inputs = ptsxyz (pts in
-        the x,y,z coordinate system).
+        the x,y,z coordinate system) as an N x 3 array. 
         Output is the vector pts', i.e. in the x',y',z' coordinate system
         """
         Linv = np.array([[1,-self._g,0],[0,1,0],[0,0,1]]);
@@ -225,7 +229,7 @@ class PeriodicShearedDomain(Domain):
         """
         Method to compute the coordinates of a point in the (x,y,z)
         coordinate system from the coordinates in the (x',y',z') coordinate
-        system. Inputs: the prime coordinates.
+        system. Inputs: the prime coordinates as an N x 3 array. 
         Outpts: the coordinates in the (x,y,z) space
         """
         L = np.array([[1,self._g,0],[0,1,0],[0,0,1]]);

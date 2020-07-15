@@ -28,7 +28,7 @@
 // GLOBAL VARIABLES AND THEIR INITIALIZATION
 //===========================================
 
-double epsilon, L;
+double epsilon, L, delta, fatdistance, fatepsilon;
 int NFib, NChebperFib, NuniperFib, Nupsample;
 vec NormalChebNodes, upsampledNodes, NormalChebWts, UpsampledChebWts;
 double dstarCL,dstarInterp, dstar2panels;
@@ -37,7 +37,7 @@ vec FinitePartMatrix, DifferentiationMatrix;
 vec upsamplingMatrix, TwoPanelUpsampMatrix, ValuestoCoeffsMatrix;
 
 void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin, 
-                   int NfibIn,int NChebIn, int NuniIn){
+                   int NfibIn,int NChebIn, int NuniIn, double deltain, double fatDistIn){
     /**
     Initialize variables relating to each fiber
     @param muin = viscosity of fluid
@@ -47,6 +47,8 @@ void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin,
     @param NfibIn = number of fibers
     @param NChebIn = number of Chebyshev points on each fiber
     @param NuniIn = number of uniform points on each fiber 
+    @param deltain = fraction of fiber with ellipsoidal tapering
+    @param fatDistIn = radius at which we give up on nonlocal quadrature
     **/
     initRPYVars(sqrt(1.5)*epsIn*Lin, muin, NfibIn*NChebIn, Lengths);
     // Set domain lengths
@@ -55,6 +57,10 @@ void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin,
     L = Lin;
     NuniperFib = NuniIn;
     NFib = NfibIn;
+    delta = deltain;
+    fatdistance = fatDistIn;
+    fatepsilon = fatDistIn/L;
+    
 }
 
 void initSpecQuadParams(double rcritIn, double dsCLin, double dInterpIn, 
@@ -76,7 +82,8 @@ void initSpecQuadParams(double rcritIn, double dsCLin, double dInterpIn,
     specialdistance = specDIn;
 }
 
-void initNodesandWeights(const vec &normalNodesIn, const vec &normalWtsIn, const vec &upNodes, const vec &upWeights){
+void initNodesandWeights(const vec &normalNodesIn, const vec &normalWtsIn, const vec &upNodes, const vec &upWeights, 
+    const vec &SpecialVanderIn){
     /**
     Initialize nodes and weights (see documentation in pyManyFiberMethods.cpp)
     **/
@@ -86,6 +93,7 @@ void initNodesandWeights(const vec &normalNodesIn, const vec &normalWtsIn, const
     upsampledNodes = upNodes;
     Nupsample = upsampledNodes.size();
     UpsampledChebWts = upWeights;
+    setVandermonde(SpecialVanderIn, Nupsample);
 }
 
 void initResamplingMatrices(const vec &UpsampMatIn, const vec &Upsamp2PanMat, const vec &ValstoCoeffs){
@@ -324,7 +332,7 @@ double FindClosestFiberPoint(double tapprox, const vec &PositionCoefficients, co
     for (int d=0; d< 3; d++){
         dfromFib[d] = ClosestPoint[d]-target[d];
     }
-    double dstar = sqrt(dot(dfromFib,dfromFib))/(epsilon*L); // non-dimensional distance
+    double dstar = sqrt(dot(dfromFib,dfromFib)); // distance
     return dstar;
 }
   
@@ -416,8 +424,26 @@ void calcCLVelocity(const vec &FinitePartCoefficients, const vec &DerivCoefficie
     eval_Cheb3Dirs(DerivCoefficients, tapprox, Xs);
     eval_Cheb3Dirs(forceDCoefficients, tapprox, forceDen);
     double Xsdotf = dot(Xs,forceDen);
-    double c = log((2.0*(1.0-tapprox*tapprox)+2.0*sqrt((1.0-tapprox*tapprox)*(1.0-tapprox*tapprox)+
-        16.0*epsilon*epsilon))/(4.0*epsilon*epsilon)); // regularized leading order coefficient
+    double s = (tapprox+1.0)*L/2.0;
+    double r = fatepsilon*L;
+    double c = log(4.0*s*(L-s)/(r*r));
+    //std::cout << "tapprox and corresponding s " << tapprox << " , " << s << std::endl;
+    if (s < delta*L || s > L - delta*L){
+        r = 2.0*fatepsilon*sqrt(s*(L-s));
+        c = -log(fatepsilon*fatepsilon);
+    } else if (s < 2.0*delta*L){
+        double wCyl = 1.0/(1.0+exp(-23.0258/(delta*L)*s+34.5387));
+        r = fatepsilon*(L*wCyl+(1-wCyl)*2.0*sqrt(s*(L-s)));
+        c = log(4.0*s*(L-s)/(r*r));
+    } else if (s > L - 2.0*delta*L){
+        double wCyl = 1.0/(1.0+exp(-23.0258/(delta*L)*(L-s)+34.5387));
+        r = fatepsilon*(L*wCyl+(1-wCyl)*2.0*sqrt(s*(L-s)));
+        c = log(4.0*s*(L-s)/(r*r));
+    } else { 
+        r = fatepsilon*L;
+        c = log(4.0*s*(L-s)/(r*r));
+    }
+    //std::cout << "Radius and coefficient " << r << " and " << c << std::endl;
     for (int d =0; d < 3; d++){
         CLpart[d] += 1.0/(8*M_PI*mu)*(c*(forceDen[d]+Xs[d]*Xsdotf)+(forceDen[d]-3*Xs[d]*Xsdotf));
     }
@@ -428,7 +454,7 @@ void calcCLVelocity(const vec &FinitePartCoefficients, const vec &DerivCoefficie
 //===========================================
 void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiberPoints, const vec &FibForceDensities, 
                              const vec &FinitePartVelocities, double g,const intvec &numTargsbyFib, 
-                             const intvec &allTargetNums, vec &correctionUs, int nThreads){
+                             const intvec &allTargetNums, vec &correctionUs, int nThreads, bool noCorrectionQuads){
     /**
     Donev: Sorry, this is too complicated/long for me to follow. As long as you checked that it gives the same results (for a given input) as the previous python code I am fine with it...
     Method to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
@@ -444,9 +470,13 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
     @param allTargetNums = vector of the target indices that need correction in sequential order
     @param correctionUs = vector (row stacked) of correction velocities (modified here) . 
     @param nThreads = number of threads to use in parallel processing
+    @param noCorrectionQuads = true if returning after subtracting the self RPY for a fiber (not doing special quad)
     **/
     // Subtract the self RPY for a single fiber
     subtractAllRPY(ChebFiberPoints, FibForceDensities, correctionUs);
+    if (noCorrectionQuads){
+        return;
+    }
     // Cumulative sum of the number of targets by fiber to figure out where to start
     intvec endTargNum(numTargsbyFib.begin(),numTargsbyFib.end());
     std::partial_sum(endTargNum.begin(), endTargNum.end(),endTargNum.begin());
@@ -495,7 +525,11 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                     if (dstar < dstarInterp){
                          // Compute weight and value of CL velocity assigned to nearest CL velocity
                         CLwt = std::min((dstarInterp-dstar)/(dstarInterp-dstarCL),1.0); // takes care of very close ones
-                        calcCLVelocity(FinitePartCoefficients, DerivCoefficients, forceDCoefficients, tapprox, CLpart);
+                        calcCLVelocity(FinitePartCoefficients, DerivCoefficients, forceDCoefficients, tapprox,CLpart);
+                        if (fatepsilon > epsilon && dstar > dstarCL){
+                            double dscaled = (dstar-0.5*(dstarInterp+dstarCL))/(dstarInterp-dstarCL);
+                            CLwt = 1.0/(1.0+exp(10.0*dscaled));
+                        }
                     } 
                     SBTwt = 1.0-CLwt;
                     if (sqneeded==1){ // special quadrature
@@ -506,7 +540,6 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                             SBTKernelSplit(targetPoint,UpsampledPos,UpsampledForceDs, w1, w3, w5, uSBT);
                         } else if (dstar > dstarCL){ // 2 panels of Nupsample
                             sqneeded = calculateRoot(upsampledNodes, Pan1Pts,Pan1Coeffs,Pan1DCoeffs,targetPoint, troot);
-                            int sqneeded1 = sqneeded;
                             if (sqneeded){
                                 specialWeights(upsampledNodes,troot,w1,w3,w5,L);
                                 SBTKernelSplit(targetPoint,Pan1Pts,Pan1FDens, w1, w3, w5, uSBT);
@@ -514,9 +547,6 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                                 OneSBTKernel(targetPoint,Pan1Pts,Pan1FDens,UpsampledChebWts, 0, Nupsample, uSBT);
                             }
                             sqneeded = calculateRoot(upsampledNodes, Pan2Pts,Pan2Coeffs,Pan2DCoeffs,targetPoint, troot);
-                            if (sqneeded==1 && sqneeded1==1){
-                                throw std::runtime_error("Special quad needed for both panels!"); // Donev: Why can't we do this?
-                            }
                             if (sqneeded){
                                 specialWeights(upsampledNodes,troot,w1,w3,w5,L);
                                 SBTKernelSplit(targetPoint,Pan2Pts,Pan2FDens, w1, w3, w5, uSBT);
@@ -536,7 +566,7 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                 }
             } // end if correction needed
         } // end loop over targets
-    } // end parallel loop over fibers
+    } // end parallel loop over fibers 
     omp_set_num_threads(1); // todo: check if re-setting nThreads is necessary 
     // Donev: I think you should just set n_threads in the omp pragma itself -- I believe you can use variables inside the pragma too, not just constants. Try it
 }

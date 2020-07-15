@@ -21,7 +21,7 @@ typedef py::array_t<int, py::array::c_style | py::array::forcecast> npInt;
 typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub; 
 
       
-void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyNormalWts, npDoub pyUpNodes, npDoub pyUpWeights)
+void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyNormalWts, npDoub pyUpNodes, npDoub pyUpWeights, npDoub pyVanderMat)
 {
   /**
     Python wrapper for node and weight initialization in C++. 
@@ -29,6 +29,7 @@ void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyNormalWts, npDoub pyU
     @param pyNormalWeights = Clenshaw-Curtis weights for direct quadrature on the fiber (1D numpy array)
     @param pyUpNodes  = upsampled Chebyshev nodes on the fiber (1D numpy array)
     @param pyNormalWeights = upsampled Clenshaw-Curtis weights for upsampled direct quadrature on the fiber (1D numpy array)
+    @param pyVanderMat = vandermone matrix
   **/
   
   // allocate std::vector (to pass to the C++ function)
@@ -36,15 +37,17 @@ void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyNormalWts, npDoub pyU
   vec normalWts(pyNormalWts.size());
   vec upNodes(pyUpNodes.size());
   vec upWeights(pyUpWeights.size());
+  vec SpecialVandermonde(pyVanderMat.size());
 
   // copy py::array -> std::vector
   std::memcpy(normalNodes.data(),pyNormalNodes.data(),pyNormalNodes.size()*sizeof(double));
   std::memcpy(normalWts.data(),pyNormalWts.data(),pyNormalWts.size()*sizeof(double));
   std::memcpy(upNodes.data(),pyUpNodes.data(),pyUpNodes.size()*sizeof(double));
   std::memcpy(upWeights.data(),pyUpWeights.data(),pyUpWeights.size()*sizeof(double));
+  std::memcpy(SpecialVandermonde.data(),pyVanderMat.data(),pyVanderMat.size()*sizeof(double));
 
   // call pure C++ function
-  initNodesandWeights(normalNodes,normalWts,upNodes,upWeights);
+  initNodesandWeights(normalNodes,normalWts,upNodes,upWeights,SpecialVandermonde);
 } 
 
 // Python wrapper for node and weight initialization          
@@ -131,7 +134,7 @@ py::array py_RPYFiberKernel(npDoub pyPoints, npDoub pyForces)
 
 // Python wrapper for velocity corrections     
 py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints, npDoub pyForceDens, 
-     npDoub pyFinitePartVels, double g,  npInt pyNumbyFib, intvec &TargetNums, int nThreads)
+     npDoub pyFinitePartVels, double g,  npInt pyNumbyFib, intvec &TargetNums, int nThreads, bool noCorrectionQuads)
 {
   /**
     Python wrapper to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
@@ -144,6 +147,7 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
     @param pyNumbyFib = Npts (1D) numpy array of the number of targets that require correction on each fiber
     @param TargetNums = python LIST (not array) of the target indices that need correction in sequential order
     @param nThreads = number of threads to use in parallel processing
+    @param noCorrectionQuads = true if returning after subtracting the self RPY for a fiber (not doing special quad)
     @return velocities = Npts * 3 numpy array (2D) of corrections to the Ewald velocity. 
   **/
   
@@ -165,7 +169,7 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
 
   // call pure C++ function
   vec velocities(pyChebPoints.shape()[0]*3,0.0);
-  CorrectNonLocalVelocity(ChebPoints,UniformPoints,ForceDensities,CenterLineVels, g,NumbyFib,TargetNums, velocities,nThreads);
+  CorrectNonLocalVelocity(ChebPoints,UniformPoints,ForceDensities,CenterLineVels, g,NumbyFib,TargetNums, velocities,nThreads,noCorrectionQuads);
 
   ssize_t              ndim    = 2;
   std::vector<ssize_t> shape   = { pyChebPoints.shape()[0] , 3 };
@@ -182,7 +186,7 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
   ));
 } 
 
-// Python wrapper for velocity corrections     
+// Python wrapper for finite part velocities   
 py::array py_FinitePartVelocity(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyXs)
 {
   /**

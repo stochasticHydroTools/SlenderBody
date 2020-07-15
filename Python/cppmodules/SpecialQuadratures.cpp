@@ -19,9 +19,23 @@
 
 // Global variable: the Bernstein radius
 double rho_crit;
+vec SpecialVandermonde;
+int ipivVander [40]; // pivots for Vandermonde (maximum of 40)
+bool useByorck = false;
+
+// LAPACK CALLS
+extern "C" void dgetrf_(int* dim1, int* dim2, double* a, int* lda, int* ipiv, int* info);
+extern "C" void dgetrs_(char *TRANS, int *N, int *NRHS, double *A, int *LDA, int *IPIV, double *B, int *LDB, int *INFO );
 
 void setRhoCrit(double rhoIn){
     rho_crit = rhoIn;
+}
+
+void setVandermonde(const vec &SpecialVanderIn, int Nupsample){
+    SpecialVandermonde = SpecialVanderIn;
+    // Precompute LU factorization
+    int info;
+    dgetrf_(&Nupsample, &Nupsample, &*SpecialVandermonde.begin(), &Nupsample, ipivVander, &info);
 }
 
 
@@ -388,13 +402,29 @@ void specialWeights(const vec &tnodes, const complex &troot, vec &w1s, vec &w3s,
     vec I1s(n), I3s(n), I5s(n);
     rsqrt_pow_integrals(troot,n, I1s, I3s, I5s);
     // Vandermonde solve
-    pvand(n,tnodes,w1s,I1s);
-    pvand(n,tnodes,w3s,I3s);
-    pvand(n,tnodes,w5s,I5s);
-    for (int i=0; i< n; i++){
-        double tdist = std::abs(tnodes[i]-troot);
-        w1s[i]*=tdist*Lf*0.5;
-        w3s[i]*=pow(tdist,3)*Lf*0.5;
-        w5s[i]*=pow(tdist,5)*Lf*0.5;
+    if (useByorck){
+        pvand(n,tnodes,w1s,I1s);
+        pvand(n,tnodes,w3s,I3s);
+        pvand(n,tnodes,w5s,I5s);
+        for (int i=0; i< n; i++){
+            double tdist = std::abs(tnodes[i]-troot);
+            w1s[i]*=tdist*Lf*0.5;
+            w3s[i]*=pow(tdist,3)*Lf*0.5;
+            w5s[i]*=pow(tdist,5)*Lf*0.5;
+        }
+    } else { 
+        // Precomputed LU
+        char trans = 'T';
+        int nrhs = 1;
+        int info;
+        dgetrs_(&trans, &n, &nrhs, & *SpecialVandermonde.begin(), &n, ipivVander, & *I1s.begin(), &n, &info);
+        dgetrs_(&trans, &n, &nrhs, & *SpecialVandermonde.begin(), &n, ipivVander, & *I3s.begin(), &n, &info);
+        dgetrs_(&trans, &n, &nrhs, & *SpecialVandermonde.begin(), &n, ipivVander, & *I5s.begin(), &n, &info);
+        for (int i=0; i< n; i++){
+            double tdist = std::abs(tnodes[i]-troot);
+            w1s[i]=I1s[i]*tdist*Lf*0.5;
+            w3s[i]=I3s[i]*pow(tdist,3)*Lf*0.5;
+            w5s[i]=I5s[i]*pow(tdist,5)*Lf*0.5;
+        }
     }
 }

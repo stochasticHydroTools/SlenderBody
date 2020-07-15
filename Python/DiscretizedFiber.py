@@ -24,23 +24,35 @@ class DiscretizedFiber(object):
     ## ===============================================
     ##              PUBLIC METHODS
     ## ===============================================
-    def initFib(self,Lengths):
+    def initFib(self,Lengths,X=None,Xs=None):
         """
         Initialize straight fiber locations and tangent 
         vectors on [0,Lx] x [0,Ly] x [0,Lz]. 
         Input: Lengths = 3 vector [Lx,Ly,Lz]
         """
+        N = self._fibDisc.getN();
+        if (X is not None): # if X and Xs are passed
+            if (Xs is None):
+                raise ValueError('If you pass X, need to pass Xs')
+            self._Xs = np.reshape(Xs,(3*N,1));
+            self._X = np.reshape(X,(3*N,1));
+            return;
+            
         # Choose a random start point
         start = np.random.rand(3)*Lengths;
-        # Tangent vector (constant along fiber initially)
-        u=1-2*np.random.rand();
-        v=np.sqrt(1-u*u);
-        w=2*np.pi*np.random.rand();
-        tangent = np.array([v*np.cos(w), v*np.sin(w), u]);
-        N = self._fibDisc.getN();
-        # Initial Xs and X
-        self._Xs = np.tile(tangent,N);
-        self._X = np.reshape(start+np.reshape(self._fibDisc._s,(N,1))*tangent,3*N);
+        if (Xs is not None): # Xs is passed, assign a random start location
+            self._Xs = np.reshape(Xs,(3*N,1));
+            X = start+self._fibDisc.integrateXs(Xs);
+            self._X = np.reshape(X,(3*N,1));
+        else: # initialize random straight fiber
+            # Tangent vector (constant along fiber initially)
+            u=1-2*np.random.rand();
+            v=np.sqrt(1-u*u);
+            w=2*np.pi*np.random.rand();
+            tangent = np.array([v*np.cos(w), v*np.sin(w), u]);
+            # Initial Xs and X
+            self._Xs = np.tile(tangent,N);
+            self._X = np.reshape(start+np.reshape(self._fibDisc._s,(N,1))*tangent,3*N);
 
     def getXandXs(self):
         """
@@ -54,7 +66,7 @@ class DiscretizedFiber(object):
         Update the fiber position and tangent vectors
         Inputs: dt = timestep, velocity = 3N vector velocity of X (used to 
         keep track of the constant), XsForOmega = 3N array of the Xs argument
-        to construct the rotation angle for Xs, alpha = 2N-2 array of the alphas 
+        to construct the rotation angle for Xs, alpha = 2N+1 array of the alphas 
         from the solve, exactinex = 1 to preserve exact inextensibility
         or 0 to just update X and compute Xs from X. 
         """
@@ -64,6 +76,7 @@ class DiscretizedFiber(object):
             self._Xs = np.reshape(np.dot(self._fibDisc._Dmat,\
                         np.reshape(self._X,(N,3))),3*N);
             return;
+            
         # For exact inextensbility
         # Update positions from tangent vectors
         Xnp1, Xsp1 = self._fibDisc.XFromXs(self._Xs, XsForOmega, alpha, dt);
@@ -73,6 +86,9 @@ class DiscretizedFiber(object):
         self._Xs = np.reshape(Xsp1,3*N);
     
     def passXsandX(self,X,Xs):
+        """
+        Update X and Xs just by passing in the configurations 
+        """
         N = self._fibDisc.getN();
         self._X = np.reshape(X,3*N)
         self._Xs = np.reshape(Xs,3*N);
@@ -86,6 +102,15 @@ class DiscretizedFiber(object):
             for j in range(3):
                 of.write('%14.15f     ' % self._X[3*i+j]);
             of.write('\n');
-
+    
+    def writeTanVecs(self,of):
+        """
+        Write the tangent vectors to a file object of. 
+        """
+        N = self._fibDisc.getN(); # to save writing
+        for i in range(N):
+            for j in range(3):
+                of.write('%14.15f     ' % self._Xs[3*i+j]);
+            of.write('\n');
         
     

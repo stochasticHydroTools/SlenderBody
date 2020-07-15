@@ -4,9 +4,9 @@ from numpy import cos
 import numba as nb
 
 """
-    This file is a list of Chebyshev related functions
-    for python that are needed in the slender fiber 
-    code
+This file is a list of Chebyshev related functions
+for python that are needed in the slender fiber 
+code
 """
 
 def chebPts(N,dom,kind,numPanels=1):

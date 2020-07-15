@@ -3,39 +3,43 @@ from DiscretizedFiber import DiscretizedFiber
 from SpatialDatabase import SpatialDatabase, ckDSpatial
 import ManyFiberMethods as ManyFibCpp
 import FiberUpdateNumba as NumbaColloc
+import numba as nb
 import scipy.sparse as sp
 import time
 from math import sqrt
 
 # Definitions
-upsampneeded = 0.15*1.05; # upsampneeded*Lfiber = distance where upsampling is needed
-specneeded = 0.06*1.20; #specneed*Lfiber = distance where special quad is needed
-rho_crit = 1.114; # critical Bernstein radius for special quad
-dstarCenterLine = 2.2; # dstarCenterLine*eps*L is distance where we set v to centerline v
-dstarInterpolate = 4.4; # dstarInterpolate*eps*L is distance where we start blending centerline
-                        # and quadrature result
-dstar2panels = 8.8; #dstar2panels*eps*L is distance below which we need 2 panels for special quad
+FattenFib = False;          # make fiber fatter to cap mobility in nonlocal hydrodynamics
+upsampneeded = 0.15*1.05;   # upsampneeded*Lfiber = distance where upsampling is needed
+specneeded = 0.06*1.20;     #specneed*Lfiber = distance where special quad is needed
+rho_crit = 1.114;           # critical Bernstein radius for special quad (set for 3 digits using 32 points)
+dstarCenterLine = 2.2;      # dstarCenterLine*eps*L is distance where we set v to centerline v
+dstarInterpolate = 4.4;     # dstarInterpolate*eps*L is distance where we start blending centerline and quadrature result
+dstar2panels = 8.8;         #dstar2panels*eps*L is distance below which we need 2 panels for special quad
+
+verbose = -1;               # debug / timings
+
 
 class fiberCollection(object):
 
     """
     This is a class that operates on a list of fibers together. Its main role
-    is to compute the non-local hydrodynamics. 
+    is to compute the nonlocal hydrodynamics between fibers. 
     """
 
     ## ====================================================
     ##              METHODS FOR INITIALIZATION
     ## ====================================================
-    def __init__(self,Nfibs,fibDisc,nonLocal,mu,omega,gam0,Dom):
+    def __init__(self,Nfibs,fibDisc,nonLocal,mu,omega,gam0,Dom, nThreads=1):
         """
         Constructor for the fiberCollection class. 
         Inputs: Nfibs = number of fibers, fibDisc = discretization object that each fiber will get
-        a copy of, nonLocal = are we doing nonlocal hydro? (1 for yes, 0 no), mu = fluid viscosity, 
-        omega = frequency of background flow oscillations, gam0 = base strain rate of the background flow, 
-        Dom = Domain object to initialize the SpatialDatabase objects
+        a copy of, nonLocal = are we doing nonlocal hydro? (2 for yes w/o finite part, 1 for yes, 0 no), 
+        mu = fluid viscosity,omega = frequency of background flow oscillations, 
+        gam0 = base strain rate of the background flow, Dom = Domain object to initialize the SpatialDatabase objects, 
+        nThreads = number of OMP threads for parallel calculations
         """
         self._Nfib = Nfibs;
-        # Initialize fiber discretization. Each fiber gets a copy of the same one!
         self._fiberDisc = fibDisc;
         self._Npf = self._fiberDisc.getN();
         self._Nunifpf = self._fiberDisc.getNumUniform();
@@ -45,17 +49,32 @@ class fiberCollection(object):
         self._gam0 = gam0;
         self._epsilon, self._Lf = self._fiberDisc.getepsilonL();
         self._aRPY = sqrt(1.5)*self._epsilon*self._Lf;
-        # Allocate memory for arrays of forces, force densities, force velocities
+        self._nThreads = nThreads;
         self.initPointForceVelocityArrays(Dom);
+        
         # Initialize C++
-        ManyFibCpp.initFiberVars(mu,Dom.getPeriodicLens(),self._epsilon, self._Lf,Nfibs,self._Npf,self._Nunifpf);
-        ManyFibCpp.initSpecQuadParams(rho_crit,dstarCenterLine,dstarInterpolate,dstar2panels,upsampneeded,specneeded);
-        ManyFibCpp.initNodesandWeights(fibDisc.gets(), fibDisc.getw(),fibDisc.getSpecialQuadNodes(),fibDisc.getUpsampledWeights());
+        if (FattenFib):
+            rfat = 8*self._epsilon*self._Lf; # the radius at which we cap the mobility
+            dstarCL = rfat;
+            dstarInt = 2*rfat;
+            if (dstarInt > specneeded*self._Lf):
+                raise ValueError('CL blending distance has to be less than special quad distance');
+            ManyFibCpp.initFiberVars(mu,Dom.getPeriodicLens(),self._epsilon, self._Lf,Nfibs,self._Npf,self._Nunifpf,fibDisc._delta,rfat);
+            ManyFibCpp.initSpecQuadParams(rho_crit,dstarCL,dstarInt,dstar2panels,upsampneeded,specneeded);
+        else:
+            r = self._epsilon*self._Lf;
+            ManyFibCpp.initFiberVars(mu,Dom.getPeriodicLens(),self._epsilon, self._Lf,Nfibs,self._Npf,self._Nunifpf,fibDisc._delta,r);
+            dstarCL = dstarCenterLine*self._epsilon*self._Lf;
+            dstarInt = dstarInterpolate*self._epsilon*self._Lf;
+            ManyFibCpp.initSpecQuadParams(rho_crit,dstarCL,dstarInt,dstar2panels,upsampneeded,specneeded);
+        
+        ManyFibCpp.initNodesandWeights(fibDisc.gets(), fibDisc.getw(),fibDisc.getSpecialQuadNodes(),fibDisc.getUpsampledWeights(),\
+            np.vander(fibDisc.getSpecialQuadNodes(),increasing=True).T);
         ManyFibCpp.initResamplingMatrices(fibDisc.getUpsamplingMatrix(), fibDisc.get2PanelUpsamplingMatrix(),\
                     fibDisc.getValstoCoeffsMatrix());
         ManyFibCpp.initFinitePartMatrix(fibDisc.getFPMatrix(), fibDisc.getDiffMat());
     
-    def initFibList(self,fibListIn, Dom):
+    def initFibList(self,fibListIn, Dom,pointsfileName=None,tanvecfileName=None):
         """
         Initialize the list of fibers. This is done by giving each fiber
         a copy of the discretization object, and then initializing positions
@@ -63,12 +82,29 @@ class fiberCollection(object):
         Inputs: list of Discretized fiber objects (typically empty), Domain object
         """
         self._fibList = fibListIn;
-        for jFib in range(self._Nfib):
-           if self._fibList[jFib] is None:
-                # Initialize memory
+        if (tanvecfileName is None): # initialize straight fibers
+            for jFib in range(self._Nfib):
+                if self._fibList[jFib] is None:
+                    # Initialize memory
+                    self._fibList[jFib] = DiscretizedFiber(self._fiberDisc);
+                    # Initialize straight fiber positions at t=0
+                    self._fibList[jFib].initFib(Dom.getLens());
+                    
+        elif (pointsfileName is None): # Read initial tangent vectors from file
+            AllXs = np.loadtxt(tanvecfileName)
+            for jFib in range(self._Nfib): 
                 self._fibList[jFib] = DiscretizedFiber(self._fiberDisc);
-                # Initialize straight fiber positions at t=0
-                self._fibList[jFib].initFib(Dom.getLens());
+                XsThis = AllXs[self.getRowInds(jFib),:];
+                self._fibList[jFib].initFib(Dom.getLens(),Xs=XsThis[:,np.random.permutation(3)]);
+                
+        else: # read both locations and tangent vectors from file 
+            AllX = np.loadtxt(pointsfileName)
+            AllXs = np.loadtxt(tanvecfileName)
+            for jFib in range(self._Nfib): 
+                self._fibList[jFib] = DiscretizedFiber(self._fiberDisc);
+                XsThis = AllXs[self.getRowInds(jFib),:];
+                XThis = AllX[self.getRowInds(jFib),:];
+                self._fibList[jFib].initFib(Dom.getLens(),X=XThis,Xs=XsThis);
     
     def initPointForceVelocityArrays(self, Dom):
         """
@@ -77,140 +113,205 @@ class fiberCollection(object):
         Input: Dom = Domain object 
         """
         # Establish large lists that will be used for the non-local computations
-        totnum = self._Nfib*self._Npf;                          # total # of points
-        self._ptsCheb=np.zeros((totnum,3));                     # Chebyshev points
-        self._tanvecs=np.zeros((totnum,3));                     # Tangent vectors
-        self._lambdas=np.zeros((totnum*3));                     # lambdas that enforce inextensibility
-        self._alphas = np.zeros((2*self._Npf-2)*self._Nfib);
-        self._velocities = np.zeros(self._Npf*self._Nfib*3);
+        self._totnum = self._Nfib*self._Npf;                          
+        self._ptsCheb=np.zeros((self._totnum,3));                     
+        self._tanvecs=np.zeros((self._totnum,3));                     
+        self._lambdas=np.zeros((self._totnum*3));                     
+        self._alphas = np.zeros((2*self._Npf+1)*self._Nfib);
+        self._velocities = np.zeros(self._Npf*self._Nfib*3);         
         # Initialize the spatial database objects
         self._SpatialCheb = ckDSpatial(self._ptsCheb,Dom);
         self._SpatialUni = ckDSpatial(np.zeros((self._Nunifpf*self._Nfib,3)),Dom);
     
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY
-    ## ====================================================
-    def nonLocalBkgrndVelocity(self,X_nonLoc,Xs_nonLoc,lam_nonLoc, t, exForceDen, Dom, RPYEval):
+    ## ====================================================   
+    def formBlockDiagRHS(self, X_nonLoc,Xs_nonLoc,t,exForceDen,lamstar,Dom,RPYEval,FPimplicit=0):
         """
-        Compute the non-local velocity + background flow due to the fibers.
-        Inputs: Arguments X_nonLoc, Xs_nonLoc, lam_nonLoc = X, Xs, and lambda for 
-        the computation, all as tot#pts x 3 numpy arrays.
-        t = current time to evaluate background flow, Dom = Domain object the computation
-        happens on, RPYEval = EwaldSplitter (RPYVelocityEvaluator) to compute velocities, 
-        exForceDen = tot#pts*3 1D numpy array of the external forcing (gravity or cross linking) 
-        Outputs: non-local velocity as a tot#ofpts*3 one-dimensional array.
-        This includes the background flow and finite part integrals. 
+        RHS for the block diagonal GMRES system. 
+        Inputs: X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
+        tangent vectors, t = system time, exForceDen = external force density (treated explicitly), 
+        lamstar = lambdas for the nonlocal calculation, Dom = Domain object, RPYEval = RPY velocity
+        evaluator for the nonlocal terms, FPimplicit = whether to do the finite part integral implicitly. 
+        The block diagonal RHS is 
+        [M^Local*(F*X^n+f^ext) + M^NonLocal * (F*X^(n+1/2,*)+lambda*+f^ext)+u_0; -w^T * F*X^n]
         """
-        # Donev: I suggest using spacing to break this down into pieces instead of one long routine.
-        # Just like we put paragraphs in writing spacing helps structure code into sections. I did it for this routine
-        BkgrndFlow = self.evalU0(X_nonLoc,t);
-        # If not doing non-local hydro, return just background flow and stop.
-        totnum = self._Nfib*self._Npf;
-        if (not self._nonLocal):
-            return np.reshape(BkgrndFlow,totnum*3);
+        fnBend = self.evalBendForceDensity(self._ptsCheb);
+        Local = self.calcLocalVelocities(np.reshape(Xs_nonLoc,self._totnum*3),exForceDen+fnBend);
+        U0 = self.evalU0(X_nonLoc,t);
+        fNLBend = self.evalBendForceDensity(X_nonLoc);
+        nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,lamstar+exForceDen+fNLBend,Dom,RPYEval,1-FPimplicit);
+        if (FPimplicit==1 and self._nonLocal): # do the finite part separetely if it's to be treated implicitly
+            nonLocal+= ManyFibCpp.FinitePartVelocity(X_nonLoc, fnBend, Xs_nonLoc)
+            print('Doing FP separate, it''s being treated implicitly')
+        SecondBlock = self.calcAllh(self._ptsCheb);
+        return np.concatenate((Local+nonLocal+U0,-SecondBlock));
+    
+    def calcNewRHS(self,BlockDiagAnswer,X_nonLoc,Xs_nonLoc,dtimpco,lamstar, Dom, RPYEval,FPimplicit=0):
+        """
+        New RHS (after block diag solve). This is the residual form of the system that gets 
+        passed to GMRES. 
+        Inputs: lamalph = the answer for lambda and alpha from the block diagonal solver, 
+        X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
+        tangent vectors, dtimpco = delta t * implicit coefficient,
+        lamstar = lambdas for the nonlocal calculation, Dom = Domain object, RPYEval = RPY velocity
+        evaluator for the nonlocal terms, FPimplicit = whether to do the finite part integral implicitly.
+        The RHS for the residual system is  
+        [M^NonLocal*(F*(X^n+dt*impco*K*alpha-X^(n+1/2,*)+lambda - lambda^*)); 0], where by lambda and alpha
+        we mean the results from the block diagonal solver 
+        """
+        lambdas = BlockDiagAnswer[:3*self._Nfib*self._Npf];
+        alphas = BlockDiagAnswer[3*self._Nfib*self._Npf:];
+        Kalph, Kstlam = self.KProductsAllFibers(Xs_nonLoc,alphas,lambdas);
+        fbendCorrection = self.evalBendForceDensity(self._ptsCheb- X_nonLoc+np.reshape(dtimpco*Kalph,(self._Nfib*self._Npf,3)));
+        lamCorrection = lambdas-lamstar;
+        nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,fbendCorrection+lamCorrection,Dom,RPYEval,1-FPimplicit);
+        relnorm = np.linalg.norm(nonLocal)/np.linalg.norm(Kalph);
+        return np.concatenate((nonLocal,np.zeros((2*self._Npf+1)*self._Nfib))), relnorm;
+        
+    def Mobility(self,lamalph,impcodt,X_nonLoc,Xs_nonLoc,Dom,RPYEval):
+        """
+        Mobility calculation for GMRES
+        Inputs: lamalph = the input lambdas and alphas
+        X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
+        tangent vectors, impcodt = delta t * implicit coefficient,
+        Dom = Domain object, RPYEval = RPY velocity evaluator for the nonlocal terms, 
+        The calculation is 
+        [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +lambda); K*lambda + impco*dt*w^T * F*K*alpha]
+        """
+        lamalph = np.reshape(lamalph,len(lamalph))
+        lambdas = lamalph[:3*self._Nfib*self._Npf];
+        alphas = lamalph[3*self._Nfib*self._Npf:];
+        Kalph, Ktlam = self.KProductsAllFibers(Xs_nonLoc,alphas,lambdas);
+        XnLForBend = np.reshape(impcodt*Kalph,(self._Nfib*self._Npf,3)); # dt/2*K*alpha       
+        forceDs = self.evalBendForceDensity(XnLForBend) +lambdas;
+        Local = self.calcLocalVelocities(np.reshape(Xs_nonLoc,self._totnum*3),forceDs);
+        nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,forceDs,Dom,RPYEval);
+        # Temporary
+        FirstBlock = -(Local+nonLocal)+Kalph; # zero if lambda, alpha = 0
+        SecondBlock = Ktlam + self.calcAllh(XnLForBend);
+        return np.concatenate((FirstBlock,SecondBlock));
+       
+    def BlockDiagPrecond(self,b,Xs_nonLoc,dt,implic_coeff,X_nonLoc,doFP=0):
+        """
+        Block diagonal preconditioner for GMRES. 
+        b = RHS vector. Xs_nonLoc = tangent vectors as an Npts x 3 array. 
+        dt = timestep, implic_coeff = implicit coefficient, X_nonLoc = fiber positions as 
+        an Npts x 3 array, doFP = whether to do finite part implicitly. 
+        The preconditioner is 
+        [-M^Local K-impco*dt*M^Local*F*K; K^* impco*w^T*F*K]
+        """
+        XsAll = np.reshape(Xs_nonLoc,self._Npf*self._Nfib*3);
+        fD = self._fiberDisc;
+        b1D = np.reshape(b,len(b));
+        lamalph = NumbaColloc.linSolveAllFibersForGM(self._Nfib,self._Npf,b1D, Xs_nonLoc,XsAll,dt,implic_coeff, \
+            fD._leadordercs, self._mu, fD._Lmat, fD._MatfromNto2N, fD._Matfrom2NtoN, fD._Dpinv2N, fD._w,fD._D4BC,fD._I,fD._wIt,\
+            X_nonLoc,fD.getFPMatrix(),fD._Dmat,fD._s,doFP);
+        return lamalph;
+        
+    def nonLocalVelocity(self,X_nonLoc,Xs_nonLoc,forceDs, Dom, RPYEval,doFinitePart=1):
+        """
+        Compute the non-local velocity due to the fibers.
+        Inputs: Arguments X_nonLoc, Xs_nonLoc = fiber positions and tangent vectors as Npts x 3 arrays, 
+        forceDs = force densities as an 3*npts 1D numpy array
+        Dom = Domain object the computation happens on,  
+        RPYEval = EwaldSplitter (RPYVelocityEvaluator) to compute velocities, doFinitePart = whether to 
+        include the finite part integral in the calculation 
+        Outputs: nonlocal velocity as a tot#ofpts*3 one-dimensional array.
+        """
+        # If not doing nonlocal hydro, return nothing
+        noSpecialPart = False;
+        otherWt = 1.0;
+        if (self._nonLocal==0):
+            return np.zeros(self._totnum*3);
+        elif (self._nonLocal==2):
+            print('Finite part off')
+            doFinitePart=0;
+        elif (self._nonLocal==3):
+            print('Special quad off')
+            noSpecialPart = True;
+        elif (self._nonLocal==4):
+            print('No other fibs')
+            otherWt=0.0;
             
-        # Compute the total force density from lambda, the external force, and also
-        # the bending force, which can be determined from X and the fiber discretization. 
-        thist=time.time();
-        forceDs = np.reshape(self.evalBendForceDensity(X_nonLoc) + exForceDen+lam_nonLoc,(totnum,3));
-        # Donev: I suggest that you introduce a global "verbocity" variable which controls how and what is printed to screen
-        # For example, -1 means don't print stuff for long "real" runs, 0 means print timing, 1 means print some more, etc.
-        # This way you can have code that can run in debug mode and also run in production mode
-        print('Time to eval bend forces %f' %(time.time()-thist));
+        forceDs = np.reshape(forceDs,(self._totnum,3));
         
         # Calculate finite part velocity
         thist=time.time();
         finitePart = ManyFibCpp.FinitePartVelocity(X_nonLoc, forceDs, Xs_nonLoc);
-        print('Time to eval finite part %f' %(time.time()-thist));
-        # Donev: I added space here
-        # While it does not make sense physically, for testing which terms contribute to the physics it is useful to have an option
-        # where we include the finite part but not the fiber-fiber interactions. So make self._nonLocal be an integer not logical with 
-        # 0=local, 1=local+FP, >1 all terms or something like that
+        if (verbose>=0):
+            print('Time to eval finite part %f' %(time.time()-thist));
         
         # Update the spatial objects for Chebyshev and uniform
         self._SpatialCheb.updateSpatialStructures(X_nonLoc,Dom);
-        uniPoints = self.getUniformPoints(X_nonLoc);
-        self._SpatialUni.updateSpatialStructures(uniPoints,Dom);
+        self._uniPoints = self.getUniformPoints(X_nonLoc);
+        self._SpatialUni.updateSpatialStructures(self._uniPoints,Dom);
         # Ewald splitting to compute the far field and near field
-        nThreads=4; # Donev: This variable should be higher up and come in as input or be part of the class and set in Init.
         # Multiply by the weights to get force from force density. 
         thist=time.time();
-        forces = forceDs*np.reshape(np.tile(self._fiberDisc.getw(),self._Nfib),(totnum,1));
-        RPYVelocity = RPYEval.calcBlobTotalVel(X_nonLoc,forces,Dom,self._SpatialCheb,nThreads);
-        print('Total Ewald time %f' %(time.time()-thist));
+        forces = forceDs*np.reshape(np.tile(self._fiberDisc.getw(),self._Nfib),(self._totnum,1));
+        RPYVelocity = RPYEval.calcBlobTotalVel(X_nonLoc,forces,Dom,self._SpatialCheb,self._nThreads);
+        if (verbose>=0):
+            print('Total Ewald time %f' %(time.time()-thist));
         
         # Corrections for fibers that are close together
         # First determine which sets of fibers and targets need corrections
         thist=time.time();
-        alltargets,numTbyFib = self.determineQuadLists(X_nonLoc,uniPoints,Dom);
-        print('Determine quad corrections time %f' %(time.time()-thist));
+        alltargets,numTbyFib = self.determineQuadLists(X_nonLoc,self._uniPoints,Dom);
+        if (verbose>=0):
+            print('Determine quad corrections time %f' %(time.time()-thist));
+            
         # Do the corrections
         thist=time.time();
-        corVels = ManyFibCpp.CorrectNonLocalVelocity(X_nonLoc,uniPoints,forceDs,finitePart, Dom.getg(),numTbyFib,alltargets, nThreads)
-        print('Correction quadrature time %f' %(time.time()-thist));
-        print('Maximum correction velocity %f' %np.amax(np.abs(corVels)));
-        
+        corVels = ManyFibCpp.CorrectNonLocalVelocity(X_nonLoc,self._uniPoints,forceDs,finitePart,Dom.getg(),\
+                    numTbyFib,alltargets,self._nThreads,noSpecialPart)
+        if (verbose>=0):
+            print('Correction quadrature time %f' %(time.time()-thist));
+            print('Maximum correction velocity %f' %np.amax(np.abs(corVels)));
         RPYVelocity+=corVels;
+        
+        if (np.any(np.isnan(RPYVelocity))):
+            raise ValueError('Velocity is nan - stability issue!') 
         # Return the velocity due to the other fibers + the finite part integral velocity
-        return np.reshape(RPYVelocity+BkgrndFlow,totnum*3)+finitePart;
-     
-    def linSolveAllFibers(self,XsforNL,nLvel,forceExt,dt,implic_coeff):
+        return otherWt*np.reshape(RPYVelocity,self._totnum*3)+doFinitePart*finitePart;
+         
+    def updateLambdaAlpha(self,lamalph,Xsarg):
         """
-        Compute alpha and lambda on all the fibers for a given RHS
-        Inputs: XsforNL = nPts x 3 array of tangent vectors, nLvel = nPts*3 one-d array
-        of velocities from non-local solve, forceExt = nPts*3 one-d array of force densities, 
-        dt = timestep, implic_coeff = implicit coefficient for the matrix solve
+        Update the lambda and alphas after the solve is complete
         """
-        # Linear solve on each fiber
-        if False: # pure python
-            t=time.time()
-            for iFib in range(self._Nfib):
-                stackinds = self.getStackInds(iFib);
-                rowinds = self.getRowInds(iFib);
-                alphaInds = range(iFib*(2*self._Npf-2),(iFib+1)*(2*self._Npf-2));
-                Xin = np.reshape(self._ptsCheb[rowinds,:],self._Npf*3); # X^n is the input, not XnonLoc!!
-                Xsin = np.reshape(XsforNL[rowinds,:],self._Npf*3);
-                self._alphas[alphaInds], self._velocities[stackinds], self._lambdas[stackinds] = \
-                    self._fiberDisc.alphaLambdaSolve(Xin,Xsin,dt,implic_coeff,nLvel[stackinds],forceExt[stackinds]);
-            print('Serial time %f' %(time.time()-t));
-            t=time.time()
-        XAll = np.reshape(self._ptsCheb,self._Npf*self._Nfib*3);
-        XsAll = np.reshape(XsforNL,self._Npf*self._Nfib*3);
+        self._lambdas = lamalph[:3*self._Nfib*self._Npf];
+        self._alphas = lamalph[3*self._Nfib*self._Npf:];
         fD = self._fiberDisc;
-        self._alphas, self._velocities, self._lambdas = NumbaColloc.linSolveAllFibers(self._Nfib,self._Npf,XAll,\
-            XsforNL,XsAll,nLvel,forceExt,dt,implic_coeff, \
-            fD._leadordercs, self._mu, fD._Lmat, fD._MatfromNto2N, fD._Matfrom2NtoN, fD._Dpinv2N, fD._w,fD._D4BC,fD._I,fD._wIt)
-        #print('Numba time %f' %(time.time()-t));
-        #print(np.amax(alphs-self._alphas));
-        #print(np.amax(vels-self._velocities));
-        #print(np.amax(lams-self._lambdas));
+        self._velocities = NumbaColloc.calcKAlphas(self._Nfib,self._Npf,Xsarg,fD._Lmat, fD._MatfromNto2N, \
+            fD._Matfrom2NtoN, fD._Dpinv2N, fD._I,self._alphas);
         
     def updateAllFibers(self,dt,XsforNL,exactinex=1):
         """
-        Update the fiber configurations, assuming fixed point is over and self._alphas has 
-        been computed above. 
+        Update the fiber configurations, assuming self._alphas has been computed above. 
         Inputs: dt = timestep, XsforNL = the tangent vectors we use to compute the 
         Rodriguez rotation, exactinex = whether to preserve exact inextensibility
         """
         t=time.time()
-        if (exactinex==0):
+        if (exactinex==0): # not exact inextensibility. Just update by K*alpha
             for iFib in range(self._Nfib):
                 stackinds = self.getStackInds(iFib);
                 rowinds = self.getRowInds(iFib);
                 fib = self._fibList[iFib];
                 XsforOmega = np.reshape(XsforNL[rowinds,:],self._Npf*3);
-                alphaInds = range(iFib*(2*self._Npf-2),(iFib+1)*(2*self._Npf-2));
+                alphaInds = range(iFib*(2*self._Npf+1),(iFib+1)*(2*self._Npf+1));
                 fib.updateXsandX(dt,self._velocities[stackinds],XsforOmega,self._alphas[alphaInds],exactinex);
-        else:
+        else: # exact inextensibility with Rodriguez rotation. Compute omega, then rotate
             fD = self._fiberDisc;
             AllXs, AllX = NumbaColloc.updateXsNumba(self._Nfib,self._Npf,self._ptsCheb,\
                 self._tanvecs,XsforNL,fD._MatfromNto2N, fD._Matfrom2NtoN,\
-                fD._Lmat,self._alphas,self._velocities,dt,self._Lf)
-            for iFib in range(self._Nfib):
+                fD._Lmat,fD._Dmat,np.reshape(self._velocities,(self._Npf*self._Nfib,3)),dt,self._Lf)
+            for iFib in range(self._Nfib): # pass to fiber object
                 fib = self._fibList[iFib];
                 rowinds = self.getRowInds(iFib);
                 fib.passXsandX(AllX[rowinds,:],AllXs[rowinds,:])
-        print('Rodrigez time %f' %(time.time()-t));
+        if (verbose>=0):
+            print('Rodrigez time %f' %(time.time()-t));
+        return np.amax(AllX);
         
     def fillPointArrays(self):
         """
@@ -232,36 +333,37 @@ class fiberCollection(object):
     
     def getLambdas(self):
         return self._lambdas; 
-
-    def FiberStress(self, lams,Lens):
+    
+    @staticmethod
+    @nb.njit((nb.float64[:,:],nb.float64[:],nb.float64[:],nb.float64[:],\
+        nb.int64,nb.int64,nb.float64[:]),parallel=True,cache=True)
+    def FiberStress(X, fbend,lams,Lens,Nfib,N,w):
         """
         Compute the stress in the suspension due to the fiber via Batchelor's formula
         Inputs: lams = constraint forces on the fibers as a totnum*3 1D numpy array, 
         Lens = 3 array of periodic lengths (to compute volume for the stress)
         Output: the 3 x 3 stress tensor 
         """
-        totnum = self._Nfib*self._Npf;
-        X = self._ptsCheb;
-        # Compute the total force density from lambda, and also
-        # the bending force, which can be determined from X and the fiber discretization. 
-        forceDs = np.reshape(self.evalBendForceDensity(X) + lams,(totnum,3));
-        # Multiply by the weights to get force from force density. 
-        forces = forceDs*np.reshape(np.tile(self._fiberDisc.getw(),self._Nfib),(totnum,1));
-        stress = np.zeros((3,3));
-        for iPt in range(totnum):
-            stress-= np.outer(X[iPt,:],forces[iPt,:]);
-        stress/=np.prod(Lens);
-        return stress;
-        
-    def converged(self, lambdasm1,fptol):
+        stressLams = np.zeros((3,3));
+        stressFB = np.zeros((3,3)); # from bending 
+        for iPt in nb.prange(N*Nfib):
+            wt = w[iPt%N];
+            # Ugly but faster than np.outer 
+            stressLams-= np.array([[X[iPt,0]*lams[3*iPt], X[iPt,0]*lams[3*iPt+1], X[iPt,0]*lams[3*iPt+2]],\
+                               [X[iPt,1]*lams[3*iPt], X[iPt,1]*lams[3*iPt+1], X[iPt,1]*lams[3*iPt+2]],\
+                               [X[iPt,2]*lams[3*iPt], X[iPt,2]*lams[3*iPt+1], X[iPt,2]*lams[3*iPt+2]]])*wt;
+            stressFB-= np.array([[X[iPt,0]*fbend[3*iPt], X[iPt,0]*fbend[3*iPt+1], X[iPt,0]*fbend[3*iPt+2]],\
+                               [X[iPt,1]*fbend[3*iPt], X[iPt,1]*fbend[3*iPt+1], X[iPt,1]*fbend[3*iPt+2]],\
+                               [X[iPt,2]*fbend[3*iPt], X[iPt,2]*fbend[3*iPt+1], X[iPt,2]*fbend[3*iPt+2]]])*wt;
+        stressLams/=np.prod(Lens);
+        stressFB/=np.prod(Lens);
+        return stressLams, stressFB;
+           
+    def uniformForce(self,strengths):
         """
-        Check whether any of the fibers are not converged (i.e. whether
-        the overall fixed point iteration to determine lambda has converged).
-        Inputs: lambdasm1 = Npts*3 one-d vector of lambdas from the prior iteration,
-        fptol = tolerance for the fixed point convergence.
+        A uniform force density on all fibers with strength strength 
         """
-        reler = np.linalg.norm(self._lambdas-lambdasm1)/max(1.0,np.linalg.norm(self._lambdas));
-        return (reler < fptol); 
+        return np.tile(strengths,self._Nfib*self._Npf);
     
     def getUniformPoints(self,chebpts):
         """
@@ -275,27 +377,10 @@ class fiberCollection(object):
             rowinds = self.getRowInds(iFib);
             uniPoints[uniinds]=self._fiberDisc.resampleUniform(chebpts[rowinds]);
         return uniPoints;
-    
-    def getUpsampledValues(self,chebpts):
-        """
-        Obtain upsampled values from a set of values at Chebyshev nodes.
-        Inputs: values at Chebyhsev nodes as a (tot#ofpts x 3) array
-        Outputs: uniform points as a (nPtsUniform*Nfib x 3) array.
-        """
-        nUpsample = self._fiberDisc.getNumUpsample();
-        upsamp = np.zeros((self._Nfib*nUpsample,3));
-        upsamp2Pan = np.zeros((self._Nfib*nUpsample*2,3));
-        for iFib in range(self._Nfib):
-            upsampInds = range(iFib*nUpsample,(iFib+1)*nUpsample);
-            upsamp2PanInds = range(iFib*2*nUpsample,(iFib+1)*2*nUpsample);
-            rowinds = self.getRowInds(iFib);
-            upsamp[upsampInds]=self._fiberDisc.upsampleGlobally(chebpts[rowinds]);
-            upsamp2Pan[upsamp2PanInds]=self._fiberDisc.upsample2Panels(chebpts[rowinds]);
-        return upsamp, upsamp2Pan;
 
     def getg(self,t):
         """
-        Get the value of g according to what the background flow dictates.
+        Get the value of the strain g according to what the background flow dictates.
         Input: time t
         Output: non-dimensional strain g
         """
@@ -310,14 +395,12 @@ class fiberCollection(object):
     
     def getFiberDisc(self):
         return self._fiberDisc;
-    
-    def getRowInds(self,iFib):
+      
+    def getSysDimension(self):
         """
-        Method to get the row indices in any (Nfib x Nperfib) x 3 arrays
-        for fiber number iFib. This method could easily be modified to allow
-        for a bunch of fibers with different numbers of points. 
+        Dimension of (lambda,alpha) sysyem for GMRES
         """
-        return range(iFib*self._Npf,(iFib+1)*self._Npf);
+        return self._Nfib*self._Npf*5+self._Nfib;
 
     def writeFiberLocations(self,of):
         """
@@ -326,14 +409,39 @@ class fiberCollection(object):
         """
         for fib in self._fibList:
             fib.writeLocs(of);  
+    
+    def writeFiberTangentVectors(self,of):
+        """
+        Write the locations of all fibers to a file
+        object named of.
+        """
+        for fib in self._fibList:
+            fib.writeTanVecs(of);  
             
     ## ====================================================
     ##  "PRIVATE" METHODS NOT ACCESSED OUTSIDE OF THIS CLASS
     ## ====================================================
+    def calcLocalVelocities(self,Xs,forceDsAll):
+        """
+        Compute the LOCAL velocity on each fiber. 
+        Inputs: Xs = tangent vectors as a (tot#ofpts*3) 1D array
+        forceDsAll = the force densities respectively on the fibers as a 1D array
+        Outputs: the velocity M_loc*f on all fibers as a 1D array
+        """
+        if False: # pure python 
+            LocalOnly = np.zeros(len(Xs_nonLoc));
+            for iFib in range(self._Nfib):
+                stackinds = self.getStackInds(iFib);
+                XsiFib = Xs[stackinds];
+                forceD = forceDsAll[stackinds];
+                LocalOnly[stackinds] = self._fiberDisc.calcLocalVelocity(XsiFib,forceD);
+                
+        LocalOnly = NumbaColloc.calcLocalVelocities(Xs,forceDsAll,self._fiberDisc._leadordercs,self._mu,self._Npf,self._Nfib);
+        return LocalOnly;
+        
     def determineQuadLists(self, XnonLoc, Xuniform, Dom):
         """
-        Determine which (target, fiber) pairs have wrong integrals when computed 
-        by Ewald splitting, and decide what kind of corrective scheme to use. 
+        Determine which (target, fiber) pairs are close to each other 
         This method uses the uniform points to determine if a fiber is close to a target via
         looking at the uniform points which are neighbors of the Chebyshev points. 
         Inputs: XnonLoc, Xuniform = tot#ofpts x 3 arrays of Chebyshev and uniform points on 
@@ -342,26 +450,80 @@ class fiberCollection(object):
         numByFib = number of targets that need correction for each fiber. This is enough 
         information to match target-fiber pairs
         """
-        q1cut = upsampneeded*self._Lf; # cutoff for needed to correct Ewald
+        qUpsamplecut = upsampneeded*self._Lf; # cutoff for needed to correct Ewald
         # Get the neighbors from the SpatialDatabase
         t = time.time();
-        neighborList = self._SpatialUni.otherNeighborsList(self._SpatialCheb, q1cut);
-        print('Neighbor search uniform-Cheb time %f' %(time.time()-t))
+        # Determine which Chebyshev points are neighbors of the uniform points (fibers)
+        neighborList = self._SpatialUni.otherNeighborsList(self._SpatialCheb, qUpsamplecut);
+        if (verbose>=0):
+            print('Neighbor search uniform-Cheb time %f' %(time.time()-t))
         t = time.time();
         alltargets=[];
         numByFib = np.zeros(self._Nfib,dtype=int);
         for iFib in range(self._Nfib):
+            # For each fiber, obtain the targets that are nearby and not on this fiber
+            # Loop through neighbor list Nunifpf points at a time and find the unique targets that 
+            # are close to this fiber 
             fibTargets=list(set([iT for sublist in neighborList[iFib*self._Nunifpf:(iFib+1)*self._Nunifpf] \
                 for iT in sublist if iT//self._Npf!=iFib]));
             numByFib[iFib]=len(fibTargets);
             alltargets.extend(fibTargets); # all the targets for each uniform point
-        print('Method 2 time %f' %(time.time()-t))
+        if (verbose>=0):
+            print('Organize targets & fibers time %f' %(time.time()-t))
         return alltargets, numByFib;
     
+    def KProductsAllFibers(self,Xsarg,alphas,lambdas):
+        """
+        Compute the products K*alpha and K^T*lambda for. 
+        Inputs: Xsarg = tangent vectors as a totnum x 3 array, 
+        alphas as a 1D array, lambdas as a 1D array
+        Outputs: products Kalpha, K^*lambda
+        """
+        fD = self._fiberDisc;
+        Kalphs2, Kstlam2 = NumbaColloc.calcKAlphasAndKstarLambda(self._Nfib,self._Npf,Xsarg,fD._Lmat, fD._MatfromNto2N, \
+            fD._Matfrom2NtoN, fD._Dpinv2N, fD._I, fD._wIt,fD._w,alphas,lambdas)
+        return Kalphs2, Kstlam2;
+        # pure python
+        Kalphs = np.zeros(3*self._Npf*self._Nfib);
+        Kstlam = np.zeros((2*self._Npf+1)*self._Nfib);
+        for iFib in range(self._Nfib):
+            rowinds = self.getRowInds(iFib);
+            stackinds = self.getStackInds(iFib);
+            Xs = Xsarg[rowinds,:];
+            alphainds = range(iFib*(2*self._Npf+1),(iFib+1)*(2*self._Npf+1));
+            alphaiFib = alphas[alphainds];
+            lamsiFib = lambdas[stackinds];
+            Kalphs[stackinds], Kstlam[alphainds] = self._fiberDisc.KalphProduct(Xs,alphaiFib,lamsiFib);
+        print(np.amax(np.abs(Kalphs1-Kalphs)))
+        print(np.amax(np.abs(Kalphs2-Kalphs)))
+        print(np.amax(np.abs(Kstlam2-Kstlam)))
+        return Kalphs, Kstlam;
+    
+    def calcAllh(self,Xin):
+        """
+        Compute the products w^T*F*X (integrals of the bending force for a given X)
+        Input: X as a totnum x 2 array
+        Output: the products w^T*F*X
+        """
+        h = np.zeros((2*self._Npf+1)*self._Nfib);
+        for iFib in range(self._Nfib):
+            rowinds = self.getRowInds(iFib);
+            stackinds = self.getStackInds(iFib);
+            h[(iFib+1)*(2*self._Npf+1)-3:(iFib+1)*(2*self._Npf+1)] = \
+                self._fiberDisc.calcH(np.reshape(Xin[rowinds,:],self._Npf*3));
+        return h;
+    
+    def getRowInds(self,iFib):
+        """
+        Method to get the row indices in any (Nfib x Nperfib) x 3 2D arrays
+        for fiber number iFib. This method could easily be modified to allow
+        for a bunch of fibers with different numbers of points. 
+        """
+        return range(iFib*self._Npf,(iFib+1)*self._Npf);
         
     def getStackInds(self,iFib):
         """
-        Method to get the row indices in any (Nfib*Nperfib*3) long arrays
+        Method to get the row indices in any (Nfib*Nperfib*3) long 1D arrays
         for fiber number iFib. This method could easily be modified to allow
         for a bunch of fibers with different numbers of points. 
         """
@@ -377,7 +539,7 @@ class fiberCollection(object):
         """
         U0 = np.zeros(Xin.shape);
         U0[:,0]=self._gam0*np.cos(self._omega*t)*Xin[:,1]; # x velocity is linear shear in y
-        return U0;
+        return np.reshape(U0,3*self._Npf*self._Nfib);
     
     def evalBendForceDensity(self,X_nonLoc):
         """
@@ -394,55 +556,14 @@ class fiberCollection(object):
             Xin = np.reshape(X_nonLoc[rowinds,:],self._Npf*3);
             forceDs[stackinds] = self._fiberDisc.calcfE(Xin);
         return forceDs;
-
-    # This is the dumb quadratic method just to check the SpatialDatabase one is working. 
-    # Obsolete
-    def determineQuad_quad(self, Dom, XCheb, Xuniform):
+     
+    def calcCurvatures(self,X):
         """
-        Determine which (target, fiber) pairs have wrong integrals when computed 
-        by Ewald splitting, and decide what kind of corrective scheme to use. 
-        Inputs: cheb points and uniform points as Npts x 3 arrays. 
-        Outputs: 4 arrays. Targs[i] = target number that needs correction, 
-        fibers[i] = fiber number that is used for the correction at target targs[i], 
-        methods[i] = method that needs to be used to do that correction (1 for direct
-        with 32 points, 2 for special quadrature), shifts[i] = periodic shift in the 
-        fiber so that it is actually numerically close to the target.
+        Evaluate fiber curvatures on fibers with locations X. 
+        Returns an Nfib array of the mean L^2 curvature by fiber 
         """
-        totnum = self._Nfib*self._Npf;
-        Lens = Dom.getLens();
-        g = Dom.getg();
-        # Sort the uniform points.
-        # Figure out how many bins to put them in.
-        rcutu = upsampneeded*self._Lf;
-        qtypes = sp.lil_matrix((totnum,self._Nfib)); # List of quadrature types by fiber
-        xShifts = sp.lil_matrix((totnum,self._Nfib)); # periodic shifts in the x direction
-        yShifts = sp.lil_matrix((totnum,self._Nfib)); # periodic shifts in the y direction
-        zShifts = sp.lil_matrix((totnum,self._Nfib)); # periodic shifts in the z direction
-        for iPt in range(totnum): # looping over the target points
-            iFib = iPt//self._Npf;
-            for jPt in range(self._Nfib*self._Nunifpf):
-                jFib = jPt//self._Nunifpf;
-                if (iFib!=jFib):
-                    rvec = Dom.calcShifted(XCheb[iPt,:]-Xuniform[jPt,:]);
-                    nr = sqrt(rvec[0]*rvec[0]+rvec[1]*rvec[1]+rvec[2]*rvec[2]);
-                    # Use the distance to determine what type of quadrature is needed
-                    if (nr < self._Lf*specneeded and qtypes[iPt,jFib] < 2):
-                        qtypes[iPt,jFib] = 2; # special quad needed
-                        xShifts[iPt,jFib] =  XCheb[iPt,0]-Xuniform[jPt,0]-rvec[0]+1e-99;
-                        yShifts[iPt,jFib] =  XCheb[iPt,1]-Xuniform[jPt,1]-rvec[1]+1e-99;
-                        zShifts[iPt,jFib] =  XCheb[iPt,2]-Xuniform[jPt,2]-rvec[2]+1e-99;
-                    elif (nr < rcutu and qtypes[iPt,jFib] < 1):
-                        qtypes[iPt,jFib]=1; # direct quad with N=32
-                        xShifts[iPt,jFib] =  XCheb[iPt,0]-Xuniform[jPt,0]-rvec[0]+1e-99;
-                        yShifts[iPt,jFib] =  XCheb[iPt,1]-Xuniform[jPt,1]-rvec[1]+1e-99;
-                        zShifts[iPt,jFib] =  XCheb[iPt,2]-Xuniform[jPt,2]-rvec[2]+1e-99;
-        # Shift data types so we can loop through the points that need correction
-        qtypes = sp.coo_matrix(qtypes);
-        xS = (sp.coo_matrix(xShifts)).data;
-        yS = (sp.coo_matrix(yShifts)).data;
-        zS = (sp.coo_matrix(zShifts)).data;
-        shifts = np.concatenate(([xS],[yS],[zS])).T;
-        targs = qtypes.row;
-        fibers = qtypes.col;
-        methods = qtypes.data;
-        return targs, fibers, methods, shifts
+        Curvatures=np.zeros(self._Nfib);
+        for iFib in range(self._Nfib):
+            rowinds = self.getRowInds(iFib);
+            Curvatures[iFib] = self._fiberDisc.calcFibCurvature(X[rowinds,:]);
+        return Curvatures;

@@ -1,10 +1,11 @@
 import finufftpy as fi
 import numpy as np
+import numba as nb 
 import RPYKernels as RPYcpp
-import EwaldNumba as ewNum
 import time
-import os
 from math import pi
+
+verbose = -1;
 
 class RPYVelocityEvaluator(object):
     """
@@ -30,9 +31,9 @@ class RPYVelocityEvaluator(object):
     def calcBlobTotalVel(self,ptsxyz,forces,Dom,SpatialData,nThr):
         """
         Compute the total velocity of Npts due to forces at those pts. 
-        Inputs: forces = Npts x 3 array of forces,
+        Inputs: ptsxyz = Npts x 3 array of locations, forces = Npts x 3 array of forces,
         Dom = Domain object where the computation is done, SpatialData = spatialDatabase
-        that has the array of points
+        that has the array of points,nThr = number of OpenMP threads
         Ouputs: Npts x 3 array of the velocities at the Npts by calling the Numba function
         to do the free space computation
         """
@@ -40,12 +41,41 @@ class RPYVelocityEvaluator(object):
         for iL in DLens: # make sure there is no periodicity in the domain
             if iL is not None:
                 raise NotImplementedError('Doing a free space velocity sum with periodicity in a direction');
-        return ewNum.RPYSBTK(self._Npts,ptsxyz,self._Npts,ptsxyz,forces,self._mu,self._a,sbt=0);
+        return RPYVelocityEvaluator.RPYKernel(self._Npts,ptsxyz,self._Npts,ptsxyz,forces,self._mu,self._a);
+    
+    @staticmethod
+    @nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.int64,nb.float64[:,:],\
+        nb.float64[:,:],nb.float64,nb.float64))
+    def RPYKernel(Ntarg,Xtarg,Nsrc,Xsrc,forces,mu,a):
+        """
+        The dumb quadratic method to sum the RPY kernel. 
+        Inputs: Ntarg = # of targets, Xtarg = Ntarg x 3 array of locations of targets, 
+        Nsrc = # of sources, Xsrc = Nsrc x 3 array of locations of sources, forces = 
+        Nsrc x 3 array of forces, mu = viscosity, a = RPY radius. 
+        Output: the velocities at the targets
+        """
+        utot=np.zeros((Ntarg,3));
+        oneOvermu = 1.0/mu;
+        for iTarg in range(Ntarg):
+            for iSrc in range(Nsrc):
+                rvec = Xtarg[iTarg,:]-Xsrc[iSrc,:];
+                r = np.linalg.norm(rvec);
+                rhat = rvec/r;
+                rhat[np.isnan(rhat)]=0;
+                rdotf = np.sum(rhat*forces[iSrc,:]);
+                if (r>2*a):
+                    fval = (2*a**2 + 3*r**2)/(24*pi*r**3);
+                    gval = (-2*a**2 + 3*r**2)/(12*pi*r**3);
+                else:
+                    fval = (32*a - 9*r)/(192*a**2*pi);
+                    gval = (16*a - 3*r)/(96*a**2*pi);
+                utot[iTarg,:]+= oneOvermu*(fval*forces[iSrc,:]+rdotf*(gval-fval)*rhat);
+        return utot;
 
 
 ## Some parameters specific to Ewald
 nearcut = 1e-3; # cutoff for near field interactions
-fartol = 1e-10; # far field tolerance for FINUFFT
+fartol = 1e-3; # far field tolerance for FINUFFT
 rcuttol = 1e-2; # accuracy of truncation distance for Ewald
 trouble_xi_step = 0.1; # if we have to increase Ewald parameter xi mid-run, how much should we increase by?
 class EwaldSplitter(RPYVelocityEvaluator):
@@ -66,15 +96,17 @@ class EwaldSplitter(RPYVelocityEvaluator):
         super().__init__(a,mu,Npts);
         self._xi = float(xi);
         self._currentDomain = PerDom;
+        
         # Initialize C++ code
         RPYcpp.initRPYVars(a,mu,Npts,PerDom.getPeriodicLens());
+        
         # Calculate the truncation distance for Ewald
         self.calcrcut();
         self.updateFarFieldArrays();
         self._ufarx = np.zeros([self._Npts],dtype=np.complex128);
         self._ufary = np.zeros([self._Npts],dtype=np.complex128);
         self._ufarz = np.zeros([self._Npts],dtype=np.complex128);
-        print('Low far field tolerance')
+        print('1e-3 far field tolerance')
         
     ## =========================================
     ##    PUBLIC METHODS CALLED OUTSIDE CLASS
@@ -95,10 +127,12 @@ class EwaldSplitter(RPYVelocityEvaluator):
         # Compute far field and near field
         t = time.time();
         Ewaldfar = self.EwaldFarVel(ptsxyz,forces,nThr); # far field Ewald
-        print ('Far field Ewald time %f' %(time.time()-t));
+        if (verbose>=0):
+            print ('Far field Ewald time %f' %(time.time()-t));
         t=time.time()
         Ewaldnear = self.EwaldNearVel(ptsxyz,forces,SpatialData,nThr); # near field Ewald
-        print ('Near field Ewald time %f' %(time.time()-t));
+        if (verbose>=0):
+            print ('Near field Ewald time %f' %(time.time()-t));
         #Ewaldnear2 = self.EwaldNearVelQuad(ptsxyz,forces,Dom); # near field Ewald quadratic
         #print('Near field error')
         #print(np.amax(Ewaldnear-Ewaldnear2))
@@ -167,7 +201,8 @@ class EwaldSplitter(RPYVelocityEvaluator):
         # you the near field
         t=time.time();
         velNear = RPYcpp.EvaluateRPYNearPairs(neighborList,ptsxyz,forces,self._xi,g,self._rcut,nThreads);
-        print('Pairwise sum %f' %(time.time()-t))
+        if (verbose>=0):
+            print('Pairwise sum %f' %(time.time()-t))
         return velNear;
 
     def EwaldNearVelQuad(self,pts,forces,Dom):
@@ -194,7 +229,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
     def calcrcut(self):
         """
         Calculate the truncation distance for the Ewald near field. 
-        We truncate the near field at the value nearcut.
+        We truncate the near field at the value rcut.
         """
         rcut=0;          # determine rcut
         Vatcut = np.abs(RPYcpp.RPYNearKernel([rcut,0,0],[1,0,0],self._xi));
@@ -234,8 +269,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
     def updateFarFieldArrays(self):
         """
         Update/initialize the far field arrays when self._xi changes. 
-        Inputs: Domain object Dom
-        Method then updates the self._waveNumbers on a standard 3-periodic grid and
+        Method updates the self._waveNumbers on a standard 3-periodic grid and
         initialized the arrays for FINUFFT to put the forces.
         """
         Lens = self._currentDomain.getPeriodicLens();
@@ -249,7 +283,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         kvy = np.concatenate((np.arange(self._ny/2),np.arange(-self._ny/2,0)))*2*pi/Lens[1];
         kvz = np.concatenate((np.arange(self._nz/2),np.arange(-self._nz/2,0)))*2*pi/Lens[2];
         self._ky, self._kx, self._kz = np.meshgrid(kvy,kvx,kvz);
-        # Prepare the arrays for FINUFFT - this should be done during initialization I think
+        # Prepare the arrays for FINUFFT
         self._fxhat = np.zeros([self._nx,self._ny,self._nz],dtype=np.complex128,order='F');
         self._fyhat = np.zeros([self._nx,self._ny,self._nz],dtype=np.complex128,order='F');
         self._fzhat = np.zeros([self._nx,self._ny,self._nz],dtype=np.complex128,order='F');

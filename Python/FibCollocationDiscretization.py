@@ -1,7 +1,6 @@
 import numpy as np
 import scipy.linalg as sp
 import chebfcns as cf
-import ManyFiberMethods as FinitePartCpp
 import time
 from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
@@ -25,16 +24,14 @@ class FibCollocationDiscretization(object):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,ellipsoidal=0,Eb=1,mu=1,N=16):
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16):
         """
-        Constructor. Object variables are:
-        L = fiber length, epsilon = fiber aspect ratio, ellipsoidal = shape of fibers (1 for
-        ellipsoidal, 0 for cylindrical), Eb = bending stiffness, mu = fluid viscosity. 
+        Constructor. 
+        L = fiber length, epsilon = fiber aspect ratio, Eb = bending stiffness, mu = fluid viscosity. 
         N = number of points on discretized fiber.
         """
         self._L = L;
         self._epsilon = epsilon;
-        self._ellipsoidal = ellipsoidal;
         self._Eb = Eb;
         self._mu = mu;
         self._N = N;
@@ -72,17 +69,30 @@ class FibCollocationDiscretization(object):
         VanderMat = np.vander(s_dim1scaled,increasing=True);
         self._FPMatrix = np.linalg.solve(VanderMat.T,q.T);
 
-    def initLocalcvals(self):
+    def initLocalcvals(self,delta=0.2):
         """
         Initialize local leading order coefficients for the local drag matrix M. 
-        For ellipsoidal fibers these coefficents are constant = -log(epsilon^2), but
-        for cylindrical fibers they vary along the fibers.
+        The distance delta is the fraction of the fiber over which the ellipsoidal endpoint
+        decay occurs. 
+        Between [0,delta]: set to ellipsoidal decay, c = -log(epsilon^2), 
+        Between [2*delta, L/2]: set to cylindrical constant radius
+        Between [delta,2*delta]: interpolate between cylindrical and ellipsoidal
         """
-        nodes_rescaled = self._s*2/self._L-1;
-        aeps = 2*self._epsilon;
-        ccyl = np.log((2*(1-nodes_rescaled**2)+2*np.sqrt((1-nodes_rescaled**2)**2+\
-            4*aeps**2))/aeps**2);
-        self._leadordercs = ccyl*(1-self._ellipsoidal)-np.log(self._epsilon**2)*self._ellipsoidal;
+        radii = np.zeros(self._N);
+        self._delta = delta;
+        for iS in range(len(self._s)):
+            s = self._s[iS];
+            if (s < delta*self._L or s > self._L-delta*self._L):
+                radii[iS] = 2.0*self._epsilon*np.sqrt(s*(self._L-s));
+            elif (s < 2.0*delta*self._L):
+                wCyl = 1/(1+np.exp(-23.0258/(delta*self._L)*s+34.5387));
+                radii[iS] = self._epsilon*(self._L*wCyl+(1-wCyl)*2.0*np.sqrt(s*(self._L-s)));
+            elif (s > self._L - 2.0*delta*self._L):
+                wCyl = 1/(1+np.exp(-23.0258/(delta*self._L)*(self._L-s)+34.5387));
+                radii[iS] = self._epsilon*(self._L*wCyl+(1-wCyl)*2.0*np.sqrt(s*(self._L-s)));
+            else:
+                radii[iS] = self._epsilon*self._L;
+        self._leadordercs = np.log(4.0*self._s*(self._L-self._s)/radii**2);
         self._matlist = [None]*self._N; # allocate memory for sparse matrix
 
     ## ====================================================
@@ -98,22 +108,22 @@ class FibCollocationDiscretization(object):
     
     def upsampleGlobally(self,Xarg):
         """
-        Get the locations on some upsampled nodes on the fiber. 
+        Get the locations of some upsampled nodes on the fiber. 
         Xarg = the coordinates (self._N x 3 vector). 
-        The number of updampled points should have been set in the precomputation.
+        The number of upsampled points should have been set in the precomputation.
         """
         return np.dot(self._MatfromNtoUpsamp,Xarg);
     
     def getUpsamplingMatrix(self):
         return self._MatfromNtoUpsamp;
     
-    # Note: In theory the number of panels could be an argument and then all the resampling
-    # matrices precomputed, then a bunch of if statements. But we are being lazy...
     def upsample2Panels(self,Xarg):
         """
-        Get the locations on 2 panels of upsampled nodes on the fiber.
+        Get the locations of 2 panels of upsampled nodes on the fiber.
         Xarg = the coordinates (self._N x 3 vector). 
         The number of upsampled points should have been set in the precomputation.
+        Note: In theory the number of panels could be an argument and then all the resampling
+        matrices precomputed, then a bunch of if statements. But we are being lazy...
         """
         return np.dot(self._MatfromNto2panUp,Xarg);
 
@@ -130,7 +140,7 @@ class FibCollocationDiscretization(object):
         distance_pows = np.reshape(np.concatenate((abs(self._specQuadNodes-troot),\
                 abs(self._specQuadNodes-troot)**3,abs(self._specQuadNodes-troot)**5)),\
                 (3,len(self._specQuadNodes))).T;
-        # Rescale weights (which come back on [-1,1]) by multiplying by Lf/2.0
+        # Rescale weights (which come back on [-1,1]) by multiplying by L/2.0
         special_wts = seriescos*distance_pows*self._L/2.0;
         return special_wts;
     
@@ -145,8 +155,7 @@ class FibCollocationDiscretization(object):
 
     def evaluatePosition(self,tapprox,coeffs):
         """
-        Evaluate the series representing the fiber
-        at a value tapprox.
+        Evaluate the series representing the fiber at a value tapprox.
         Inputs: tapprox = value to evaluate at. This value must be
         rescaled so that the centerline is parameterized by t in [-1,1],
         coeffs = coefficients that represent the fiber centerline 
@@ -244,7 +253,7 @@ class FibCollocationDiscretization(object):
         the sum of forces being 0 in the discrete sense, so the sum of any lambas 
         cancels the sum in fE.
         The Schur blocks are [M B; C D] correspdong to the LHS matrix above, and 
-        L is encoded bia self._D4BC.
+        L is encoded via self._D4BC.
         Inputs: Xarg and Xsarg = X and Xs to build the matrices for
         dt = timestep, impco = implicit coefficient (coming from the temporal integrator)
         nLvel = non-local velocity as a 3N vector, exF = external forces as a 3N vector
@@ -269,65 +278,37 @@ class FibCollocationDiscretization(object):
             np.dot(self._I,alphaU[2*self._N-2:2*self._N+1]);
         lambdas = np.linalg.solve(M,vel-nLvel)-fE-exF- \
                 impco*dt*np.dot(self._D4BC,vel);
-        return alphaU[:2*self._N-2], vel, lambdas;
-        
+        return alphaU, vel, lambdas;
     
-    def XFromXs(self, XsNow, XsOneHalf, alpha, dt):
+    def KalphProduct(self,Xsarg,alphaU,lambdas):
         """
-        Compute the new tangent vectors. 
-        Inputs: XsNow = tangent vectors to rotate (N x 3 array), 
-        XsOneHalf = tangent vectors to use for evaluation of the 
-        angular velocity Omega (also an N x 3 array), alphaU = alphas
-        from the fiber that are used to determine Omega (a 2N-2 array),
-        dt = timestep
-        Outputs: the new positions and tangent vectors X and Xsp1
+        The products K*alpha and K'*lambda for a given alpha and lambda. 
+        Inputs: Xsarg = tangent vectors along fiber as 3*N one-d array, 
+        alphaU = alphas and lambdas. 
+        Outputs: products K*alpha and K^* *lambda.
         """
-        N = self._N; # save writing
-        # Compute Omega on the upsampled grid
-        XsUpsampled = np.dot(self._MatfromNto2N,np.reshape(XsOneHalf,(self._N,3)));
-        theta, phi, r = FibCollocationDiscretization.cart2sph(XsUpsampled[:,0],XsUpsampled[:,1],XsUpsampled[:,2]);
-        n1 = np.concatenate(([-np.sin(theta)],[np.cos(theta)],[np.zeros(2*N)])).T;
-        n2 = np.concatenate(([-np.cos(theta)*np.sin(phi)],[-np.sin(theta)*np.sin(phi)],[np.cos(phi)])).T;
-        ChebPolys = self._Lmat[:,:N-1];
-        g1 = np.reshape(np.dot(self._MatfromNto2N,np.dot(ChebPolys,alpha[0:N-1])),(2*N,1));
-        g2 = np.reshape(np.dot(self._MatfromNto2N,np.dot(ChebPolys,alpha[N-1:2*N-2])),(2*N,1));
-        Omega = g1*n2-g2*n1;
-        # Downsample Omega
-        Omega = np.dot(self._Matfrom2NtoN,Omega);
-        nOm = np.sqrt(np.sum(Omega*Omega,axis=1));
-        k= Omega / np.reshape(nOm,(N,1));
-        k[nOm < 1e-6,:]=0;
-        nOm = np.reshape(nOm,(N,1));
-        Xsrs = np.reshape(XsNow,(N,3));
-        # Rodriguez rotation
-        Xsp1 = Xsrs*np.cos(nOm*dt)+np.cross(k,Xsrs)*np.sin(nOm*dt)+ \
-            k*np.reshape(np.sum(k*Xsrs,axis=1),(N,1))*(1-np.cos(nOm*dt));
-        X = self.integrateXs(Xsp1); # use child class to get X from Xs
-        return X, Xsp1;
+        K, Kt = self.calcKs(Xsarg);
+        Kalph = np.dot(K,alphaU[0:2*self._N-2])+\
+            np.dot(self._I,alphaU[2*self._N-2:2*self._N+1]);
+        Kstlam = np.dot(np.concatenate((Kt,self._wIt)),lambdas);
+        return Kalph,Kstlam;
+    
+    def calcH(self,Xin):
+        """
+        Compute discrete integral of bending force given 3*N vector of point
+        locations Xin
+        """
+        return np.dot(self._wIt, np.dot(self._D4BC,Xin));
     
     ## ====================================================
     ##  METHODS FOR NON-LOCAL VELOCITY EVALUATION (PUBLIC)
     ## ====================================================
-    def calcFPVelocity(self,Xarg,Xsarg,forceDs):
-        """ 
-        Calculate the velocity due to the finite part integral. 
-        Inputs: Xarg = N x 3 array of the positions X, 
-        Xsarg = N x 3 array of the tangent vectors, 
-        forceDs = N x 3 array of the force densities. In general it
-        is better to have these as inputs rather than object variables as
-        it can get messy with the LMMs and different non-local velocities.
-        Outpts: the velocity due to the finite part integral as a 3N one-dimensional vector
-        """
-        FPvel = np.zeros((3,self._N));
-        Xss = np.dot(self._Dmat,Xsarg);
-        fprime = np.dot(self._Dmat,forceDs);
-        # Call the C++ function to compute the correct density,
-        # 1/(s[j]-s[i])*((I+Rhat*Rhat)*f[j]*abs(s[j]-s[i])/R - (I+Xs*Xs)*f[i])
-        FPvel = FinitePartCpp.FinitePartVelocity(Xarg, forceDs, Xsarg);
-        #return 1.0/(8.0*np.pi*self._mu)*np.reshape(FPvel.T,3*self._N);
-        return FPvel;
-    
     def getFPMatrix(self):
+        """
+        Finite part matrix
+        This is the matrix A such that U = A*g, where g is the 
+        modified finite part density with the singularity factored out. 
+        """
         return 1.0/(8.0*np.pi*self._mu)*0.5*self._L*self._FPMatrix.T;
     
     def calcLocalVelocity(self,Xsarg,forceDs):
@@ -422,14 +403,14 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     """
     Child class of FibCollocationDiscretization that implements
     methods specific to CHEBYSHEV.
-    Notice that every method in this class has cf. in front of it.
+    Notice that every method in this class has cf. in it.
     """
 	
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,ellipsoidal=0,Eb=1,mu=1,N=16):
-        super().__init__(L,epsilon,ellipsoidal,Eb,mu,N);
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16):
+        super().__init__(L,epsilon,Eb,mu,N);
 		# Chebyshev grid and weights
         self._s = cf.chebPts(self._N,[0,self._L],chebGridType);
         self._w = cf.chebWts(self._N,[0,self._L],chebGridType);
@@ -531,6 +512,15 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         (arbitrary number)
         """
         return cf.evalSeries(coeffs,np.arccos(tapprox));
+    
+    def calcFibCurvature(self,X):
+        """
+        Calculate curvature for fiber X (N x 3 vector)
+        """
+        Xss = np.dot(self._Dmat,np.dot(self._Dmat,X));
+        curvatures = np.sqrt(np.sum(Xss*Xss,axis=1));
+        avgcurvature = 1.0/self._L*sum(self._w*curvatures);
+        return avgcurvature;
 
     def resample(self,Xarg,Nrs,typetarg=chebGridType):
         """

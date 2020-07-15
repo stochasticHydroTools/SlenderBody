@@ -46,7 +46,7 @@ double Fnear(double r, double xi){
     Part of the RPY near field that multiplies I. 
     @param r = distance between points 
     @param xi = Ewald parameter
-    @return value of F, so that M_near = F*I + G*(I-RR^T)
+    @return value of F, so that M_near = F*(I-RR^T) + G*RR^T
     **/
 	if (r < 1e-10){ // Taylor series
         double val = 1.0/(4.0*sqrtpi*xi*a)*(1.0-exp(-4.0*a*a*xi*xi)+
@@ -90,7 +90,7 @@ double Gnear(double r, double xi){
     Part of the RPY near field that multiplies I-RR^T. 
     @param r = distance between points 
     @param xi = Ewald parameter
-    @return value of G, so that M_near = F*I + G*(I-RR^T)
+    @return value of G, so that M_near = F*(I-RR^T) + G*RR^T
     **/
 	if (r < 1e-10){
         return 0;
@@ -222,7 +222,7 @@ double FtotRPY(double r){
     /**
     Part of the RPY kernel that multiplies I. 
     @param r = distance between points 
-    @return value of F, so that M_RPY = F*I + G*(I-RR^T)
+    @return value of F, so that M_RPY = F*(I-RR^T) + G*RR^T
     **/
 	if (r > 2*a){
         return (2.0*a*a+3.0*r*r)/(24*M_PI*r*r*r);
@@ -234,7 +234,7 @@ double GtotRPY(double r){
     /**
     Part of the RPY kernel that multiplies I. 
     @param r = distance between points 
-    @return value of G, so that M_RPY = F*I + G*(I-RR^T)
+    @return value of G, so that M_RPY = F*(I-RR^T) + G*RR^T
     **/
 	if (r > 2*a){
         return (-2.0*a*a+3.0*r*r)/(12*M_PI*r*r*r);
