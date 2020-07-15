@@ -14,10 +14,10 @@ Python/ModifiedFiles: contains files that replace the corresponding ones in the
 external libraries. See the README there for more information. 
 
 External dependencies (Python):
-[FINUFFT](https://github.com/flatironinstitute/finufft)
-[krypy](https://github.com/andrenarchy/krypy)
-LaPack (for C++ functions)
-PyBind11 (to link python and C++)
+1) [FINUFFT](https://github.com/flatironinstitute/finufft)
+2) [krypy](https://github.com/andrenarchy/krypy)
+3) LaPack (for C++ functions)
+4) PyBind11 (to link python and C++)
 
 To run our codes:
 1) Download FINUFFT and krypy and follow instructions in Python/ModifiedFiles
