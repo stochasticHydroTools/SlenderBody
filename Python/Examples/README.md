@@ -9,3 +9,5 @@ Section 6.3.2
 4) StrainingCrossLinkedNetwork.py is the actual dynamic simulation (Section 6.3.2) that measures the 
 stress for a specific omega. We load in the steady state dynamics from previous simulations in the 
 folder NetworkSteadyStates. 
+5) HexagonalRPYTest.py reproduces the results in Appendix B for the same set of particles viewed in
+a rectangular and parallelepiped way. 
