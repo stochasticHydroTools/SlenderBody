@@ -3,8 +3,8 @@ import copy
 import time
 from scipy.sparse.linalg import LinearOperator
 from functools import partial
-from mykrypy.linsys import LinearSystem, Gmres
-from mykrypy.utils import ConvergenceError
+from mykrypy.linsys import LinearSystem, Gmres # mykrypy is krypy with modified linsys.py
+from mykrypy.utils import ConvergenceError     # mykrypy is krypy with modified linsys.py
 from fiberCollection import fiberCollection
 
 # Definitions 
