@@ -12,7 +12,7 @@ class CrossLinkedNetwork(object):
     to update the network
     """
     
-    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc):
+    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc,nThreads=1):
         """
         Initialize the CrossLinkedNetwork. 
         Input variables: nFib = number of fibers, N = number of points per
@@ -22,7 +22,8 @@ class CrossLinkedNetwork(object):
         kon = constant rate of binding (constant if inside a CL rest length), 
         koff = constant rate of unbinding (pre-factor in front of the rate)
         CLseed = seed for the random number generator that binds/unbinds the CLs, 
-        Dom = domain object, fibDisc = fiber collocation discretization 
+        Dom = domain object, fibDisc = fiber collocation discretization, Threads = number 
+        of threads for openMP calculation of CL forces and stress
         """
         self._Npf = N; 
         self._NsitesPerf = Nunisites;
@@ -39,6 +40,7 @@ class CrossLinkedNetwork(object):
         self._jPts = [];                # other in pairs of the uniform points (LIST)
         self._Shifts = [];              # periodic shifts for each link (in the DEFORMED DOMAIN)
         self._added = np.zeros(self._NsitesPerf*self._nFib,dtype=int); # whether there's a link at that point
+        self._nThreads = nThreads;
         
         # The standard deviation of the cross linking Gaussian depends on the
         # number of points per fiber and the length of the fiber.
@@ -165,7 +167,7 @@ class CrossLinkedNetwork(object):
             return np.zeros(3*self._Npf*self._nFib);
         # Call the C++ function to compute forces
         shifts = Dom.unprimecoords(np.array(self._Shifts));
-        Clforces = clinks.calcCLForces(self._iPts, self._jPts,shifts,uniPoints,chebPoints);
+        Clforces = clinks.calcCLForces(self._iPts, self._jPts,shifts,uniPoints,chebPoints,self._nThreads);
         return Clforces;
     
     def CLStress(self,fibCollection,chebPts,Dom):
@@ -193,7 +195,7 @@ class CrossLinkedNetwork(object):
                     stress-=self._wCheb[iPt]*np.outer(chebPts[iInds[iPt],:],Clforces[iInds[iPt],:]);
                     stress-=self._wCheb[iPt]*np.outer(chebPts[jInds[iPt],:]+shifts[iLink,:],Clforces[jInds[iPt],:]);
         # C++ function call 
-        stress = clinks.calcCLStress(self._iPts,self._jPts,shifts,uniPts,chebPts);
+        stress = clinks.calcCLStress(self._iPts,self._jPts,shifts,uniPts,chebPts,self._nThreads);
         #print(stressCpp-stress)
         stress/=np.prod(Dom.getLens());
         return stress;
@@ -346,11 +348,11 @@ class KMCCrossLinkedNetwork(CrossLinkedNetwork):
     links
     
     """
-    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc):
+    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc,nThreads=1):
         """
         Constructor is just the parent constructor
         """
-        super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc);
+        super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc,nThreads);
     
     def updateNetwork(self,fiberCol,Dom,tstep,of=None):
         """

@@ -48,7 +48,9 @@ void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin,
     @param NChebIn = number of Chebyshev points on each fiber
     @param NuniIn = number of uniform points on each fiber 
     @param deltain = fraction of fiber with ellipsoidal tapering
-    @param fatDistIn = radius at which we give up on nonlocal quadrature
+    @param fatDistIn = radius at which we give up on nonlocal quadrature (fatten the fiber and 
+    cap the mobility at this radius). If fatDistIn = eps*L, we just call the original version 
+    of the code without capping mobility. 
     **/
     initRPYVars(sqrt(1.5)*epsIn*Lin, muin, NfibIn*NChebIn, Lengths);
     // Set domain lengths
@@ -116,7 +118,7 @@ void initFinitePartMatrix(const vec &FPIn, const vec &DMatIn){
 //===========================================
 // PRIVATE METHODS CALLED ONLY IN THIS FILE
 //===========================================
-void OneRPYKernel(const vec3 &targ, const vec &sourcePts, const vec &Forces, vec3 &utarg){
+void OneRPYKernelWithForce(const vec3 &targ, const vec &sourcePts, const vec &Forces, vec3 &utarg){
     /**
     Compute the RPY kernel at a specific target due to a fiber. 
     @param targ = the target position (3 array)
@@ -148,7 +150,7 @@ void OneRPYKernel(const vec3 &targ, const vec &sourcePts, const vec &Forces, vec
 
 void RPYFiberKernel(const vec &Targets, const vec &FibPts, const vec &Forces, vec &targVels){
     /**
-    Compute the integral of the RPY kernel along a fiber with respect to some targets
+    Compute the integral of the RPY kernel along a single fiber with respect to some targets
     @param Targets = the target positions (row stacked vector)
     @param FibPts = fiber points along which we are summing the kernel (row stacked vector)
     @param Forces = forces (NOT FORCE DENSITIES) at the fiber points (row stacked vector)
@@ -158,7 +160,7 @@ void RPYFiberKernel(const vec &Targets, const vec &FibPts, const vec &Forces, ve
     vec3 uadd;
     for (int iTarg=0; iTarg < Ntarg; iTarg++){
         vec3 targPt = {Targets[3*iTarg],Targets[3*iTarg+1],Targets[3*iTarg+2]};
-        OneRPYKernel(targPt,FibPts,Forces,uadd);
+        OneRPYKernelWithForce(targPt,FibPts,Forces,uadd);
         for (int d=0; d<3; d++){
             targVels[iTarg*3+d]+=uadd[d];
         }
@@ -168,18 +170,14 @@ void RPYFiberKernel(const vec &Targets, const vec &FibPts, const vec &Forces, ve
 void OneRPYKernel(const vec3 &targ, const vec &sourcePts, const vec &ForceDs, const vec &wts, 
                   int first, int last, vec3 &utarg){
     /**
-    Donev: What is the difference with the previous OneRPYKernel routine above?
-    I would suggest against naming routines the same thing as it leads to confusion for someone reading the code
-    The compiler can read protypes/signatures of routines and figure out which to call but humans like to be able to search for a name
-    and use names to understand what things are
-    
-    Compute the RPY kernel at a specific target due to a fiber. 
+    Compute the RPY kernel at a specific target due to a fiber. This method is more flexible than 
+    OneRPYKernelWithForce since it uses force densities and weights to get force.
     @param targ = the target position (3 array)
     @param sourcePts = fiber points along which we are summing the kernel (row stacked vector)
     @param ForceDs = forces DENSITIES at the fiber points (row stacked vector)
     @param wts = quadrature weights for the integration
-    @param first = where to start kernel the kernel (row in SourcePts)
-    @param last = index of sourcePts where we stop adding the kernel (row in sourcePts)
+    @param first = where to start kernel the kernel ("row" index in SourcePts)
+    @param last = index of sourcePts where we stop adding the kernel ("row" index in sourcePts)
     @param utarg = velocity at the target due to the fiber (using RPY). 3 array, Passed by reference and modified
     **/
     vec3 rvec;
@@ -271,10 +269,6 @@ void SBTKernelSplit(const vec3 &targpt, const vec &FibPts, const vec &ForceDens,
     }
 }
 
-// Method to find the necessary quadrature type for a given target and fiber. 
-// Inputs: targ = target points, Npts = number of points on fiber, 
-// (xfib,yfib,zfib) = vectors of fiber pints, g = strain, (Lx,Ly,Lz) = periodic lengths
-// q1cut = distance where we need upsampled direct, q2cut = distance where we need special quadrature. 
 int determineQuadratureMethod(const vec &UniformFiberPoints, int iFib, double g, vec3 &targetPoint){
     /**
     Method to find the necessary quadrature type for a given target and fiber. 
@@ -346,13 +340,13 @@ void initFullFiberForSpecial(const vec &ChebFiberPoints, const vec &FibForceDens
     @param CenterlineVelocities = finite part velocities of the centerline on all fibers
     @param iFib = fiber number
     @return This is a void method, but it modifies the following arrays: the upsampled positions, upsampled force densities,
-    coefficients of the fiber position, tangent vectors, finite part (centerline) velocities, and force densities. 
+    and the coefficients of the fiber position, tangent vectors, finite part (centerline) velocities, and force densities. 
     **/
     int start = NChebperFib*iFib;
     // Upsample points and forces to Nupsample point grid
     MatVec(Nupsample, NChebperFib, 3, upsamplingMatrix, ChebFiberPoints, start, UpsampledPos);
     MatVec(Nupsample, NChebperFib, 3, upsamplingMatrix, FibForceDensities, start, UpsampledForceDs);
-    // Compute coefficients
+    // Compute coefficients for points, tangent vectors, and force densities
     MatVec(NChebperFib, NChebperFib, 3, ValuestoCoeffsMatrix, ChebFiberPoints, start, PositionCoefficients);
     DifferentiateCoefficients(PositionCoefficients,3,DerivCoefficients);
     MatVec(NChebperFib, NChebperFib, 3, ValuestoCoeffsMatrix, FibForceDensities, start, forceDCoefficients);
@@ -368,7 +362,7 @@ void init2PanelsForSpecial(const vec &ChebFiberPoints, const vec &FibForceDensit
     @param FibForceDensities = fiber force densities on all fibers
     @param iFib = fiber number
     @return This is a void method, but it modifies the following arrays: the positions, force densities, and coefficients
-    on each of the 2 panels. 
+    of the position and tangent vector on each of the 2 panels. 
     **/
     int start = NChebperFib*iFib;
     // Points
@@ -456,7 +450,6 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                              const vec &FinitePartVelocities, double g,const intvec &numTargsbyFib, 
                              const intvec &allTargetNums, vec &correctionUs, int nThreads, bool noCorrectionQuads){
     /**
-    Donev: Sorry, this is too complicated/long for me to follow. As long as you checked that it gives the same results (for a given input) as the previous python code I am fine with it...
     Method to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
     @param ChebFiberPoints = vector (row stacked) of Chebyshev points on ALL fibers
     @param UniformFiberPoints = vector (row stacked) of uniform points on ALL fibers
@@ -464,13 +457,11 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
     @param FinitePartVelocities = vector (row stacked) of velocities due to the finite part integral on 
         ALL fibers (necessary when the fibers are close togther and the centerline velocity is used)
     @param g = strain in coordinate system
-    Donev: The wording "on each fiber" appears several times but it confuses me -- I believe you mean "for each fiber"
-    That is, for each fiber there is a list of targets (on other fibers) for which we need to subtract RPY and then do special quad, right?
-    @param numTargsbyFib = int vector of the number of targets that require correction on each fiber
+    @param numTargsbyFib = Nfib length integer vector of the number of targets that require correction for each fiber
     @param allTargetNums = vector of the target indices that need correction in sequential order
     @param correctionUs = vector (row stacked) of correction velocities (modified here) . 
     @param nThreads = number of threads to use in parallel processing
-    @param noCorrectionQuads = true if returning after subtracting the self RPY for a fiber (not doing special quad)
+    @param noCorrectionQuads = true if not doing special quad, false if doing special quad
     **/
     // Subtract the self RPY for a single fiber
     subtractAllRPY(ChebFiberPoints, FibForceDensities, correctionUs);
@@ -480,9 +471,7 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
     // Cumulative sum of the number of targets by fiber to figure out where to start
     intvec endTargNum(numTargsbyFib.begin(),numTargsbyFib.end());
     std::partial_sum(endTargNum.begin(), endTargNum.end(),endTargNum.begin());
-    omp_set_num_threads(nThreads); // Donev: I believe that you can do this inside the omp parallel pragma, instead of like this. Then no need to reset
-    // Donev: Why is the schedule here fixed to dynamic?
-    #pragma omp parallel for schedule(dynamic)
+    #pragma omp parallel for num_threads(nThreads) schedule(dynamic)
     for (int iFib=0; iFib < NFib; iFib++){
         // Initialize fiber specific quantities
         vec UpsampledPos(3*Nupsample,0.0), UpsampledForceDs(3*Nupsample,0.0), PositionCoefficients(3*NChebperFib,0.0);
@@ -526,7 +515,9 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
                          // Compute weight and value of CL velocity assigned to nearest CL velocity
                         CLwt = std::min((dstarInterp-dstar)/(dstarInterp-dstarCL),1.0); // takes care of very close ones
                         calcCLVelocity(FinitePartCoefficients, DerivCoefficients, forceDCoefficients, tapprox,CLpart);
-                        if (fatepsilon > epsilon && dstar > dstarCL){
+                        if (fatepsilon > epsilon && dstar > dstarCL){ 
+                            // If we are capping the mobility, different scaling for d and weight from 
+                            // the centerline that uses the sigmoid function 
                             double dscaled = (dstar-0.5*(dstarInterp+dstarCL))/(dstarInterp-dstarCL);
                             CLwt = 1.0/(1.0+exp(10.0*dscaled));
                         }
@@ -567,8 +558,6 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
             } // end if correction needed
         } // end loop over targets
     } // end parallel loop over fibers 
-    omp_set_num_threads(1); // todo: check if re-setting nThreads is necessary 
-    // Donev: I think you should just set n_threads in the omp pragma itself -- I believe you can use variables inside the pragma too, not just constants. Try it
 }
 
 void FinitePartVelocity(const vec &ChebPoints, const vec &FDens,const vec &Xs,vec &uFP){

@@ -29,7 +29,7 @@ void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyNormalWts, npDoub pyU
     @param pyNormalWeights = Clenshaw-Curtis weights for direct quadrature on the fiber (1D numpy array)
     @param pyUpNodes  = upsampled Chebyshev nodes on the fiber (1D numpy array)
     @param pyNormalWeights = upsampled Clenshaw-Curtis weights for upsampled direct quadrature on the fiber (1D numpy array)
-    @param pyVanderMat = vandermone matrix
+    @param pyVanderMat = vandermonde matrix (2D numpy array)
   **/
   
   // allocate std::vector (to pass to the C++ function)
@@ -144,7 +144,7 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
     @param pyFinitePartVels = Npts * 3 numpy array (2D) of velocities due to the finite part integral on 
         ALL fibers (necessary when the fibers are close togther and the centerline velocity is used)
     @param g = strain in coordinate system
-    @param pyNumbyFib = Npts (1D) numpy array of the number of targets that require correction on each fiber
+    @param pyNumbyFib = Npts (1D) numpy array of Nfib length with the number of targets that require correction for each fiber
     @param TargetNums = python LIST (not array) of the target indices that need correction in sequential order
     @param nThreads = number of threads to use in parallel processing
     @param noCorrectionQuads = true if returning after subtracting the self RPY for a fiber (not doing special quad)

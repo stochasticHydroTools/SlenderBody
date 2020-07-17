@@ -19,8 +19,6 @@ double normalize(vec3 &rvec){
     return r;
 }
 
-// Donev: Really no code in 2020 should have this hand-written but should use a library to do this ;-)
-// Avoiding boost has really made the C++ code quite ugly and tedious in my opinion...
 void MatVec(int m, int p, int n, const vec &M, const vec &V, int start, vec &result){
     /**
     Matrix vector product 
@@ -30,7 +28,7 @@ void MatVec(int m, int p, int n, const vec &M, const vec &V, int start, vec &res
     // @param M = the matrix M
     // @param V = the column vector (or vectors) V 
     // start = where to start in the rows of V
-    // result = the resuling mat-vec 
+    // result = the resulting mat-vec 
     **/
     for (int i=0; i < m; i++){ 
         for (int j=0; j < n; j++){ 

@@ -81,12 +81,13 @@ double deltah(double a){
     /**
     Regularized delta function for the CL force density calculations. 
     @param a = distance between two fiber points
-    @return value of delta_h(a,sigma)
+    @return value of delta_h(a,sigma). Right now a Gaussian with standard dev = sigma
     **/
     return 1.0/sqrt(2.0*M_PI*sigma*sigma)*exp(-a*a/(2.0*sigma*sigma));
 }
 
-void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, const vec &uniPoints, const vec &chebPoints,vec &CLForces){
+void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, const vec &uniPoints,
+    const vec &chebPoints,vec &CLForces, int nThreads){
     /**
     Compute force densities on the fibers from the list of links. 
     @param iPts = nLinks vector of uniform point numbers where one CL end is
@@ -95,8 +96,9 @@ void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, con
     @param uniPoints = rowstacked vector of the uniform fiber points 
     @param chebPoints = rowstacked vector of Chebyshev fiber points
     @param CLForces = force densities on the fibers (row stacked) to be modified
+    @param nThreads = number of threads for parallel processing
     **/
-    #pragma omp parallel for num_threads(4)
+    #pragma omp parallel for num_threads(nThreads)
     for (int iL=0; iL < iPts.size(); iL++){
         int iPtstar = iPts[iL];
         int jPtstar = jPts[iL];
@@ -136,7 +138,8 @@ void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, con
     }
 }
 
-vec calcCLStress(const intvec &iPts, const intvec &jPts, const vec &Shifts, const vec &uniPoints, const vec &chebPoints){
+vec calcCLStress(const intvec &iPts, const intvec &jPts, const vec &Shifts, const vec &uniPoints, 
+    const vec &chebPoints, int nThreads){
     /**
     Compute force densities on the fibers from the list of links. 
     @param iPts = nLinks vector of uniform point numbers where one CL end is
@@ -144,10 +147,11 @@ vec calcCLStress(const intvec &iPts, const intvec &jPts, const vec &Shifts, cons
     @param Shifts = rowstacked vector of nLinks shifts in link displacements due to periodicity
     @param uniPoints = rowstacked vector of the uniform fiber points 
     @param chebPoints = rowstacked vector of Chebyshev fiber points
+    @param nThreads = number of threads for parallel processing
     @return stress tensor
     **/
     vec stress(9,0.0);
-    #pragma omp parallel for num_threads(4)
+    #pragma omp parallel for num_threads(nThreads)
     for (int iL=0; iL < iPts.size(); iL++){
         vec forceDeni(3*NCheb,0.0);
         vec forceDenj(3*NCheb,0.0);
@@ -250,11 +254,11 @@ intvec newEventsList(vec &rates, const intvec &iPts, const intvec &jPts, intvec 
     @param nowBound = bound state of each event/link
     @param added = whether a link exists at each uniform point (only 1 link allowed)
     @param nLinks = number of bound CLs going into this method
-    @param uniPoints = row stacked vector of uniform points on the fibers
+    @param uniPts = row stacked vector of uniform points on the fibers
     @param g = strain in the coordinate system
     @param tstep = timestep
     @return integer vector of the events that will happen during the timestep. 
-    Each "event" is an index in iPts, jPts, etc.
+    Each "event" is an index in iPts and jPts that says that pair will bind
     **/
     // Initialize times and events
     std::vector <double> times(rates.size()); 
@@ -302,11 +306,10 @@ intvec newEventsList(vec &rates, const intvec &iPts, const intvec &jPts, intvec 
             // Redraw random time for that event
             times[nextEvent] = -log(1.0-unif(rng))/rates[nextEvent]+systime;
         }
-        if (nEvents == maxCLs){
+        if (nEvents == maxCLs){ // save time since all we do now is fill up links at t =0
             std::cout << "TEMPORARY:  returning as all links filled" << std::endl;
             return events;
         }
-        std::cout << "Number of events " << nEvents << std::endl;
     }
     return events;
 }

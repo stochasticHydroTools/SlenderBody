@@ -49,7 +49,7 @@ void py_initCLForcingVariables(npDoub pyUniformNodes, npDoub pyChebNodes, npDoub
 } 
 
 
-py::array py_calcCLForces(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints)
+py::array py_calcCLForces(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints, int nThreads)
 {
   /**
     Python wrapper to evaluate the cross linking forces. 
@@ -58,6 +58,7 @@ py::array py_calcCLForces(const intvec &iPts, const intvec &jPts, npDoub pyShift
     @param pyShifts = 2D numpy array of shifts in the links due to periodicity
     @param pyUnipoints = uniform points on the fibers for the force calculation
     @param pyChebPoints = Chebyshev fiber points for the force calculation
+    @param nThreads = number of threads for parallel processing
     @return the force densities at all the points due to cross-linking
     
   **/
@@ -74,7 +75,7 @@ py::array py_calcCLForces(const intvec &iPts, const intvec &jPts, npDoub pyShift
 
   // call pure C++ function
   vec CLForceDensities(pyChebPoints.shape()[0]*3,0.0);
-  calcCLForces(iPts, jPts, Shifts, uniPoints, ChebPoints, CLForceDensities);
+  calcCLForces(iPts, jPts, Shifts, uniPoints, ChebPoints, CLForceDensities, nThreads);
 
   // return 1-D NumPy array
   // allocate py::array (to pass the result of the C++ function to Python)
@@ -87,7 +88,7 @@ py::array py_calcCLForces(const intvec &iPts, const intvec &jPts, npDoub pyShift
   return pyArray;
 } 
 
-py::array py_calcCLStress(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints)
+py::array py_calcCLStress(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints, int nThreads)
 {
   /**
     Python wrapper to evaluate the cross linking forces. 
@@ -96,6 +97,7 @@ py::array py_calcCLStress(const intvec &iPts, const intvec &jPts, npDoub pyShift
     @param pyShifts = 2D numpy array of shifts in the links due to periodicity
     @param pyUnipoints = uniform points on the fibers for the force calculation
     @param pyChebPoints = Chebyshev fiber points for the force calculation
+    @param nThreads = number of threads for parallel processing
     @return stress due to cross-linkers
     
   **/
@@ -111,7 +113,7 @@ py::array py_calcCLStress(const intvec &iPts, const intvec &jPts, npDoub pyShift
   std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
 
   // call pure C++ function
-  vec stress = calcCLStress(iPts, jPts, Shifts, uniPoints, ChebPoints);
+  vec stress = calcCLStress(iPts, jPts, Shifts, uniPoints, ChebPoints, nThreads);
 
   ssize_t              ndim    = 2;
   std::vector<ssize_t> shape   = { 3, 3 };
@@ -181,7 +183,7 @@ py::array py_newEventsList(npDoub pyrates, npInt pyiPts, npInt pyjPts, npInt pyn
     @param g = strain in the coordinate system
     @param tstep = timestep
     @return 1D numpy array of the events that will happen during the timestep. 
-    Each "event" is an index in iPts, jPts, etc.
+    Each "event" is an index in iPts and jPts that says that pair will bind
     **/
   
   // allocate std::vector (to pass to the C++ function)

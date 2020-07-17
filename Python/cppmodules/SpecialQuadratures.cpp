@@ -17,11 +17,19 @@
 #define ROOT_FINDER_TOL 1e-4   // tolerance for the special quad root finder
 #define MAX_RF_ITERS 10        // maximum number of iterations to find the root
 
-// Global variable: the Bernstein radius
-double rho_crit;
-vec SpecialVandermonde;
+/**
+    SpecialQuadratures.cpp
+    Functions for special quadrature
+    Most of these are from the library of Barnett and af Klinteberg
+    Their paper: https://arxiv.org/abs/1910.09899
+    Their original code is at: https://github.com/ludvigak/linequad
+**/
+
+// Global variables
+double rho_crit; //  the Bernstein radius
+vec SpecialVandermonde; //  Vandermonde matrix
 int ipivVander [40]; // pivots for Vandermonde (maximum of 40)
-bool useByorck = false;
+bool useByorck = false; // False means precomputed LU factorization, true means Byorck Pereyra (not stable for larger N)
 
 // LAPACK CALLS
 extern "C" void dgetrf_(int* dim1, int* dim2, double* a, int* lda, int* ipiv, int* info);
@@ -38,11 +46,6 @@ void setVandermonde(const vec &SpecialVanderIn, int Nupsample){
     dgetrf_(&Nupsample, &Nupsample, &*SpecialVandermonde.begin(), &Nupsample, ipivVander, &info);
 }
 
-
-// 
-// Inputs: quadrature nodes tj, fiber points xj, yj, zj, number of fiber 
-// points n, and target point x0, y0, z0. 
-// Outputs: the initial guess for the rootfinder
 complex rootfinder_initial_guess(const vec &nodes, const vec &Points, const vec3 &target){
     /**
     The initial guess for the rootfinder.
@@ -52,7 +55,7 @@ complex rootfinder_initial_guess(const vec &nodes, const vec &Points, const vec3
     @return complex initial guess
     **/
     
-    // Find two closest point
+    // Find two closest points
     double Rsqmin1 = INFINITY;
     double Rsqmin2 = INFINITY;
     int imin1, imin2;
@@ -222,10 +225,11 @@ int calculateRoot(const vec &nodes, const vec &Points, const vec &Coefficients,
 void rsqrt_pow_integrals(complex z, int N,vec &I1, vec &I3, vec &I5){
     /**
     Integrals for a given root. 
-    I really have no idea what this method does, it comes from Ludvig. 
+    OM: I really have no idea what this method does, it comes from Ludvig af Klinteberg's library.
     @param z = complex root
     @param N = number of fiber points 
-    @param I1, I3, I5 = integrals 
+    @param I1, I3, I5 = integrals involved in computing special quad weights (the weights are V^-1*I1, 
+    V^-1*I3, V^-1*I5, where V^-1 denotes a Vandermonde solve)
     **/
     double zr = z.real();
     double zi = z.imag();
@@ -353,9 +357,7 @@ void pvand(int n, const vec &alpha, vec &x, const vec &b){
   // Algorithm by Bjorck & Pereyra
   // Mathematics of Computation, Vol. 24, No. 112 (1970), pp. 893-903
   // https://doi.org/10.2307/2004623   
-  This algorithm is poorly conditioned for n >=32. We use it for N=32
-  exactly because Barnett and af Klintenberg said it was ok, but it will 
-  give at most 5 digits. 
+  This algorithm is poorly conditioned for n >=32. 
   @param n = number of rows in the system
   @param alpha = quadrature nodes on [-1,1]
   @param x = solution 

@@ -4,6 +4,13 @@
 #include <stdio.h>
 #include "VectorMethods.cpp"
 
+/**
+Domain.cpp
+C++ companion to Domain.py 
+Handles computations related to 
+periodic sheared domain
+**/
+
 // Global variables for periodic Domain
 double Lx, Ly, Lz; // periodic lengths
 
@@ -26,7 +33,7 @@ void calcShifted(vec3 &rvec, double g){
     Compute shifted coordinates of a vector rvec. The goal is to shift a vector
     rvec periodically until it's on [-Lx/2,Lx/2] x [-Ly/2, Ly/2] x [-Lz/2, Lz/2].
     This must be done carefully, however, since the periodicity is not standard
-    (slanted grid).
+    (it's perioidic on a slanted grid with strain g).
     @param rvec = the displacement vector (to be modified)
     @param g = strain in coordinate system
     **/

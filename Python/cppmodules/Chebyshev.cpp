@@ -8,13 +8,14 @@
 void eval_Cheb3Dirs(const vec &fhat, int N, const complex &evalpt, compvec3 &results){
     /**
     Evaluate three Chebyshev polynomials in each of 3 directions (x,y,z)
-    This method is used to evaluate the series on the complex
-    plane. This is used in rootfinding and in that case the 
-    expansion is capped at MAX_EXPANSION_ORDER.
+    This method is used to evaluate the series on the COMPLEX
+    plane. This is used in rootfinding.
     @param fhat = the coefficients of the Chebyshev serieses (as a row stacked vector)
-    @param N = number of coefficients at which to truncate the expansion
+    @param N = number of coefficients at which to truncate the expansion. The cap is 
+    used because Barnett and af Klinteberg suggest it for stability 
     @param evalpt = the complex number where we evaluate the Chebyshev series
     @param results = the value of the Chebyshev series as a 3 vector at the complex value evalpt
+    (modified here)
     **/
     // Compute the complex theta
     complex theta = std::acos(evalpt);
@@ -38,6 +39,7 @@ void eval_Cheb3Dirs(const vec &fhat, double t, vec3 &results){
     @param fhat = the coefficients of the Chebyshev serieses (as a row stacked vector)
     @param t = the double on [-1,1] where we evaluate the Chebyshev series
     @param results = the value of the Chebyshev series as a 3 vector at the coordinate t 
+    (modified here)
     **/
     // Compute the real valued theta
     double theta = std::acos(t);

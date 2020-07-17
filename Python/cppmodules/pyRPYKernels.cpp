@@ -8,7 +8,7 @@
 
 /**
     pyRPYKernels.cpp
-    Python wrappers for Ewald calculations. 
+    Python wrappers for Ewald and total RPY calculations. 
     Here we only deal with the near field (far field uses FINUFFT). 
 **/
 

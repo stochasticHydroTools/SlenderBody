@@ -10,17 +10,13 @@
 // ================================================
 // GLOBAL VARIABLES AND THEIR INITIALIZATION
 // ================================================
-// Donev: These global variables seem unwise -- what if we had fibers of different thickness?
-// No need to change it (it is not easy to fix, which is the problem) but just FYI in terms of programming choices
 double a; // hydrodynamic radius
 double mu; // fluid viscosity
 double mu_inv;
 int NEwaldPts;
-vec NearFieldVelocity;
 double outFront; // 1/(6*pi*mu*a)
 double sqrtpi = sqrt(M_PI);
 
-// Donev: Every routine that allocates memory must have a corresponding routine that deallocates it
 void initRPYVars(double ain, double muin, int NEwaldPtsin, vec3 Lengths){
     /**
     Initialize the global variables for the RPY Ewald calculations. 
@@ -33,11 +29,13 @@ void initRPYVars(double ain, double muin, int NEwaldPtsin, vec3 Lengths){
     mu = muin;
     mu_inv = 1.0/mu;
     NEwaldPts = NEwaldPtsin;
-    NearFieldVelocity = vec(NEwaldPtsin*3); // Donev: Where is this memory freed/deallocated?
-    // Imagine you had fibers growing and shrinking, so points were added/removed so one would need to re-initialize later
     initLengths(Lengths[0],Lengths[1],Lengths[2]);
     outFront = 1.0/(6.0*M_PI*mu*a);
 }
+
+//================================================
+// NEAR FIELD KERNEL EVALUATION
+//================================================
 
 //The split RPY near field can be written as M_near = F(r,xi,a)*I+G(r,xi,a)*(I-RR)
 //The next 2 functions are those F and G functions.
@@ -142,12 +140,11 @@ vec RPYNKerPairs(int Npairs,const intvec &PairPts, const vec &Points, const vec 
     @param nThreads = number of threads for the calculation
     @return near field velocity 
     **/
-    omp_set_num_threads(nThreads);
+    vec NearFieldVelocity = vec(NEwaldPts*3); 
     // Self terms
     double nearSelfMobility = outFront*Fnear(0.0,xi);
-    #pragma omp parallel
+    #pragma omp parallel num_threads(nThreads)
     {
-    // Donev: Why is the schedule fixed to static here?
     #pragma omp for schedule(static)
     for (int iPtDir=0; iPtDir < 3*NEwaldPts; iPtDir++){
         NearFieldVelocity[iPtDir]=nearSelfMobility*Forces[iPtDir];
@@ -186,19 +183,15 @@ vec RPYNKerPairs(int Npairs,const intvec &PairPts, const vec &Points, const vec 
     } // end looping over pairs
     }
     return NearFieldVelocity;
-    omp_set_num_threads(1);
 }
 
-// The near field kernel, multiplies M_near * f
-// Inputs: 3 vector r (not normalized), 3 vector force,
-// mu = viscosity, xi = Ewald parameter, and a = blob radius
-// Returns the velocity M_near*f
 void RPYNKer(vec3 &rvec, const vec3 &force, double xi, vec3 &unear){
     /**
     Near field velocity for a single pair of points
     @param rvec = displacement vector between the points
     @param force = force at one of the points 
-    @param unear = 3 array with the near field velocity 
+    @param xi = Ewald splitting parameter
+    @param unear = 3 array with the near field velocity M_near*f
     **/
     double r = normalize(rvec);
     double rdotf = dot(rvec,force);
@@ -210,13 +203,13 @@ void RPYNKer(vec3 &rvec, const vec3 &force, double xi, vec3 &unear){
     }
 }
 
-//-------------------------------------------------------
-// Plain unsplit RPY kernel evaluation
-//-------------------------------------------------------
+//================================================
+// PLAIN UNSPLIT RPY KERNEL EVALUATION
+//================================================
 // Donev: Suggest breaking long codes up into sections, here it seems you switch from split RPY (PSE method) to plain RPY
 
 // Donev: I think the next line of documentation is wrong -- no chi here since this is just "plain" RPY
-//The RPY kernel can be written as M = Ft(r,xi,a)*I+Gt(r,xi,a)*(I-RR)
+//The RPY kernel can be written as M = Ft(r,a)*I+Gt(r,a)*(I-RR)
 //The next 2 functions are those Ft and Gt functions.
 double FtotRPY(double r){
     /**

@@ -1,3 +1,4 @@
+// TYPE DEFINITIONS FOR C++ code 
 typedef std::vector <double> vec;
 typedef std::array <double,3> vec3;
 typedef std::vector <int> intvec;

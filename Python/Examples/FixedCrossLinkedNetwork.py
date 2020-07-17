@@ -67,7 +67,7 @@ allFibers.fillPointArrays();
 # New seed for CLs
 CLseed = 2;
 np.random.seed(CLseed);
-CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,nCL,Kspring,rl,konCL,koffCL,CLseed,Dom,fibDisc);
+CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,nCL,Kspring,rl,konCL,koffCL,CLseed,Dom,fibDisc,nThreads=4);
 CLNet.setLinksFromFile('NetworkSteadyStates/F'+str(nFib)+'C'+str(nCL)+'.txt',Dom);
     
 # Initialize the temporal integrator

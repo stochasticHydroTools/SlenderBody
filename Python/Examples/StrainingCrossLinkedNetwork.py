@@ -37,7 +37,7 @@ koffCL = 1e-16;     # cross linker unbinding rate
 
 # Array of frequencies in Hz 
 omHzs = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1, 2, 5, 10];
-iO = 9; # index of the Omega we are doing 
+iO = 6; # index of the Omega we are doing 
 omHz = omHzs[iO];
 omega = 2*pi*omHz;
 if (iO > 0):
@@ -51,7 +51,7 @@ T = 1.0/omHz;       # one period
 nCyc = ceil(omHz) + 3; # 3 cycles + 1 second to relax the network 
 tf = nCyc*T;
 dt = min(T/20,5e-3); # maximum stable timestep is 1e-3
-saveEvery = int(T/(2*dt)+1e-10); # measure curvature at the start and middle of each cycle
+saveEvery = 10;#int(T/(2*dt)+1e-10); # measure curvature at the start and middle of each cycle
 print('Omega %f: stopping time %f' %(omHz,tf))
 
 nonLocal=1; # 0 for local drag, 1 for nonlocal hydro
@@ -92,7 +92,7 @@ allFibers.fillPointArrays();
 # New seed for CLs
 CLseed = 2;
 np.random.seed(CLseed);
-CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,nCL,Kspring,rl,konCL,koffCL,CLseed,Dom,fibDisc);
+CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,nCL,Kspring,rl,konCL,koffCL,CLseed,Dom,fibDisc,nThreads=4);
 CLNet.setLinksFromFile('NetworkSteadyStates/F'+str(nFib)+'C'+str(nCL)+'.txt',Dom);
     
 # Initialize the temporal integrator
@@ -100,7 +100,7 @@ TIntegrator = CrankNicolson(allFibers, CLNet);
 TIntegrator.setMaxIters(nIts);
 
 # Prepare the output file and write initial locations
-of = prepareOutFile('Locations'+HydroStr+'Om'+str(omHz)+'LocsF'+str(nFib)+'C'+str(nCL)+'.txt');
+of = prepareOutFile('DynamicLocations'+HydroStr+'Om'+str(omHz)+'LocsF'+str(nFib)+'C'+str(nCL)+'.txt');
 allFibers.writeFiberLocations(of);
 saveCurvaturesAndStrains(omHz,nFib,nCL,allFibers,CLNet,HydroStr,wora='w')
 
