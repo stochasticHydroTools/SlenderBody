@@ -1,4 +1,4 @@
-all: RPYKernels ManyFiberMethods DomainCpp
+all: RPYKernels ManyFiberMethods DomainCpp CrossLinking
 
 DomainCpp:
 	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` Domain.cpp -o DomainCpp.so
