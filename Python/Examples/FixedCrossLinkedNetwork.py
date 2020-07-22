@@ -8,6 +8,13 @@ from CrossLinkedNetwork import KMCCrossLinkedNetwork
 from FileIO import prepareOutFile, writeArray
 import numpy as np
 
+"""
+FixedCrossLinkedNetwork.py 
+This file runs the cross linked network to steady state. 
+Chebyshev point locations, CL strains, and fiber curvatures
+are printed to a file. 
+"""
+
 def saveCurvaturesAndStrains(nFib,nCL,allFibers,CLNet,wora='a'):
     Xf = allFibers.getX();
     LinkStrains = CLNet.calcLinkStrains(allFibers.getUniformPoints(Xf), Dom);
@@ -25,6 +32,7 @@ nCL = 12*nFib;                  # maximum # of CLs
 N=16                            # number of points per fiber
 Lf=2                            # length of each fiber
 Ld=4                            # length of the periodic domain
+nonLocal=0;                     # 0 for local drag, 1 for nonlocal hydro
 xi = 0.5*(N*nFib)**(1/3)/Ld;    # Ewald param
 mu=1                            # fluid viscosity
 eps=1e-3                        # slenderness ratio
@@ -56,7 +64,7 @@ Ewald = EwaldSplitter(np.sqrt(1.5)*eps*Lf,mu,xi,Dom,N*nFib);
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N);
 
 # Initialize the master list of fibers
-allFibers = fiberCollection(nFib,fibDisc,0,mu,omega,0,Dom,nThreads=4);
+allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0,Dom,nThreads=4);
 
 # Initialize the fiber list (straight fibers)
 fibList = [None]*nFib;

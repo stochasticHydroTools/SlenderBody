@@ -36,7 +36,7 @@ def makeThreeSheared(Lf,N,fibDisc):
 nFib=3          # number of fibers
 N=16            # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=1      # doing nonlocal solves?
+nonLocal=1      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
 Ld=2.4          # length of the periodic domain
 xi=3            # Ewald parameter
 mu=1            # fluid viscosity

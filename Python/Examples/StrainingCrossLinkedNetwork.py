@@ -8,6 +8,12 @@ from CrossLinkedNetwork import KMCCrossLinkedNetwork
 from FileIO import prepareOutFile, writeArray
 import numpy as np
 
+"""
+StrainingCrossLinkedNetwork.py 
+This file runs the small amplitude oscillatory shear test on 
+the steady state fiber network. 
+"""
+
 def saveCurvaturesAndStrains(omega,nFib,nCL,allFibers,CLNet,HydroStr,wora='a'):
     Xf = allFibers.getX();
     LinkStrains = CLNet.calcLinkStrains(allFibers.getUniformPoints(Xf), Dom);
@@ -20,20 +26,20 @@ import sys
 sys.path.append("/NetworkSteadyStates/")       
 
 # Inputs for the slender body simulation
-nFib = 700;     # number of fibers
-nCL = 12*nFib;  # maximum # of CLs
-N=16               # number of points per fiber
-Lf=2              # length of each fiber
-Ld=4              # length of the periodic domain
+nFib = 700;             # number of fibers
+nCL = 12*nFib;          # maximum # of CLs
+N=16                    # number of points per fiber
+Lf=2                    # length of each fiber
+Ld=4                    # length of the periodic domain
 xi = 0.5*(N*nFib)**(1/3)/Ld; # Ewald param
-mu=1              # fluid viscosity
+mu=1                # fluid viscosity
 eps=1e-3            # slenderness ratio
 Eb=0.01             # fiber bending stiffness
 grav=0              # value of gravity if it exists
-Kspring=1      # cross linker stiffness
+Kspring=1           # cross linker stiffness
 rl=0.5              # cross linker rest length
-konCL = 1000;        # cross linker binding rate
-koffCL = 1e-16;     # cross linker unbinding rate
+konCL = 1000;       # cross linker binding rate (not applicable here, but an input to the class)
+koffCL = 1e-16;     # cross linker unbinding rate (not applicable here, but an input to the class)
 
 # Array of frequencies in Hz 
 omHzs = [0.01, 0.02, 0.05, 0.10, 0.20, 0.50, 1, 2, 5, 10];
@@ -116,8 +122,10 @@ for iT in range(stopcount):
         wr=1;
     maxX = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,grav/Lf,of,write=wr);
     Lamstress[iT],Elstress[iT],CLstress[iT] = TIntegrator.computeStress(Dom,iT,dt)
+    if (iT==699):
+        writeArray('Lambdas'+HydroStr+'.txt',TIntegrator._allFibers.getLambdas());
     if (wr==1):
-        #saveCurvaturesAndStrains(omHz,nFib,nCL,allFibers,CLNet,HydroStr)
+        saveCurvaturesAndStrains(omHz,nFib,nCL,allFibers,CLNet,HydroStr)
         print('Max x: %f' %(maxX));
 
 writeArray('NewLambdaStress'+HydroStr+'Om'+str(omHz)+'F'+str(nFib)+'C'+str(nCL)+'.txt',Lamstress)

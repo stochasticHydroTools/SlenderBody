@@ -34,7 +34,9 @@ class fiberCollection(object):
         """
         Constructor for the fiberCollection class. 
         Inputs: Nfibs = number of fibers, fibDisc = discretization object that each fiber will get
-        a copy of, nonLocal = are we doing nonlocal hydro? (2 for yes w/o finite part, 1 for yes, 0 no), 
+        a copy of, nonLocal = are we doing nonlocal hydro? (0 = local drag, 1 = full hydrodynamics, 
+        2 = hydrodynamics without finite part, 3 = hydrodynamics without special quad, 4 = 
+        hydrodynamics without other fibers (only finite part))
         mu = fluid viscosity,omega = frequency of background flow oscillations, 
         gam0 = base strain rate of the background flow, Dom = Domain object to initialize the SpatialDatabase objects, 
         nThreads = number of OMP threads for parallel calculations

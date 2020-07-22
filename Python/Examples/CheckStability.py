@@ -14,7 +14,7 @@ This file runs the stability test in Section 5.2.
 nFib=1000		# number of fibers
 N=16		    # number of points per fiber
 Lf=2		    # length of each fiber
-nonLocal=1	    # doing nonlocal solves?
+nonLocal=1	    # doing nonlocal solves? See fiberCollection.py for list of possible values. 
 Ld=5.0		    # length of the periodic domain
 xi = 0.5*(N*nFib)**(1/3)/Ld; # Ewald param
 mu=1		    # fluid viscosity
