@@ -1,7 +1,7 @@
 # Examples 
 This folder contains the main python files to run the examples
 in the paper "An integral-based spectral method for inextensible slender fibers 
-in Stokes flow." [Arxiv](https://arxiv.org/abs/2007.11728)
+in Stokes flow." [Arxiv link](https://arxiv.org/abs/2007.11728)
 
 1) ThreeShearedFibs.py corresponds to the 3 fibers being sheared in Section 5.1.2.
 2) CheckStability.py gives the stability test of Section 5.2 (for a specific domain length Ld)
@@ -25,9 +25,6 @@ initialize the configuration for omega = 1 Hz. When omega = 0.01 Hz (the smalles
 files are SSLocationsF700C8400E0.01.txt and TangentVecsF700C8400E0.01.txt, which are the configurations coming from steady state 
 equilibration. The input file handles are passed to a fiberCollection object 
 in the code that begins on [line 86 of StrainingCrossLinkedNetwork.py](https://github.com/stochasticHydroTools/SlenderBody/blob/4cf402e21404ad8b9589af1de5b652adfbb1f72e/Python/Examples/StrainingCrossLinkedNetwork.py#L86).
-Notice that we require both tangent vectors and locations; since the tangent vectors are a Chebyshev series of N terms, integrating 
-the tangent vectors to obtain positions at N points will lead to a loss of the last Chebyshev coefficient in the tangent vector series. 
-To keep the fibers exactly inextensible, we keep track of the tangent vectors explicitly.
 
-We also include an input file to [initialize the cross-linked network object](https://github.com/stochasticHydroTools/SlenderBody/blob/4cf402e21404ad8b9589af1de5b652adfbb1f72e/Python/Examples/StrainingCrossLinkedNetwork.py#L101)
-this file, NetworkSteadyStates/F700C8400.txt, has a list of connections and periodic shifts at g=0 for the 8400 links. 
+We also include an input file to [initialize the cross-linked network object.](https://github.com/stochasticHydroTools/SlenderBody/blob/4cf402e21404ad8b9589af1de5b652adfbb1f72e/Python/Examples/StrainingCrossLinkedNetwork.py#L101)
+This file, NetworkSteadyStates/F700C8400.txt, has a list of connections and periodic shifts at g=0 for the 8400 links. 
