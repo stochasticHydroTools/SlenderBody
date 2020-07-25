@@ -43,15 +43,15 @@ export OMP_NUM_THREADS=1
 ```
 in linux prior to running our code.
 The parallelization is then implemented in python in the following three ways:
-* The nonlocal velocity calculations (Ewald splitting) and near fiber corrections, are parallelized \
+1) The nonlocal velocity calculations (Ewald splitting) and near fiber corrections, are parallelized \
 within C++ using OpenMP. The number of threads in these calculations can be set by passing an integer \
 to the constructor of fiberCollection.py. An example of this is on [line 49 of Python/Examples/CheckStability.py]\
 (https://github.com/stochasticHydroTools/SlenderBody/blob/990fc394a7c0341d38b3bc809a52991353e88f2e/Python/Examples/CheckStability.py#L49). 
-* The force and stress calculations for cross-linking are parallelized within C++ using OpenMP. \
+2) The force and stress calculations for cross-linking are parallelized within C++ using OpenMP. \
 The number of threads in these calculations can be set by passing an integer to the contructor of \
-CrossLinkedNetwork.py (and objects which inherit from it). See Python/Examples/FixedCrossLinkedNetwork.py, \
-line 78, for an example. 
-* The linear solves on all fibers are parallelized using numba. The number of numba threads can be set \
+CrossLinkedNetwork.py (and objects which inherit from it). See [Python/Examples/FixedCrossLinkedNetwork.py, \
+line 78](https://github.com/stochasticHydroTools/SlenderBody/blob/77224b963c0e5b4d6344b8d7b644acca0f3a0fa9/Python/Examples/FixedCrossLinkedNetwork.py#L78), for an example. 
+3) The linear solves on all fibers are parallelized using numba. The number of numba threads can be set \
 on the command line in linux using (for example, to obtain 4 threads)
 ```
 export NUMBA_NUM_THREADS=4
