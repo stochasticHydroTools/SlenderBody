@@ -20,6 +20,10 @@ Organization is as follows:
 * LaPack (for C++ functions)
 * [PyBind11](https://github.com/pybind/pybind11) (to link python and C++)
 * [numba](https://github.com/numba/numba) (to accelerate and parallelize native python)
+For nearly singular SBT integrals, we use a modified version of the quadrature scheme of Ludvig af Klinteberg and 
+Alex Barnett. Their original code is [here](https://github.com/ludvigak/linequad) ; we have made some modifications 
+switch their Legendre discretization to a Chebyshev one in [Python/cppmodules/SpecialQuadratures.cpp](https://github.com/stochasticHydroTools/SlenderBody/blob/master/Python/cppmodules/SpecialQuadratures.cpp)
+The code here is independent of the original linequad code. 
 
 # Instructions for running code 
 1) Download FINUFFT and krypy and follow instructions in Python/ModifiedFiles
@@ -45,12 +49,10 @@ in linux prior to running our code.
 The parallelization is then implemented in python in the following three ways:
 1) The nonlocal velocity calculations (Ewald splitting) and near fiber corrections, are parallelized \
 within C++ using OpenMP. The number of threads in these calculations can be set by passing an integer \
-to the constructor of fiberCollection.py. An example of this is on [line 49 of Python/Examples/CheckStability.py]\
-(https://github.com/stochasticHydroTools/SlenderBody/blob/990fc394a7c0341d38b3bc809a52991353e88f2e/Python/Examples/CheckStability.py#L49). 
+to the constructor of fiberCollection.py. An example of this is on [line 49 of Python/Examples/CheckStability.py](https://github.com/stochasticHydroTools/SlenderBody/blob/990fc394a7c0341d38b3bc809a52991353e88f2e/Python/Examples/CheckStability.py#L49). 
 2) The force and stress calculations for cross-linking are parallelized within C++ using OpenMP. \
 The number of threads in these calculations can be set by passing an integer to the contructor of \
-CrossLinkedNetwork.py (and objects which inherit from it). See [Python/Examples/FixedCrossLinkedNetwork.py, \
-line 78](https://github.com/stochasticHydroTools/SlenderBody/blob/77224b963c0e5b4d6344b8d7b644acca0f3a0fa9/Python/Examples/FixedCrossLinkedNetwork.py#L78), for an example. 
+CrossLinkedNetwork.py (and objects which inherit from it). See [Python/Examples/FixedCrossLinkedNetwork.py, line 78](https://github.com/stochasticHydroTools/SlenderBody/blob/77224b963c0e5b4d6344b8d7b644acca0f3a0fa9/Python/Examples/FixedCrossLinkedNetwork.py#L78), for an example. 
 3) The linear solves on all fibers are parallelized using numba. The number of numba threads can be set \
 on the command line in linux using (for example, to obtain 4 threads)
 ```
