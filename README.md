@@ -45,7 +45,8 @@ in linux prior to running our code.
 The parallelization is then implemented in python in the following three ways:
 * The nonlocal velocity calculations (Ewald splitting) and near fiber corrections, are parallelized \
 within C++ using OpenMP. The number of threads in these calculations can be set by passing an integer \
-to the constructor of fiberCollection.py. An example of this is on line 49 of Python/Examples/CheckStability.py. 
+to the constructor of fiberCollection.py. An example of this is on [line 49 of Python/Examples/CheckStability.py]\
+(https://github.com/stochasticHydroTools/SlenderBody/blob/990fc394a7c0341d38b3bc809a52991353e88f2e/Python/Examples/CheckStability.py#L49). 
 * The force and stress calculations for cross-linking are parallelized within C++ using OpenMP. \
 The number of threads in these calculations can be set by passing an integer to the contructor of \
 CrossLinkedNetwork.py (and objects which inherit from it). See Python/Examples/FixedCrossLinkedNetwork.py, \
