@@ -20,8 +20,9 @@ Organization is as follows:
 * LaPack (for C++ functions)
 * [PyBind11](https://github.com/pybind/pybind11) (to link python and C++)
 * [numba](https://github.com/numba/numba) (to accelerate and parallelize native python)
+
 For nearly singular SBT integrals, we use a modified version of the quadrature scheme of Ludvig af Klinteberg and 
-Alex Barnett. Their original code is [here](https://github.com/ludvigak/linequad) ; we have made some modifications 
+Alex Barnett. Their original code is [here](https://github.com/ludvigak/linequad); we have made some modifications 
 switch their Legendre discretization to a Chebyshev one in [Python/cppmodules/SpecialQuadratures.cpp](https://github.com/stochasticHydroTools/SlenderBody/blob/master/Python/cppmodules/SpecialQuadratures.cpp)
 The code here is independent of the original linequad code. 
 
