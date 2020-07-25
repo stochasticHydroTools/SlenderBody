@@ -23,7 +23,7 @@ Organization is as follows:
 
 For nearly singular SBT integrals, we use a modified version of the quadrature scheme of Ludvig af Klinteberg and 
 Alex Barnett. Their original code is [here](https://github.com/ludvigak/linequad); we have made some modifications 
-switch their Legendre discretization to a Chebyshev one in [Python/cppmodules/SpecialQuadratures.cpp](https://github.com/stochasticHydroTools/SlenderBody/blob/master/Python/cppmodules/SpecialQuadratures.cpp)
+to switch their Legendre discretization to a Chebyshev one in [Python/cppmodules/SpecialQuadratures.cpp](https://github.com/stochasticHydroTools/SlenderBody/blob/master/Python/cppmodules/SpecialQuadratures.cpp)
 The code here is independent of the original linequad code. 
 
 # Instructions for running code 
