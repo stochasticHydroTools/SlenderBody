@@ -42,7 +42,7 @@ xi=3            # Ewald parameter
 mu=1            # fluid viscosity
 eps=1e-3        # slenderness ratio
 Eb=1e-2         # fiber bending stiffness
-dt=0.2          # timestep
+dt=0.1          # timestep
 omega=0         # frequency of oscillations
 gam0=1          # base rate of strain
 tf=2.4          # final time
@@ -65,7 +65,10 @@ allFibers.fillPointArrays();
 
 # Initialize the temporal integrator
 TIntegrator = CrankNicolson(allFibers);
-TIntegrator.setMaxIters(2);
+# Number of GMRES iterations for nonlocal solves
+# 1 = block diagonal solver
+# N > 1 = N-1 extra iterations of GMRES
+TIntegrator.setMaxIters(1);
 
 # Prepare the output file and write initial locations
 of = prepareOutFile('NewLocationsN' +str(N)+ str(dt)+'.txt');
