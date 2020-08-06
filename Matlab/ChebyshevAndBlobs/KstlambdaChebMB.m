@@ -11,11 +11,9 @@ th_Cheb = acos(sCheb);
 CoeffsToValsCheb = cos(th_Cheb.*(0:NCheb-1));
 X = 1/sqrt(2)*[cos(sCheb) sin(sCheb) sCheb]; % curved & inextensible
 Xs = 1/sqrt(2)*[-sin(sCheb) cos(sCheb) ones(NCheb,1)];
-% X = [sCheb 0*sCheb 0*sCheb];
-% Xs = [ones(NCheb,1) zeros(NCheb,2)];
 XsStack = reshape(Xs',3*NCheb,1);
 % Initialize lambda as an N x 3 Chebyshev series
-lamCoeffs = rand(NCheb,3).*[exp(-0.1*(0:NCheb-2)'); 0];
+lamCoeffs = rand(NCheb,3).*exp(-0.1*(0:NCheb-1))';
 lambda = CoeffsToValsCheb*lamCoeffs; % values on the Chebyshev grid
 % Make sure lambda integrates to 0. This is a crude approximation so there
 % will be some small error involved. 
@@ -28,7 +26,7 @@ lamStack=reshape(lambda',3*NCheb,1);
 Ktlam = [Kt*lamStack; (w*lambda)'];
 
 %% Uniform points version
-Nuni = 3200;
+Nuni = 400;
 ds = 2/Nuni;
 sUni=(-1+ds:ds:1)';
 % Matrix that takes coefficients of Cheb polynomials to values on the
@@ -40,7 +38,6 @@ lamUni = CoeffsToValsUniform*lamCoeffs;
 sumlam = ds*sum(lamUni); % integral of lambda (first order)
 % Evaluate tangent vectors and normal vectors on the uniform grid
 XsUni = 1/sqrt(2)*[-sin(sUni) cos(sUni) ones(Nuni,1)];
-%XsUni = [ones(Nuni,1) zeros(Nuni,2)];
 [theta,phi,~] = cart2sph(XsUni(:,1),XsUni(:,2),XsUni(:,3));
 theta(abs((abs(phi)-pi/2)) < 1e-12) =0;
 n1s=[-sin(theta) cos(theta) 0*theta];
