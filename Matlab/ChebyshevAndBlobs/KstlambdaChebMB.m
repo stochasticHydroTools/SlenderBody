@@ -21,16 +21,16 @@ lamStack=reshape(lambda',3*NCheb,1);
 Ktlam = [Kt*lamStack; (w*lambda)'];
 
 %% Uniform points version
-Nuni = 1000;
-ds = 2/Nuni;
-sUni=(-1+ds:ds:1)';
+Nuni = 25;
+ds = 2/(Nuni-1);
+sUni=(-1:ds:1)';
 % Matrix that takes coefficients of Cheb polynomials to values on the
 % uniform grid. Equivalently, matrix with values of the Chebyshev
 % polynomials on the uniform grid
 CoeffsToValsUniform = cos(acos(sUni).*(0:NCheb-1));
 % Sample lambda on the uniform grid
 lamUni = CoeffsToValsUniform*lamCoeffs;
-sumlam = ds*sum(lamUni); % integral of lambda (first order)
+sumlam = ds*sum(lamUni)-ds/2*(lamUni(1,:)+lamUni(Nuni,:)); % integral of lambda (second order order)
 % Evaluate tangent vectors and normal vectors on the uniform grid
 XsUni = 1/sqrt(2)*[-sin(sUni) cos(sUni) ones(Nuni,1)];
 [theta,phi,~] = cart2sph(XsUni(:,1),XsUni(:,2),XsUni(:,3));
@@ -47,10 +47,11 @@ function KstBlob = makeKstBlob(lams,n1s,n2s,Nuni)
     % K^T lambda = [n_1(s) dot integral_s^L lambda(s)] for each s
     KstBlob = zeros(2*Nuni+3,1);
     for iPt=1:Nuni-1
-        KstBlob(iPt)=dot(n1s(iPt,:),sum(lams(iPt:end,:)));
-        KstBlob(iPt+Nuni)=dot(n2s(iPt,:),sum(lams(iPt:end,:)));
+        lamInt = sum(lams(iPt:end,:))-0.5*(lams(iPt,:)+lams(end,:));
+        KstBlob(iPt)=dot(n1s(iPt,:),lamInt);
+        KstBlob(iPt+Nuni)=dot(n2s(iPt,:),lamInt);
     end
-    KstBlob(2*Nuni+1:2*Nuni+3)=sum(lams); % add integrals of lambda
+    KstBlob(2*Nuni+1:2*Nuni+3)=sum(lams)-0.5*(lams(1,:)+lams(end,:)); % add integrals of lambda
 end
 
 function KstCheb = convertKstBlob(KstBlob,CoeffsToValsUniform,Npolys,Nuni,ds)
@@ -60,8 +61,8 @@ function KstCheb = convertKstBlob(KstBlob,CoeffsToValsUniform,Npolys,Nuni,ds)
     for iPoly=1:Npolys
         n1prods = KstBlob(1:Nuni).*CoeffsToValsUniform(:,iPoly);
         n2prods = KstBlob(Nuni+1:2*Nuni).*CoeffsToValsUniform(:,iPoly);
-        KstCheb(iPoly)=ds*sum(n1prods);
-        KstCheb(Npolys+iPoly)=ds*sum(n2prods);
+        KstCheb(iPoly)=ds*(sum(n1prods)-0.5*(n1prods(1,:)+n1prods(end,:)));
+        KstCheb(Npolys+iPoly)=ds*(sum(n2prods)-0.5*(n2prods(1,:)+n2prods(end,:)));
     end
     KstCheb(2*Npolys+1:2*Npolys+3)=KstBlob(2*Nuni+1:2*Nuni+3);
 end
