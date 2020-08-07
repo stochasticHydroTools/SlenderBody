@@ -3,10 +3,10 @@
 % [-M K; K^T 0]*[alpha;lambda]=[M*fE;0]
 % Using a spectral discretization
 % Important variables
-N=16;
+N=12;
 Lf=2;   
 mu=1;
-eps=1e-3;
+eps=5e-3;
 Eb=1;
 
 % Chebyshev initialization
@@ -40,7 +40,7 @@ lambda = zeros(3*N,1); % 0 initial guess for lambda
 iters=0;
 while (reler > 1e-6)
     lamCols = reshape(lambda,3,N);
-    [~,Oone] = calcSelf(N,s0,Lf,eps,fibpts,X_s,fEcols+lamCols,D); % finite part integral
+    [~,Oone] = calcSelf(N,s0,Lf,eps,fibpts,X_s,fEcols+lamCols,D); % 
     nLvel = 1/(8*pi*mu)*reshape(Oone',3*N,1);
     B=[K I];
     C=[Kt; wIt];
