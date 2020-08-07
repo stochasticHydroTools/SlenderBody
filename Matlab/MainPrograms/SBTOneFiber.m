@@ -58,3 +58,9 @@ Lambda_Uniform = ChebtoUniform*lambda;
 % Compute Omega on the uniform grid by crossing with tau on the uniform grid
 tau_Uniform = ChebtoUniform*X_s;
 Omega_Uniform = cross(tau_Uniform,OmegaCrossTau_Uniform);
+% Alternative: compute Omega by going through upsampled Cheb grid
+[s2N,w2N,b2N] = chebpts(2*N, [0 L], 1); % 1st-kind grid for ODE.
+Rup = barymat(s2N,s0,b0);
+Rdwn = barymat(s0,s2N,b2N);
+Omega_Cheb = Rdwn*cross(Rup*X_s,Rup*OmegaCrossTau);
+Omega_UniformFromCheb = ChebtoUniform*Omega_Cheb;
