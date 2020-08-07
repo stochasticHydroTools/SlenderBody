@@ -1,6 +1,5 @@
 % Function to convert K^T lambda from a uniform grid to a Chebyshev one
-% For the conversion to "work" (give the same answer), lambda must
-% integrate to 0
+% For the conversion to "work" (give the same answer)
 %%
 % Initialize fiber curved fiber
 rng(0);
