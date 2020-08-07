@@ -15,10 +15,6 @@ XsStack = reshape(Xs',3*NCheb,1);
 % Initialize lambda as an N x 3 Chebyshev series
 lamCoeffs = rand(NCheb,3).*exp(-0.1*(0:NCheb-1))';
 lambda = CoeffsToValsCheb*lamCoeffs; % values on the Chebyshev grid
-% Make sure lambda integrates to 0. This is a crude approximation so there
-% will be some small error involved. 
-% lamCoeffs(1,:)=lamCoeffs(1,:)-w*lambda/2;
-% lambda = CoeffsToValsCheb*lamCoeffs; % new values on the Chebyshev grid
 lamStack=reshape(lambda',3*NCheb,1);
 % Our spectral method to compute K^T lambda
 [K,Kt]=getKMats3D(XsStack,CoeffsToValsCheb,w,NCheb);
