@@ -55,4 +55,7 @@ CoeffstoValsUniform = cos(acos(2*sUni/L-1).* (0:N-1));
 ChebtoUniform =  CoeffstoValsUniform*(CoeffsToValsCheb)^(-1);
 OmegaCrossTau_Uniform = ChebtoUniform*OmegaCrossTau;
 Lambda_Uniform = ChebtoUniform*lambda;
+% Compute Omega on the uniform grid by crossing with tau on the uniform grid
+tau_Uniform = ChebtoUniform*X_s;
+Omega_Uniform = cross(tau_Uniform,OmegaCrossTau_Uniform);
 
