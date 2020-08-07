@@ -58,4 +58,8 @@ Lambda_Uniform = ChebtoUniform*lambda;
 % Compute Omega on the uniform grid by crossing with tau on the uniform grid
 tau_Uniform = ChebtoUniform*X_s;
 Omega_Uniform = cross(tau_Uniform,OmegaCrossTau_Uniform);
+% Alternative: compute Omega on cheb grid
+Omega_Cheb = cross(X_s,OmegaCrossTau);
+Omega_UniformFromCheb = ChebtoUniform*Omega_Cheb;
+
 
