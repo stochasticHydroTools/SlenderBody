@@ -29,8 +29,7 @@ function M = getMloc(N,Xs,eps,Lf,mu,s0)
             [inds(1) inds(1) inds(1) inds(2) inds(2) inds(2) inds(3) inds(3) inds(3)]';
         cols((iPt-1)*9+1:iPt*9)=...
             [inds(1) inds(2) inds(3) inds(1) inds(2) inds(3) inds(1) inds(2) inds(3)]';
-        Mloc=1/(8*pi*mu)*((eye(3)-3*XsXs)+...
-            Ls(mod(iPt-1,N)+1)*(eye(3)+XsXs));
+        Mloc=1/(8*pi*mu)*((eye(3)-3*XsXs)+Ls(iPt)*(eye(3)+XsXs));
         vals((iPt-1)*9+1:iPt*9)=Mloc(:);
     end
     M = sparse(rows,cols,vals);

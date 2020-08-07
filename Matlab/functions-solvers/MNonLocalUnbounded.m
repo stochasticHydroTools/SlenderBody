@@ -5,7 +5,7 @@
 % the fibers, X = locations of the fibers, Xs = tangent vectors. 
 % f, X , and Xs are n*nFib x 3 arrays. D is the differentiation matrix.
 % xi = Ewald parameter, L = periodic domain length
-function nLvel = MNonLocalSlow(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu)
+function nLvel = MNonLocalUnbounded(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu)
     global doFP doSpecialQuad;
     % First compute the non-local velocity from the fiber onto itself
     localvel=zeros(N*nFib,3);

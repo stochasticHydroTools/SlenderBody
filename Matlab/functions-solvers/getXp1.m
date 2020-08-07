@@ -7,7 +7,7 @@ function [Xnp1,Xtm1,lambdas,fE,fext,lambdasm1,links,Xsp1,Xstm1] = getXp1(Xt,Xtm1
     for iFib=1:nFib % Compute matrices M and K for each fiber
         inds = (iFib-1)*3*N+1:iFib*3*N;
         Ms{iFib} = getMloc(N,1.5*Xst(inds)-0.5*Xstm1(inds),eps,Lf,mu,s0);
-        [K,Kt]=getKMats3D(1.5*Xst(inds)-0.5*Xstm1(inds),chebyshevmat,Dinv,w0,N);
+        [K,Kt]=getKMats3D(1.5*Xst(inds)-0.5*Xstm1(inds),chebyshevmat,w0,N);
         Ks{iFib} = K; Kts{iFib}=Kt;
     end
     % Background flow, strain external force
