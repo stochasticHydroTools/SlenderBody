@@ -17,16 +17,16 @@ lamCoeffs = rand(NCheb,3).*exp(-0.1*(0:NCheb-1))';
 lambda = CoeffsToValsCheb*lamCoeffs; % values on the Chebyshev grid
 % Make sure lambda integrates to 0. This is a crude approximation so there
 % will be some small error involved. 
-lamCoeffs(1,:)=lamCoeffs(1,:)-w*lambda/2;
-lambda = CoeffsToValsCheb*lamCoeffs; % new values on the Chebyshev grid
+% lamCoeffs(1,:)=lamCoeffs(1,:)-w*lambda/2;
+% lambda = CoeffsToValsCheb*lamCoeffs; % new values on the Chebyshev grid
 lamStack=reshape(lambda',3*NCheb,1);
 % Our spectral method to compute K^T lambda
-[K,Kt]=getKMats3D(XsStack,CoeffsToValsCheb(:,1:NCheb-1),0,w,NCheb);
+[K,Kt]=getKMats3D(XsStack,CoeffsToValsCheb,w,NCheb);
 % Stack lambda and compute K^T lambda by multiplication
 Ktlam = [Kt*lamStack; (w*lambda)'];
 
 %% Uniform points version
-Nuni = 400;
+Nuni = 1000;
 ds = 2/Nuni;
 sUni=(-1+ds:ds:1)';
 % Matrix that takes coefficients of Cheb polynomials to values on the
