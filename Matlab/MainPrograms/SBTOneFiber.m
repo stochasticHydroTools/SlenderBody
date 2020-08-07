@@ -14,7 +14,7 @@ delta =0.2; % fraction of length over which to taper the fiber
 % Chebyshev initialization
 % Nodes for solution, plus quadrature and barycentric weights:
 [s, ~, b] = chebpts(N+4, [0 L], 2);
-[s0,w0,~] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE.
+[s0,w0,b0] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE.
 D = diffmat(N, 1, [0 L], 'chebkind1');
 [Rs,Ls,Ds,D4s,Dinv,LRLs,URLs,chebyshevmat,I,wIt]=stackMatrices3D(s0,w0,s,b,N,L);
 FE = -Eb*Rs*D4s;
@@ -58,8 +58,13 @@ Lambda_Uniform = ChebtoUniform*lambda;
 % Compute Omega on the uniform grid by crossing with tau on the uniform grid
 tau_Uniform = ChebtoUniform*X_s;
 Omega_Uniform = cross(tau_Uniform,OmegaCrossTau_Uniform);
-% Alternative: compute Omega on cheb grid
-Omega_Cheb = cross(X_s,OmegaCrossTau);
+% Alternative: compute Omega by going through upsampled Cheb grid
+[s2N,w2N,b2N] = chebpts(2*N, [0 L], 1); % 1st-kind grid for ODE.
+Rup = barymat(s2N,s0,b0);
+Rdwn = barymat(s0,s2N,b2N);
+Omega_Cheb = Rdwn*cross(Rup*X_s,Rup*OmegaCrossTau);
 Omega_UniformFromCheb = ChebtoUniform*Omega_Cheb;
+
+
 
 
