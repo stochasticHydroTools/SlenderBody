@@ -1,21 +1,17 @@
 % Get the mobility matrix from Xs
 function M = getMlocRPY(N,Xs,eps,Lf,mu,s0,delta)
-    as = zeros(length(s0),1);
+    Ls = log(4.*s0.*(Lf-s0)./(eps*Lf).^2); 
+    % Regularize L  
     for iS=1:length(s0)
         s = s0(iS);
-        if (s < delta*Lf || s > Lf-delta*Lf)
-            as(iS) = eps*2*sqrt(s*(Lf-s)); % ellipsoidal tapering
-        elseif (s < 2*delta*Lf)
-            wCyl = 1/(1+exp(-23.0258/(delta*Lf)*s+34.5387));
-            as(iS) = eps*(Lf*wCyl+(1-wCyl)*2*sqrt(s*(Lf-s)));
-        elseif (s > Lf-2*delta*Lf)
-            wCyl = 1/(1+exp(-23.0258/(delta*Lf)*(Lf-s)+34.5387));
-            as(iS) = eps*(Lf*wCyl+(1-wCyl)*2*sqrt(s*(Lf-s)));
-        else
-            as(iS) = eps*Lf;
+        if (s/Lf < 0.5)
+            wCyl = 1/(1+exp(-36.84/Lf*s+9.2102)); % 10^-3 at 0 and at center
+            Ls(iS) = wCyl*Ls(iS)+(1-wCyl)*log(4*delta*(1-delta)./eps^2);
+        elseif (s/Lf > 0.5)
+            wCyl = 1/(1+exp(-36.84/Lf*(Lf-s)+9.2102));
+            Ls(iS) = wCyl*Ls(iS)+(1-wCyl)*log(4*delta*(1-delta)./eps^2);   
         end
     end
-    Ls = log(4.*s0.*(Lf-s0)./as.^2); 
     k = sqrt(3/2);
     aI = 47/12-log(16*k^2);
     atau = 1/4-log(16*k^2);
