@@ -1,7 +1,6 @@
 % Get the mobility matrix from Xs
-function M = getMlocRPYUnreg(N,Xs,eps,L,mu,s0)
+function M = getMlocRPYUnreg(N,Xs,a,L,mu,s0)
     % Regularized L
-    a = sqrt(exp(3)/16)*eps*L; % the right hydrodynamic radius for given eps and Lf
     aI = zeros(N,1);
     atau = zeros(N,1);
     for iT=1:N
@@ -17,16 +16,12 @@ function M = getMlocRPYUnreg(N,Xs,eps,L,mu,s0)
             atau(iT) = log(t/(2*a))+(L-t)^2/(16*a^2);
         end
     end
+    M = zeros(3,3,N);
     for iPt=1:N
         inds = (iPt-1)*3+1:3*iPt;
         v = Xs(inds);
         XsXs = v*v';
-        rows((iPt-1)*9+1:iPt*9)=...
-            [inds(1) inds(1) inds(1) inds(2) inds(2) inds(2) inds(3) inds(3) inds(3)]';
-        cols((iPt-1)*9+1:iPt*9)=...
-            [inds(1) inds(2) inds(3) inds(1) inds(2) inds(3) inds(1) inds(2) inds(3)]';
         Mloc=1/(8*pi*mu)*(aI(iPt)*eye(3)+atau(iPt)*XsXs);
-        vals((iPt-1)*9+1:iPt*9)=Mloc(:);
+        M(:,:,iPt)=Mloc;
     end
-    M = sparse(rows,cols,vals);
 end
