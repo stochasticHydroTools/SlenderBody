@@ -1,5 +1,5 @@
 % Get the mobility matrix from Xs
-function M = getMlocRPYUnreg(N,Xs,a,L,mu,s0)
+function M = getMlocRPY(N,Xs,a,L,mu,s0)
     % Regularized L
     aI = zeros(N,1);
     atau = zeros(N,1);
