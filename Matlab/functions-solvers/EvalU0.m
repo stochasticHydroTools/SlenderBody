@@ -1,7 +1,6 @@
 % Evaluate background flow and domain strain
-function [U0,g] = EvalU0(gam0,w,t,X)
+function [U0,g] = EvalU0(gam0,w,t,X,flowtype)
     U0 = zeros(length(X),1);
-    global flowtype;
     if (flowtype=='Q')
         U0(1:3:end)=gam0*X(2:3:end).^2; % parabolic flow
     else

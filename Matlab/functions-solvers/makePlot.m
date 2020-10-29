@@ -7,12 +7,17 @@ Corder =  get(gca, 'ColorOrder');
 plotfibs=1:nFib;
 plotlinks=[];    
 thk = 1; % line thickness
-for iFib=plotfibs
+CoeffsToValsCheb = cos(acos(2*(s0/Lf)-1).*(0:N-1));
+CoeffstoValsUniform = cos(acos(1).* (0:N-1));
+ChebtoUniform =  CoeffstoValsUniform*(CoeffsToValsCheb)^(-1);
+ends=zeros(nFib,3);
+for iFib=plotfibs    
     if (length(links) > 0)
         plotlinks = [plotlinks; find(links(:,1)==iFib); find(links(:,3)==iFib)];
     end
     inds=(iFib-1)*3*N+1:3:iFib*3*N;
     fp=[Xt(inds) Xt(inds+1) Xt(inds+2)];
+    plot3(fp(:,1),fp(:,2),fp(:,3), '-','LineWidth',thk,'Color',Corder(mod(iFib,7)+(mod(iFib,7)==0)*7,:))
     [~,shifts] = calcShifted(fp,gn,Ld,Ld,Ld);
     [sx,sy,sz]=meshgrid(unique(shifts(:,1)),unique(shifts(:,2)),unique(shifts(:,3)));
     sx=sx(:); sy=sy(:); sz=sz(:);
@@ -50,6 +55,9 @@ for iL=unique(plotlinks')
     ind1 = (iFib-1)*3*N+3*n1-2;
     [~,n2] = min(abs(s0-links(iL,4)));
     ind2 = (jFib-1)*3*N+3*n2-2;
+    sx=0;
+    sy=0;
+    sz=0;
     for iS=1:length(sx)
         if (thk==0.5)
             plot3(Xt(inds1)-Ld*(sx(iS)+gn*sy(iS)),Xt(inds1+1)-Ld*sy(iS),Xt(inds1+2)-Ld*sz(iS),...
@@ -71,16 +79,18 @@ for iL=unique(plotlinks')
     end
 end
 end
-str=sprintf('$t=$ %1.2f s',t);
+str=sprintf('$t=$ %1.2f s', t);
 title(str,'Interpreter','latex')
-view(3)
-view([60 30])
+%view(3)
+%view([48.86 14.73])
+% view([60 30])
 % xlim([-Ld/2 Ld/2])
 % ylim([-Ld/2 Ld/2])
 % zlim([-Ld/2 Ld/2])
 % xlim([-1.2 1])
 % ylim([-1.2 1])
 % zlim([-1.2 1])
+% view(2)
 xlabel('$x$','interpreter','latex')
 ylabel('$y$','interpreter','latex')
 zlabel('$z$','interpreter','latex')

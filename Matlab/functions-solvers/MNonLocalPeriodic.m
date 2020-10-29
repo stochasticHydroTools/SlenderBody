@@ -19,7 +19,7 @@ function nLvel = MNonLocalPeriodic(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu,xi,Lx,Ly,L
     end
 
     % Ewald splitting 
-    aRPY=sqrt(3/2)*epsilon*Lf;
+    aRPY=exp(1.5)/4*epsilon*Lf;
     fwquad = f.*repmat(w,1,nFib);
     % Compute the far field and near field
     farvel = EwaldFarVel(X,fwquad',mu,Lx,Ly,Lz,xi,aRPY,g)';

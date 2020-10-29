@@ -1,6 +1,6 @@
 % Get the mobility matrix from Xs
-function M = getMlocRPY(N,Xs,a,L,mu,s0)
-    % Regularized L
+function [M,aI,atau] = getMlocRPY(N,Xs,a,L,mu,s0)
+    % Unregularized RPY tensor
     aI = zeros(N,1);
     atau = zeros(N,1);
     for iT=1:N
@@ -24,4 +24,17 @@ function M = getMlocRPY(N,Xs,a,L,mu,s0)
         Mloc=1/(8*pi*mu)*(aI(iPt)*eye(3)+atau(iPt)*XsXs);
         M(:,:,iPt)=Mloc;
     end
+    rows=zeros(9*N,1);
+    cols=zeros(9*N,1);
+    vals=zeros(9*N,1);
+    for iPt=1:N
+        inds = (iPt-1)*3+1:3*iPt;
+        rows((iPt-1)*9+1:iPt*9)=...
+            [inds(1) inds(1) inds(1) inds(2) inds(2) inds(2) inds(3) inds(3) inds(3)]';
+        cols((iPt-1)*9+1:iPt*9)=...
+            [inds(1) inds(2) inds(3) inds(1) inds(2) inds(3) inds(1) inds(2) inds(3)]';
+        Mloc=M(:,:,iPt);
+        vals((iPt-1)*9+1:iPt*9)=Mloc(:);
+    end
+    M = sparse(rows,cols,vals);
 end

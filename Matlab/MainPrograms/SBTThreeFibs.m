@@ -1,16 +1,15 @@
 % This is three fibers in a shear flow, example in the paper
-addpath(genpath('../functions-solvers'))
-addpath('../chebfun-master')
-global Periodic flowtype doFP doSpecialQuad deltaLocal;
+close all;
+global Periodic doFP doSpecialQuad;
 Periodic=1;
 flowtype = 'S'; % S for shear, Q for quadratic
 doFP = 1; % no finite part integral
 doSpecialQuad=1; % no special quad
-deltaLocal = 0.5; % part of the fiber to make ellipsoidal
+deltaLocal = 0.1; % part of the fiber to make ellipsoidal
 makeMovie=1;
 nFib=3;
 nCL = 0;
-N=16;
+N=32;
 Lf=2;   % microns
 nonLocal = 1; % whether to do the nonlocal terms 
 maxiters = 1;
@@ -19,7 +18,7 @@ xi = 3; % Ewald parameter
 mu=1;
 eps=1e-3;
 Eb=0.01;
-dt=0.1;
+dt=0.005;
 omega=0;
 gam0=1;
 t=0;
@@ -33,10 +32,10 @@ rl = 0.25; % rest length for cross linkers
 % 3 fibers for nonlocal test
 fibpts = [s0-1 zeros(N,2)-[0.6 0.03]; zeros(N,1) s0-1 zeros(N,1); s0-1 zeros(N,1)+[0.6 0.05]];
 D = diffmat(N, 1, [0 Lf], 'chebkind1');
+Lmat = cos(acos(2*s0/Lf-1).*(0:N-1));
 % max(abs(D*[xp(2:end) yp(2:end) zp]-X_s)) % error in X_s
-[Rs,Ls,Ds,D4s,Dinv,LRLs,URLs,chebyshevmat,I,wIt]=stackMatrices3D(s0,w0,s,b,N,Lf);
-FE = -Eb*Rs*D4s;
-EvalMat=(vander(s0-Lf/2));
+[Rs,Ls,Ds,Dinv,D4BC,I,wIt]=stackMatrices3D(s0,w0,s,b,N,Lf);
+FE = -Eb*Rs*D4BC;
 if (makeMovie)
     f=figure;
     movieframes=getframe(f);
@@ -53,12 +52,10 @@ Xst=[];
 for iFib=1:nFib
     inds=(iFib-1)*N+1:iFib*N;
     Xst=[Xst;reshape((D*fibpts(inds,:))',3*N,1)];
-    %Xst=[Xst;reshape(X_s(inds,:)',3*N,1)];
 end
 Xstm1=Xst;
 stopcount=floor(tf/dt+1e-5);
 saveEvery=1;%floor(0.1/dt+1e-5);%max(1,floor(1e-4/dt+1e-5));
 fibstresses=zeros(stopcount,1);
-inexers=[];
 gn=0;
 SBTMain;

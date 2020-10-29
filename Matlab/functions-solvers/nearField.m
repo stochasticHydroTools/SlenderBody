@@ -5,6 +5,7 @@
 % epsilon = r/Lf = slenderness ratio
 function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel,ewald)
     % Resample to 16 uniform points
+    b = exp(3/2)/4;
     n = numel(xj);
     th=flipud(((2*(0:n-1)+1)*pi/(2*n))');
     Lmat = (cos((0:n-1).*th));
@@ -34,8 +35,7 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
             f16 = Lmat16*(Lmat \ [f1j f2j f3j]);
         end
         [~,w16] = chebpts(16,[0 Lf],1);
-        [ux, uy, uz] = quadsum(x16(:,1),x16(:,2),x16(:,3),w16, f16(:,1),f16(:,2),f16(:,3),...
-                               targ, 16, epsilon,Lf);
+        [ux, uy, uz] = quadsum(x16(:,1),x16(:,2),x16(:,3),w16, f16(:,1),f16(:,2),f16(:,3),targ, 16, epsilon,Lf);
         utarg = [ux uy uz]/(8*pi*mu);
         qtype = 1;
         return;
@@ -60,8 +60,7 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
     % Can we do direct quadrature with N = 32?
     if (dmin/Lf > 0.06*1.2)
         % Direct quadrature with N=32
-        [ux, uy, uz] = quadsum(x32(:,1),x32(:,2),x32(:,3),w32, f32(:,1),f32(:,2),f32(:,3),...
-                               targ, 32, epsilon,Lf);
+        [ux, uy, uz] = quadsum(x32(:,1),x32(:,2),x32(:,3),w32, f32(:,1),f32(:,2),f32(:,3),targ, 32, epsilon,Lf);
         utarg = utargm+[ux uy uz]/(8*pi*mu);
         qtype =2;
         return;
@@ -105,13 +104,13 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
     %gimag = norm(imag([v*xhat v*yhat v*zhat]));
     bradius = bernstein_radius(troot);
     specquad_needed = converged & (bradius < rho);
-    if (gimag/(epsilon*Lf) < 4.4)
+    if (gimag/(epsilon*Lf) < 4*b)
         % Compute the centerline velocity at real(tapprox)
         thCL = acos(real(tapprox));
         RSCL = (cos((0:n-1).*thCL));
         CLnearest = RSCL*(Lmat \ CLvel);
         % Return the centerline velocity at real(tapprox)
-        if (gimag/(epsilon*Lf) < 2.2)
+        if (gimag/(epsilon*Lf) < 2*b)
             disp('Target close to fiber - setting velocity = CL vel')
             utarg = utargm+CLnearest;
             qtype=0;
@@ -123,10 +122,10 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
                                targ, 32, epsilon,Lf);
         utarg = [ux uy uz]/(8*pi*mu);
         qtype = 2;
-        if (gimag/(epsilon*Lf) < 4.4 && converged) 
+        if (gimag/(epsilon*Lf) < 4*b && converged) 
             % Linear combination with the centerline velocity
             dstar = gimag/(epsilon*Lf);
-            fromCL = (4.4-dstar)/2.2;
+            fromCL = (4*b-dstar)/(2*b);
             fromFar = 1-fromCL;
             qtype = 0.5;
             utarg = fromFar*utarg + fromCL*CLnearest;
@@ -150,10 +149,10 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
                                targ, Nup, epsilon,Lf);
         utarg = [ux uy uz]/(8*pi*mu);
         qtype = Nup;
-        if (gimag/(epsilon*Lf) < 4.4) 
+        if (gimag/(epsilon*Lf) < 4*b) 
             % Linear combination with the centerline velocity
             dstar = gimag/(epsilon*Lf);
-            fromCL = (4.4-dstar)/2.2;
+            fromCL = (4*b-dstar)/(2*b);
             fromFar = 1-fromCL;
             qtype = 0.5;
             utarg = fromFar*utarg + fromCL*CLnearest;
@@ -172,7 +171,7 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
             r3 = x32(k,3)-targ(3);
             [u1R1, u1R3, u1R5, u2R1, u2R3, u2R5, u3R1, u3R3, u3R5] ...
                 = slender_body_kernel_split(r1, r2, r3, f32(k,1), f32(k,2), f32(k,3), ...
-                                            epsilon*Lf*sqrt(2));
+                                            epsilon*Lf*sqrt(2)*sqrt(exp(3)/24));
             q1 = q1 +w1(k)*u1R1 + w3(k)*u1R3 + w5(k)*u1R5;                
             q2 = q2 +w1(k)*u2R1 + w3(k)*u2R3 + w5(k)*u2R5;                
             q3 = q3 +w1(k)*u3R1 + w3(k)*u3R3 + w5(k)*u3R5;                                
@@ -213,7 +212,7 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
                 r3 = zjpan(k)-targ(3);
                 [u1R1, u1R3, u1R5, u2R1, u2R3, u2R5, u3R1, u3R3, u3R5] ...
                     = slender_body_kernel_split(r1, r2, r3, f1jpan(k), f2jpan(k), f3jpan(k), ...
-                                                epsilon*Lf*sqrt(2));
+                                                epsilon*Lf*sqrt(2)*sqrt(exp(3)/24));
                 q1 = q1 +w1(k)*u1R1 + w3(k)*u1R3 + w5(k)*u1R5;                
                 q2 = q2 +w1(k)*u2R1 + w3(k)*u2R3 + w5(k)*u2R5;                
                 q3 = q3 +w1(k)*u3R1 + w3(k)*u3R3 + w5(k)*u3R5;                             
@@ -232,10 +231,10 @@ function [utarg,qtype] = nearField(targ,xj,yj,zj,f1j,f2j,f3j,Lf,epsilon,mu,CLvel
     end
     utarg = [specquad1 specquad2 specquad3]/(8*pi*mu);
     qtype = 4;
-    if (gimag/(epsilon*Lf) < 4.4) 
+    if (gimag/(epsilon*Lf) < 4*b) 
         % Linear combination with the centerline velocity
         dstar = gimag/(epsilon*Lf);
-        fromCL = (4.4-dstar)/2.2;
+        fromCL = (4*b-dstar)/(2*b);
         fromFar = 1-fromCL;
         qtype = 0.5;
         utarg = fromFar*utarg + fromCL*CLnearest;
@@ -251,8 +250,7 @@ function [q1, q2, q3] = quadsum(xj, yj, zj, wj, f1j, f2j, f3j, targ, n, epsilon,
         r1 = xj(k)-targ(1);
         r2 = yj(k)-targ(2);
         r3 = zj(k)-targ(3);                               
-        [u1, u2, u3] = slender_body_kernel(r1, r2, r3, f1j(k), f2j(k), f3j(k), ...
-                                           epsilon*Lf*sqrt(2));
+        [u1, u2, u3] = slender_body_kernel(r1, r2, r3, f1j(k), f2j(k), f3j(k),epsilon*Lf*sqrt(2)*sqrt(exp(3)/24));
         q1 = q1 + u1*wj(k);
         q2 = q2 + u2*wj(k);
         q3 = q3 + u3*wj(k);                    
@@ -261,7 +259,7 @@ end
 
 function [q1, q2, q3] = quadsumRPY(xj, yj, zj, wj, f1j, f2j, f3j, targ, n, epsilon,Lf,mu)
     q1 = 0; q2 = 0; q3 = 0;
-    a=sqrt(3/2)*epsilon*Lf;
+    a=exp(1.5)/4*epsilon*Lf;
     for k=1:n
         r1 = xj(k)-targ(1);
         r2 = yj(k)-targ(2);

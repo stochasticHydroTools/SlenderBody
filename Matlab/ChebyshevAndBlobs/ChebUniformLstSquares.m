@@ -33,25 +33,5 @@ max(abs(ChebIntsSimp-chat))
 figure;
 semilogy(0:NCheb-1,abs(chat),'-o',0:NCheb-1,abs(ChebIntsSimp),'s',0:NCheb-1,abs(ChebIntsSimpPert),'d',...
     'MarkerSize',8,'LineWidth',2.0)
-legend('Original','Simpson','Simpson for perturbed')
-
-function [ChebVals,ChebHats] = ProjectToChebyshev(sCheb,sUni,univals,NCheb)
-    % Obtain the Chebyshev coefficients (and therefore Chebyshev values)
-    % from the uniform values on the grid via an L^2 projection
-    % s0 = coordinates of the Chebyshev nodes on [-1,1] 
-    % sUni = coordinates of the uniform nodes on [-1,1], Univals =
-    % values of a function on the uniform grid, NCheb = # of Chebyshev
-    % polynomials
-    % Return: values on the (type 1) Chebyshev grid and coefficients of the Chebyshev series 
-    CoeffsToValsCheb = cos(acos(sCheb).*(0:NCheb-1));
-    CoeffsToValsUniform = cos(acos(sUni).*(0:NCheb-1));
-    ChebHats = zeros(NCheb,1);
-    for k=1:NCheb % products and integrals in theta to get L^2 projection
-        fk = CoeffsToValsUniform(:,k).*univals;
-        ChebHats(k) = simpson_nonuniform(acos(sUni),fk);
-    end
-    ChebHats = ChebHats./[pi; pi/2*ones(NCheb-1,1)];
-    ChebVals = CoeffsToValsCheb*ChebHats;
-end
-    
+legend('Original','Simpson','Simpson for perturbed')    
 

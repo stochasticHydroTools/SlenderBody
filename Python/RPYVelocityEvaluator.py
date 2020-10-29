@@ -18,8 +18,7 @@ class RPYVelocityEvaluator(object):
     ## ========================================
     def __init__(self,a,mu,Npts):
         """
-        Input variables: a = hydrodynamic radius of the RPY blobs 
-        (a = sqrt(3/2)*epsilon*L), mu = fluid viscosity
+        Input variables: a = hydrodynamic radius of the RPY blobs, mu = fluid viscosity
         """
         self._a = float(a);
         self._mu = float(mu);
@@ -106,7 +105,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self._ufarx = np.zeros([self._Npts],dtype=np.complex128);
         self._ufary = np.zeros([self._Npts],dtype=np.complex128);
         self._ufarz = np.zeros([self._Npts],dtype=np.complex128);
-        print('1e-3 far field tolerance')
+        print('%.2E far field tolerance' %fartol)
         
     ## =========================================
     ##    PUBLIC METHODS CALLED OUTSIDE CLASS

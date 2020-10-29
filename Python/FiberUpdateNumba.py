@@ -5,22 +5,21 @@ import numpy as np
 Functions for many fibers that use numba to speed up the calculations
 """
    
-@nb.njit(nb.float64[:,:](nb.float64[:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.int64),cache=True)
-def deAliasIntegralNumba(f, Lmat, UpsampMat, DownSampMat,DpInv,N):
+@nb.njit(nb.float64[:,:](nb.float64[:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.int64),cache=True)
+def deAliasIntegralNumba(f, Lmat, UpsampMat,DpInv,N):
     """
     Method to dealias the product of f (an N array) with each of the first
     N-1 Chebyshev polynomials
     Upsample to a 2N grid, perform multiplication and integration, then 
     downsample to an N point grid.
     Inputs: f = values of function f, Lmat = matrix of coefficients to values (Chebyshev polynomial values) on the N grid,
-    UpsampMat, DownSampMat = matrices for upsampling and downsampling from N to 2N grid.  
-    DpInv = psuedo-inverse of Cheb differentiation matrix on 2N point grid, N = number of coefficients 
+    UpsampMat, DpInv = psuedo-inverse of Cheb differentiation matrix on 2N point grid, N = number of coefficients 
     """
     # Upsample the multiplication of f with Chebyshev polys for anti-aliasing
     UpSampMulti = (f*(np.dot(UpsampMat,Lmat[:,:N-1])).T).T;
     # Integrals on the original grid (integrate on upsampled grid and downsample)
-    OGIntegrals = np.dot(DownSampMat,np.dot(DpInv,UpSampMulti));
-    return OGIntegrals;
+    Integrals2N = np.dot(DpInv,UpSampMulti);
+    return Integrals2N;
 
 @nb.njit((nb.float64[:], nb.float64[:], nb.float64[:]),cache=True)
 def cart2sph(x,y,z):
@@ -34,8 +33,8 @@ def cart2sph(x,y,z):
     azimuth[(np.abs(np.abs(elevation)-np.pi/2) < 1e-12)] = 0;
     return azimuth, elevation, r;
 
-@nb.njit(nb.float64[:,:](nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.int64),cache=True)
-def calcKNumba(Xs,Lmat, UpsampMat, DownSampMat,DpInv,N):
+@nb.njit((nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:],nb.int64),cache=True)
+def calcKNumba(Xs,Lmat, UpsampMat, stackUpSampMat,DpInv,w2N,N):
     """
     Computes the matrix K(X). Inputs: X_s, N x 3 array of tangent vectors
     Lmat = matrix of coefficients to values (Chebyshev polynomial values) on the N grid,
@@ -51,26 +50,24 @@ def calcKNumba(Xs,Lmat, UpsampMat, DownSampMat,DpInv,N):
     n2x = -np.cos(theta)*np.sin(phi);
     n2y = -np.sin(theta)*np.sin(phi);
     n2z = np.cos(phi);
-    K = np.zeros((3*N,2*N-2));
-    K[0::3,0:N-1]= deAliasIntegralNumba(n1x,Lmat, UpsampMat, DownSampMat,DpInv,N);
-    K[1::3,0:N-1]= deAliasIntegralNumba(n1y,Lmat, UpsampMat, DownSampMat,DpInv,N);
-    K[2::3,0:N-1]= deAliasIntegralNumba(n1z,Lmat, UpsampMat, DownSampMat,DpInv,N);
-    K[0::3,N-1:2*N-2]= deAliasIntegralNumba(n2x,Lmat, UpsampMat, DownSampMat,DpInv,N);
-    K[1::3,N-1:2*N-2]= deAliasIntegralNumba(n2y,Lmat, UpsampMat, DownSampMat,DpInv,N);
-    K[2::3,N-1:2*N-2]= deAliasIntegralNumba(n2z,Lmat, UpsampMat, DownSampMat,DpInv,N);
-    return K;
+    J = np.zeros((6*N,2*N-2));
+    J[0::3,0:N-1]= deAliasIntegralNumba(n1x,Lmat, UpsampMat,DpInv,N);
+    J[1::3,0:N-1]= deAliasIntegralNumba(n1y,Lmat, UpsampMat,DpInv,N);
+    J[2::3,0:N-1]= deAliasIntegralNumba(n1z,Lmat, UpsampMat,DpInv,N);
+    J[0::3,N-1:2*N-2]= deAliasIntegralNumba(n2x,Lmat, UpsampMat,DpInv,N);
+    J[1::3,N-1:2*N-2]= deAliasIntegralNumba(n2y,Lmat, UpsampMat,DpInv,N);
+    J[2::3,N-1:2*N-2]= deAliasIntegralNumba(n2z,Lmat, UpsampMat,DpInv,N);
+    UTWU = np.dot(stackUpSampMat.T,np.dot(np.diag(np.repeat(w2N,3)),stackUpSampMat));
+    K = np.linalg.solve(UTWU,np.dot(stackUpSampMat.T,np.dot(np.diag(np.repeat(w2N,3)),J)));
+    return K, J;
 
-@nb.njit(nb.float64[:,:](nb.float64[:,:],nb.float64[:],nb.int64),cache=True)
-def calcKtNumba(K,w,N):
+@nb.njit(nb.float64[:,:](nb.float64[:,:],nb.float64[:],nb.float64[:,:]),cache=True)
+def calcKtNumba(J,w2N,stackUpsampMat):
     """
     Calculates the matrix K^* (L^2 adjoint of K) given K, weights
-    on the Chebyshev grid, and number of nodes N
+    on the 2N Chebyshev grid, and stacked upsampling matrix
     """
-    Kt = (K.copy()).T;
-    Kt[:,0::3]*=w;
-    Kt[:,1::3]*=w;
-    Kt[:,2::3]*=w;
-    return Kt;
+    return np.dot(J.T,np.dot(np.diag(np.repeat(w2N,3)),stackUpsampMat));
 
 @nb.njit(nb.float64[:,:](nb.float64[:],nb.float64[:],nb.float64,nb.int64),cache=True)
 def calcMNumba(Xs,c, mu, N):
@@ -105,22 +102,6 @@ def calcLocalVelocities(Xs_nonLoc,forceDsAll,localcs,mu,N,Nfib):
         M = calcMNumba(Xs,localcs,mu,N);
         LocalOnly[iFib*3*N:(iFib+1)*3*N] = np.dot(M,forceD);
     return LocalOnly;
-
-@nb.njit((nb.float64[:,:],nb.float64[:,:],nb.float64,nb.float64,nb.float64[:,:],\
-    nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.int64),cache=True)
-def concatMats(K,Kt,impco,dt,M,D4BC,I,wIt,N):
-    """
-    Form the matrices for Schur complement solve
-    See LinSolveAllFibers docstring for parameters
-    """
-    B = np.concatenate((K-impco*dt*np.dot(M,np.dot(D4BC,K)),\
-     I-impco*dt*np.dot(M,np.dot(D4BC,I))),axis=1);
-    C = np.concatenate((Kt,wIt));
-    D1 = np.zeros((2*N-2,2*N+1));
-    D2 = impco*dt*np.dot(wIt, np.dot(D4BC,K));
-    D3 = impco*dt*np.dot(wIt, np.dot(D4BC,I));
-    D = np.concatenate((D1,np.concatenate((D2,D3),axis=1)));
-    return B, C, D
 
 @nb.njit(nb.float64[:,:](nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],\
          nb.float64[:],nb.int64),cache=True)
@@ -190,9 +171,9 @@ def FinitePartMatrix(ChebPoints,Xs,FPMatrix,DiffMat,s,N):
     return ActualFPMat+np.dot(DfPart,BigDiff);
 
 @nb.njit((nb.int64,nb.int64,nb.float64[:],nb.float64[:,:],nb.float64[:],nb.float64,nb.float64,nb.float64[:],\
-          nb.float64, nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:],nb.float64[:,:],\
+          nb.float64, nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:],nb.float64[:],nb.float64[:,:],\
           nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:],nb.int64),parallel=True,cache=True)
-def linSolveAllFibersForGM(Nfib,N,b,XsVec,XsAll,dt,impco, cs, mu, Lmat, Upsamp, DownSamp, DpInv, w,D4BC,I,wIt,\
+def linSolveAllFibersForGM(Nfib,N,b,XsVec,XsAll,dt,impco, cs, mu, Lmat, Upsamp, stackUpsamp, stackDownSamp,DpInv, w,w2N,D4BC,I,wIt,\
     XVecs,FPMatrix,DiffMat,snodes,doFP):
     """
     Linear solve on all fibers together to obtain alphas and lambdas. 
@@ -215,38 +196,41 @@ def linSolveAllFibersForGM(Nfib,N,b,XsVec,XsAll,dt,impco, cs, mu, Lmat, Upsamp, 
         if (doFP):
             MFP = FinitePartMatrix(XVecs[iFib*N:(iFib+1)*N,:],XsVec[iFib*N:(iFib+1)*N,:],FPMatrix,DiffMat,snodes,N);
             M+=MFP;
-        K = calcKNumba(XsVec[iFib*N:(iFib+1)*N,:],Lmat, Upsamp, DownSamp,DpInv,N);
+        K, J = calcKNumba(XsVec[iFib*N:(iFib+1)*N,:],Lmat, Upsamp, stackUpsamp,DpInv,w2N,N);
         b1 = b[iFib*3*N:(iFib+1)*3*N];
         b2 = b[3*N*Nfib+(iFib)*(2*N+1):3*N*Nfib+(iFib+1)*(2*N+1)];
-        Kt = calcKtNumba(K,w,N);
-        B, C, D = concatMats(K,Kt,impco,dt,M,D4BC,I,wIt,N)
-        Minv = np.linalg.inv(M);
-        RHS = b2+np.dot(C,np.dot(Minv,b1));
-        S = np.dot(C,np.dot(Minv,B))+D;
+        Kt = calcKtNumba(J,w2N,stackUpsamp);
+        #Kt = np.dot(K.T,np.diag(np.repeat(w,3)));
+        B = np.concatenate((K-impco*dt*np.dot(M,np.dot(D4BC,K)),\
+            I-impco*dt*np.dot(M,np.dot(D4BC,I))),axis=1);
+        C = np.concatenate((Kt,wIt));
+        #Minv = np.linalg.inv(M);
+        RHS = b2+np.dot(C,np.linalg.solve(M,b1));
+        S = np.dot(C,np.linalg.solve(M,B));
         alphaU,res,rank,k = np.linalg.lstsq(S,RHS,-1);
         Balph = np.dot(B,alphaU);
-        lambdas = np.dot(Minv,Balph-b1);
+        lambdas = np.linalg.solve(M,Balph-b1);
         Allalphas[iFib*(2*N+1):(iFib+1)*(2*N+1)]=alphaU;
         Alllambdas[iFib*3*N:(iFib+1)*3*N] = lambdas;
     return np.concatenate((Alllambdas,Allalphas));
-    
-@nb.njit((nb.int64,nb.int64,nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:]),\
+  
+@nb.njit((nb.int64,nb.int64,nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:],nb.float64[:]),\
         parallel=True,cache=True)
-def calcKAlphas(Nfib,N,XsVec,Lmat, Upsamp, DownSamp, DpInv,I,allalphas):
+def calcKAlphas(Nfib,N,XsVec,Lmat, Upsamp, stackUpsamp, DpInv,I,allalphas,w2N):
     """
     Compute K*alpha for given alpha on all fibers (input allalphas) 
     See linSolveAllFibersForGM docstring for parameters 
     """
     Kalph = np.zeros(Nfib*3*N);
     for iFib in nb.prange(Nfib):
-        K = calcKNumba(XsVec[iFib*N:(iFib+1)*N,:],Lmat, Upsamp, DownSamp,DpInv,N);
+        K, _ = calcKNumba(XsVec[iFib*N:(iFib+1)*N,:],Lmat, Upsamp, stackUpsamp,DpInv,w2N,N);
         thisAlpha = allalphas[iFib*(2*N+1):(iFib+1)*(2*N+1)];
         Kalph[iFib*3*N:(iFib+1)*3*N] = np.dot(K,thisAlpha[:2*N-2])+np.dot(I,thisAlpha[2*N-2:]);
     return Kalph;
 
-@nb.njit((nb.int64,nb.int64,nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],\
-        nb.float64[:,:], nb.float64[:],nb.float64[:],nb.float64[:]),parallel=True,cache=True)
-def calcKAlphasAndKstarLambda(Nfib,N,XsVec,Lmat, Upsamp, DownSamp, DpInv,I,wIt,w,allalphas,alllambdas):
+@nb.njit((nb.int64,nb.int64,nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],\
+        nb.float64[:,:], nb.float64[:],nb.float64[:],nb.float64[:],nb.float64[:]),parallel=True,cache=True)
+def calcKAlphasAndKstarLambda(Nfib,N,XsVec,Lmat, Upsamp, stackUpsamp,stackDownSamp, DpInv,I,wIt,w,w2N,allalphas,alllambdas):
     """
     Compute K*alpha and K^T *lambda for inputs allalphas and alllambdas 
     See linSolveAllFibersForGM docstring for parameters 
@@ -254,10 +238,11 @@ def calcKAlphasAndKstarLambda(Nfib,N,XsVec,Lmat, Upsamp, DownSamp, DpInv,I,wIt,w
     Kalph = np.zeros(Nfib*3*N);
     Kstlam = np.zeros(Nfib*(2*N+1))
     for iFib in nb.prange(Nfib):
-        K = calcKNumba(XsVec[iFib*N:(iFib+1)*N,:],Lmat, Upsamp, DownSamp,DpInv,N);
+        K, J = calcKNumba(XsVec[iFib*N:(iFib+1)*N,:],Lmat, Upsamp, stackUpsamp,DpInv,w2N,N);
         thisAlpha = allalphas[iFib*(2*N+1):(iFib+1)*(2*N+1)];
         Kalph[iFib*3*N:(iFib+1)*3*N] = np.dot(K,thisAlpha[:2*N-2])+np.dot(I,thisAlpha[2*N-2:]);
-        Kt = calcKtNumba(K,w,N);
+        Kt = calcKtNumba(J,w2N,stackUpsamp);
+        #Kt = np.dot(K.T,np.diag(np.repeat(w,3)));
         Kstlam[iFib*(2*N+1):(iFib+1)*(2*N+1)] =  np.dot(np.concatenate((Kt,wIt)),alllambdas[iFib*3*N:(iFib+1)*3*N]);
     return Kalph, Kstlam;
 
@@ -280,7 +265,7 @@ def intCoefficients(incoefs,N,dom):
     return intcoefs;
 
 @nb.njit((nb.int64,nb.int64,nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],\
-    nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64,nb.float64),parallel=True,cache=True)
+    nb.float64[:,:],nb.float64[:,:],nb.float64[:,:],nb.float64,nb.float64),cache=True,parallel=True)
 def updateXsNumba(Nfib,N,XAllNow,XsAllNow,XsforNL,UpsampMat,DownSampMat,Lmat,Dmat,AllVels,dt,L):
     """
     Method to update the tangent vectors and positions using Rodriguez rotation and Chebyshev integration
@@ -320,7 +305,7 @@ def updateXsNumba(Nfib,N,XAllNow,XsAllNow,XsforNL,UpsampMat,DownSampMat,Lmat,Dma
         Xhat = intCoefficients(Xshat,N,np.array([0,L])); # one integration
         X = np.dot(Lmat,Xhat); # back to real space
         # Add the constant velocity so that point 0 is the same
-        X+= -X[0,:]+XAllNow[iFib*N,:]+dt*AllVels[iFib*N,:]
+        X += -X[0,:]+XAllNow[iFib*N,:]+dt*AllVels[iFib*N,:]
         AllXs[iFib*N:(iFib+1)*N,:]=Xsp1.T;
         AllNewX[iFib*N:(iFib+1)*N,:]=X;
     return AllXs, AllNewX;

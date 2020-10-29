@@ -6,17 +6,17 @@ import FiberUpdateNumba as NumbaColloc
 import numba as nb
 import scipy.sparse as sp
 import time
-from math import sqrt
+from math import sqrt, exp
 
 # Definitions
 FattenFib = False;          # make fiber fatter to cap mobility in nonlocal hydrodynamics
 upsampneeded = 0.15*1.05;   # upsampneeded*Lfiber = distance where upsampling is needed
 specneeded = 0.06*1.20;     #specneed*Lfiber = distance where special quad is needed
 rho_crit = 1.114;           # critical Bernstein radius for special quad (set for 3 digits using 32 points)
-dstarCenterLine = 2.2;      # dstarCenterLine*eps*L is distance where we set v to centerline v
-dstarInterpolate = 4.4;     # dstarInterpolate*eps*L is distance where we start blending centerline and quadrature result
+aRPYFac = exp(1.5)/4        # equivalent RPY blob radius a = aRPYFac*epsilon*L;
+dstarCenterLine = 2*aRPYFac;      # dstarCenterLine*eps*L is distance where we set v to centerline v
+dstarInterpolate = 4*aRPYFac;     # dstarInterpolate*eps*L is distance where we start blending centerline and quadrature result
 dstar2panels = 8.8;         #dstar2panels*eps*L is distance below which we need 2 panels for special quad
-
 verbose = -1;               # debug / timings
 
 
@@ -50,7 +50,6 @@ class fiberCollection(object):
         self._omega = omega;
         self._gam0 = gam0;
         self._epsilon, self._Lf = self._fiberDisc.getepsilonL();
-        self._aRPY = sqrt(1.5)*self._epsilon*self._Lf;
         self._nThreads = nThreads;
         self.initPointForceVelocityArrays(Dom);
         
@@ -68,7 +67,8 @@ class fiberCollection(object):
             ManyFibCpp.initFiberVars(mu,Dom.getPeriodicLens(),self._epsilon, self._Lf,Nfibs,self._Npf,self._Nunifpf,fibDisc._delta,r);
             dstarCL = dstarCenterLine*self._epsilon*self._Lf;
             dstarInt = dstarInterpolate*self._epsilon*self._Lf;
-            ManyFibCpp.initSpecQuadParams(rho_crit,dstarCL,dstarInt,dstar2panels,upsampneeded,specneeded);
+            dstar2 = dstar2panels*self._epsilon*self._Lf
+            ManyFibCpp.initSpecQuadParams(rho_crit,dstarCL,dstarInt,dstar2,upsampneeded,specneeded);
         
         ManyFibCpp.initNodesandWeights(fibDisc.gets(), fibDisc.getw(),fibDisc.getSpecialQuadNodes(),fibDisc.getUpsampledWeights(),\
             np.vander(fibDisc.getSpecialQuadNodes(),increasing=True).T);
@@ -146,8 +146,7 @@ class fiberCollection(object):
         if (FPimplicit==1 and self._nonLocal): # do the finite part separetely if it's to be treated implicitly
             nonLocal+= ManyFibCpp.FinitePartVelocity(X_nonLoc, fnBend, Xs_nonLoc)
             print('Doing FP separate, it''s being treated implicitly')
-        SecondBlock = self.calcAllh(self._ptsCheb);
-        return np.concatenate((Local+nonLocal+U0,-SecondBlock));
+        return np.concatenate((Local+nonLocal+U0,np.zeros((2*self._Npf+1)*self._Nfib)));
     
     def calcNewRHS(self,BlockDiagAnswer,X_nonLoc,Xs_nonLoc,dtimpco,lamstar, Dom, RPYEval,FPimplicit=0):
         """
@@ -168,8 +167,7 @@ class fiberCollection(object):
         fbendCorrection = self.evalBendForceDensity(self._ptsCheb- X_nonLoc+np.reshape(dtimpco*Kalph,(self._Nfib*self._Npf,3)));
         lamCorrection = lambdas-lamstar;
         nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,fbendCorrection+lamCorrection,Dom,RPYEval,1-FPimplicit);
-        relnorm = np.linalg.norm(nonLocal)/np.linalg.norm(Kalph);
-        return np.concatenate((nonLocal,np.zeros((2*self._Npf+1)*self._Nfib))), relnorm;
+        return np.concatenate((nonLocal,np.zeros((2*self._Npf+1)*self._Nfib)));
         
     def Mobility(self,lamalph,impcodt,X_nonLoc,Xs_nonLoc,Dom,RPYEval):
         """
@@ -179,7 +177,7 @@ class fiberCollection(object):
         tangent vectors, impcodt = delta t * implicit coefficient,
         Dom = Domain object, RPYEval = RPY velocity evaluator for the nonlocal terms, 
         The calculation is 
-        [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +lambda); K*lambda + impco*dt*w^T * F*K*alpha]
+        [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +lambda); K*lambda ]
         """
         lamalph = np.reshape(lamalph,len(lamalph))
         lambdas = lamalph[:3*self._Nfib*self._Npf];
@@ -189,9 +187,8 @@ class fiberCollection(object):
         forceDs = self.evalBendForceDensity(XnLForBend) +lambdas;
         Local = self.calcLocalVelocities(np.reshape(Xs_nonLoc,self._totnum*3),forceDs);
         nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,forceDs,Dom,RPYEval);
-        # Temporary
         FirstBlock = -(Local+nonLocal)+Kalph; # zero if lambda, alpha = 0
-        SecondBlock = Ktlam + self.calcAllh(XnLForBend);
+        SecondBlock = Ktlam;
         return np.concatenate((FirstBlock,SecondBlock));
        
     def BlockDiagPrecond(self,b,Xs_nonLoc,dt,implic_coeff,X_nonLoc,doFP=0):
@@ -207,8 +204,8 @@ class fiberCollection(object):
         fD = self._fiberDisc;
         b1D = np.reshape(b,len(b));
         lamalph = NumbaColloc.linSolveAllFibersForGM(self._Nfib,self._Npf,b1D, Xs_nonLoc,XsAll,dt,implic_coeff, \
-            fD._leadordercs, self._mu, fD._Lmat, fD._MatfromNto2N, fD._Matfrom2NtoN, fD._Dpinv2N, fD._w,fD._D4BC,fD._I,fD._wIt,\
-            X_nonLoc,fD.getFPMatrix(),fD._Dmat,fD._s,doFP);
+            fD._leadordercs, self._mu, fD._Lmat, fD._MatfromNto2N, fD._stackMatfromNto2N,fD._stackMatfrom2NtoN, fD._Dpinv2N, \
+            fD._w,fD._w2N,fD._D4BC,fD._I,fD._wIt,X_nonLoc,fD.getFPMatrix(),fD._Dmat,fD._s,doFP);
         return lamalph;
         
     def nonLocalVelocity(self,X_nonLoc,Xs_nonLoc,forceDs, Dom, RPYEval,doFinitePart=1):
@@ -227,13 +224,13 @@ class fiberCollection(object):
         if (self._nonLocal==0):
             return np.zeros(self._totnum*3);
         elif (self._nonLocal==2):
-            print('Finite part off')
+            #print('Finite part off')
             doFinitePart=0;
         elif (self._nonLocal==3):
             print('Special quad off')
             noSpecialPart = True;
         elif (self._nonLocal==4):
-            print('No other fibs')
+            #print('No other fibs')
             otherWt=0.0;
             
         forceDs = np.reshape(forceDs,(self._totnum,3));
@@ -243,6 +240,8 @@ class fiberCollection(object):
         finitePart = ManyFibCpp.FinitePartVelocity(X_nonLoc, forceDs, Xs_nonLoc);
         if (verbose>=0):
             print('Time to eval finite part %f' %(time.time()-thist));
+        if (self._nonLocal==4):
+            return finitePart;
         
         # Update the spatial objects for Chebyshev and uniform
         self._SpatialCheb.updateSpatialStructures(X_nonLoc,Dom);
@@ -285,7 +284,7 @@ class fiberCollection(object):
         self._alphas = lamalph[3*self._Nfib*self._Npf:];
         fD = self._fiberDisc;
         self._velocities = NumbaColloc.calcKAlphas(self._Nfib,self._Npf,Xsarg,fD._Lmat, fD._MatfromNto2N, \
-            fD._Matfrom2NtoN, fD._Dpinv2N, fD._I,self._alphas);
+            fD._stackMatfromNto2N, fD._Dpinv2N, fD._I,self._alphas,fD._w2N);
         
     def updateAllFibers(self,dt,XsforNL,exactinex=1):
         """
@@ -483,7 +482,7 @@ class fiberCollection(object):
         """
         fD = self._fiberDisc;
         Kalphs2, Kstlam2 = NumbaColloc.calcKAlphasAndKstarLambda(self._Nfib,self._Npf,Xsarg,fD._Lmat, fD._MatfromNto2N, \
-            fD._Matfrom2NtoN, fD._Dpinv2N, fD._I, fD._wIt,fD._w,alphas,lambdas)
+            fD._stackMatfromNto2N,fD._stackMatfrom2NtoN, fD._Dpinv2N, fD._I, fD._wIt,fD._w,fD._w2N,alphas,lambdas)
         return Kalphs2, Kstlam2;
         # pure python
         Kalphs = np.zeros(3*self._Npf*self._Nfib);

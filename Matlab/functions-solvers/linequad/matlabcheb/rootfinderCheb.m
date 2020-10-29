@@ -4,9 +4,9 @@ function [troot, converged] = rootfinderCheb(xhat, yhat, zhat, x0, y0, z0, tinit
     
     t = tinit;
     n = numel(xhat);
-    tol = 1e-10;
-    maxiter_newton = 20;
-    maxiter_muller = 20;    
+    tol = 1e-4;
+    maxiter_newton = 10;
+    maxiter_muller = 10;    
     % === Newton
     % Setup history variables (needed in Muller)
     Fp = 0; tp = 0; Fpp = 0; tpp = 0;

@@ -1,4 +1,4 @@
-% Matric for the finite part integral using brute force quadrature,
+% Matrix for the finite part integral using brute force quadrature,
 % skipping the singular point
 function M = NLMatrix(X,Xs,s0,w,N,delta)
     M=zeros(3*N);

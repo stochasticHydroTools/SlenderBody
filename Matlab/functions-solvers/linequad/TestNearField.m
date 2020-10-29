@@ -48,8 +48,8 @@ for iFib=1:Nfib
     sqrt(sum((Xs).*(Xs),2));
     % Put some targets around it
     t=sort(rand(Ntarg,1)*Lf); % *still need to check what happens if slightly displaced from curve
-    %dist = rand(Ntarg,1)*0.19*Lf+0.01*Lf;  % LONG DISTANCES
-    dist = rand(Ntarg,1)*8*epsilon*Lf+2*epsilon*Lf; % SHORT DISTANCES
+    dist = rand(Ntarg,1)*0.19*Lf+0.01*Lf;  % LONG DISTANCES
+    %dist = rand(Ntarg,1)*8*epsilon*Lf+2*epsilon*Lf; % SHORT DISTANCES
     dists(iFib,:)=dist;
     utang = [xp(t);yp(t);zp(t)]; % sloppy unit tangents
     v = randn(3,Ntarg); 
@@ -89,7 +89,7 @@ function [q1, q2, q3] = quadsum(xj, yj, zj, wj, f1j, f2j, f3j, targ, n, epsilon,
         r2 = yj(k)-targ(2);
         r3 = zj(k)-targ(3);                               
         [u1, u2, u3] = slender_body_kernel(r1, r2, r3, f1j(k), f2j(k), f3j(k), ...
-                                           epsilon*Lf*sqrt(2));
+                                           epsilon*Lf*sqrt(2)*sqrt(exp(3)/24));
         q1 = q1 + u1*wj(k);
         q2 = q2 + u2*wj(k);
         q3 = q3 + u3*wj(k);                    

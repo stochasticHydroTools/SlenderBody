@@ -31,7 +31,8 @@ function nLvel = MNonLocalUnbounded(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu)
                            f(3,inds)',Lf,epsilon,mu,localvel(inds,:)+FPintvel(inds,:),0);
                         othervel(iPt,:)=othervel(iPt,:)+vel2;
                     else
-                        vel=integrate(X(inds,:),X(iPt,:),f(:,inds),w,epsilon*Lf);
+                        dCo = sqrt(exp(3)/24);
+                        vel=integrate(X(inds,:),X(iPt,:),f(:,inds),w,dCo*epsilon*Lf);
                         othervel(iPt,:)=othervel(iPt,:)+1/(8*pi*mu)*vel;
                     end
                 end

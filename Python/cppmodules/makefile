@@ -7,7 +7,7 @@ RPYKernels:
 	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` pyRPYKernels.cpp -o RPYKernels.so
 
 ManyFiberMethods: 
-	c++ -O3 -Wall -llapack -lblas -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` pyManyFiberMethods.cpp -o ManyFiberMethods.so
+	c++ -O3 -Wall -shared pyManyFiberMethods.cpp -o ManyFiberMethods.so -llapack -lblas -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` 
 
 CrossLinking: 
 	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` pyCrossLinkers.cpp -o CrossLinking.so

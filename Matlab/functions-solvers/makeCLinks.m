@@ -33,16 +33,16 @@ function links = makeCLinks(links,X,nFib,N,rl,Lf,nCL,Ld,g,dt)
         added(jPt)=1;
     end
     % Option to load link information from python 
-%     pylinks = load(strcat('../Python/CLNetData/F',num2str(nFib),'C',num2str(nCL),'.txt'));
-%     iPts = pylinks(2:end,1)+1;
-%     jPts = pylinks(2:end,2)+1;
-%     for i = 1:length(iPts) % loop over POINTS
+    pylinks = load(strcat('F',num2str(nFib),'C',num2str(nCL),'.txt'));
+    iPts = pylinks(2:end,1)+1;
+    jPts = pylinks(2:end,2)+1;
+    for i = 1:length(iPts) % loop over POINTS
 %         for j = 1:length(jPts)
-%            iPt = iPts(i);
-%            jPt = jPts(i);
-    disp('Allowing multiple links!')
-    for iPt = 1:Nuni*nFib
-        for jPt = iPt+1:Nuni*nFib
+           iPt = iPts(i);
+           jPt = jPts(i);
+%     disp('Allowing multiple links!')
+%     for iPt = 1:Nuni*nFib
+%         for jPt = iPt+1:Nuni*nFib
             % Find the nearest image
             fib1 = floor((iPt-1)/Nuni)+1;
             fib2 = floor((jPt-1)/Nuni)+1;
@@ -63,7 +63,7 @@ function links = makeCLinks(links,X,nFib,N,rl,Lf,nCL,Ld,g,dt)
                        return;
                    end
                 end
-            end
+%             end
         end
     end
 end

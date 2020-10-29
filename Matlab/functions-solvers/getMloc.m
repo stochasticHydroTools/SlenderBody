@@ -1,23 +1,16 @@
 % Get the mobility matrix from Xs
-function M = getMloc(N,Xs,eps,Lf,mu,s0)
-    global deltaLocal;
-    as = zeros(length(s0),1);
-    delta = deltaLocal;
-    for iS=1:length(s0)
-        s = s0(iS);
-        if (s < delta*Lf || s > Lf-delta*Lf)
-            as(iS) = eps*2*sqrt(s*(Lf-s)); % ellipsoidal tapering
-        elseif (s < 2*delta*Lf)
-            wCyl = 1/(1+exp(-23.0258/(delta*Lf)*s+34.5387));
-            as(iS) = eps*(Lf*wCyl+(1-wCyl)*2*sqrt(s*(Lf-s)));
-        elseif (s > Lf-2*delta*Lf)
-            wCyl = 1/(1+exp(-23.0258/(delta*Lf)*(Lf-s)+34.5387));
-            as(iS) = eps*(Lf*wCyl+(1-wCyl)*2*sqrt(s*(Lf-s)));
-        else
-            as(iS) = eps*Lf;
-        end
+function M = getMloc(N,Xs,eps,L,mu,s0,delta)
+    % Regularized version
+    if (delta < 0.5)
+        x = 2*s0/L-1;
+        regwt = tanh((x+1)/delta)-tanh((x-1)/delta)-1;
+        sNew = s0;
+        sNew(s0 < L/2) = regwt(s0 < L/2).*s0(s0 < L/2)+(1-regwt(s0 < L/2).^2).*delta*L/2;
+        sNew(s0 > L/2) = L-flipud(sNew(s0 < L/2));
+    else
+        sNew = L/2*ones(length(s0),1);
     end
-    Ls = log(4.*s0.*(Lf-s0)./as.^2);      
+    Ls = log(4.*sNew.*(L-sNew)./(eps*L).^2);      
     rows=zeros(9*N,1);
     cols=zeros(9*N,1);
     vals=zeros(9*N,1);

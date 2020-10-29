@@ -7,13 +7,21 @@
 % Output = (8*pi*mu)*fiber velocity. So it must be divided by 8*pi*mu to
 % give the correct result. Split into 2 pieces: the leading order local
 % term, and the non-local finite part integral
-function [Local,Oone] = calcSelf(N,s0,Lf,epsilon,X,Xs,f,D)
+function [Local,Oone] = calcSelf(N,s0,L,epsilon,X,Xs,f,D)
     % The self term
     % Local part
     Local = zeros(N,3);
-    s=s0*2/Lf-1;
-    aeps=2*epsilon;
-    Ls = log((2*(1-s.^2)+2*sqrt((1-s.^2).^2+4*aeps.^2))./(aeps.^2));
+    delta=0.1;
+    if (delta < 0.5)
+        x = 2*s0/L-1;
+        regwt = tanh((x+1)/delta)-tanh((x-1)/delta)-1;
+        sNew = s0;
+        sNew(s0 < L/2) = regwt(s0 < L/2).*s0(s0 < L/2)+(1-regwt(s0 < L/2).^2).*delta*L/2;
+        sNew(s0 > L/2) = L-flipud(sNew(s0 < L/2));
+    else
+        sNew = L/2*ones(length(s0),1);
+    end
+    Ls = log(4.*sNew.*(L-sNew)./(epsilon*L).^2);  
     for iPt=1:N
         XsXs=Xs(iPt,:)'*Xs(iPt,:);
         Local(iPt,:) = ((eye(3)-3*XsXs)+...
@@ -22,5 +30,5 @@ function [Local,Oone] = calcSelf(N,s0,Lf,epsilon,X,Xs,f,D)
     % Tornberg way
     Xss = D*Xs;
     fprime=(D*f')';
-    Oone=NLIntegrate(X,Xs,Xss,s0,N,Lf,f,fprime);
+    Oone=NLIntegrate(X,Xs,Xss,s0,N,L,f,fprime);
 end

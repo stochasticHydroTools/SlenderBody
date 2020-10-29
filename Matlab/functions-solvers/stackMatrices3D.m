@@ -1,5 +1,5 @@
 % Column stack matrices
-function [Rs,Ls,Ds,D4s,Dinv,LRLs,URLs,chebyshevmat,I,wIt]=stackMatrices3D(s0,w0,s,b,N,Lf)
+function [Rs,Ls,Ds,Dinv,D4BC,I,wIt]=stackMatrices3D(s0,w0,s,b,N,Lf)
     R = barymat(s0, s, b); % Resampling matrix.
     Rs=zeros(3*N,3*(N+4));
     Rs(1:3:3*N,1:3:3*(N+4))=R;
@@ -23,11 +23,7 @@ function [Rs,Ls,Ds,D4s,Dinv,LRLs,URLs,chebyshevmat,I,wIt]=stackMatrices3D(s0,w0,
     Dinv(1:3:3*(N),1:3:3*(N))=Dinvone;
     Dinv(2:3:3*(N),2:3:3*(N))=Dinvone;
     Dinv(3:3:3*(N),3:3:3*(N))=Dinvone;
-    [LRLs,URLs]=lu([Rs;Ls]);
-    chebyshevmat=zeros(N,N-1);
-    for iDeg=1:N-1
-        chebyshevmat(:,iDeg)=chebyshevT(iDeg-1,(s0-Lf/2)*2/Lf);
-    end
+    D4BC = D4s*([Rs;Ls] \ [eye(3*N); zeros(12,3*N)]);
     I=zeros(2*N,2);
     wIt=zeros(2,2*N);
     for iR=1:N

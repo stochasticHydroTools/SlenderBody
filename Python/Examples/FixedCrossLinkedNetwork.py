@@ -39,7 +39,7 @@ eps=1e-3                        # slenderness ratio
 Eb=0.01                         # fiber bending stiffness
 omega=0                         # frequency of oscillations
 gam0=0                          # base rate of strain
-tf = 2000;                      # stop time
+tf = 500;                      # stop time
 dt = 5e-3;                      # timestep
 saveEvery = 200;                # every second
 grav=0                          # value of gravity if it exists
@@ -58,17 +58,20 @@ np.random.seed(1);
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize Ewald for non-local velocities
-Ewald = EwaldSplitter(np.sqrt(1.5)*eps*Lf,mu,xi,Dom,N*nFib);
+Ewald = EwaldSplitter(np.exp(1.5)/4*eps*Lf,mu,xi,Dom,N*nFib);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N);
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1);
 
 # Initialize the master list of fibers
 allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0,Dom,nThreads=4);
 
 # Initialize the fiber list (straight fibers)
 fibList = [None]*nFib;
-allFibers.initFibList(fibList,Dom);
+#print('Loading from steady state')
+XFile = 'SSLocsF'+str(nFib)+'C'+str(nCL)+'REV.txt';
+XsFile = 'SSTanVecsF'+str(nFib)+'C'+str(nCL)+'REV.txt';
+allFibers.initFibList(fibList,Dom,pointsfileName=XFile,tanvecfileName=XsFile);
 allFibers.fillPointArrays();
 
 # Initialize the network of cross linkers (set links from file)
@@ -76,6 +79,9 @@ allFibers.fillPointArrays();
 CLseed = 2;
 np.random.seed(CLseed);
 CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,nCL,Kspring,rl,konCL,koffCL,CLseed,Dom,fibDisc,nThreads=4);
+#CLNet.updateNetwork(allFibers,Dom,0.01)
+#ofCL = prepareOutFile('F'+str(nFib)+'C'+str(nCL)+'.txt');
+#CLNet.writeLinks(ofCL,allFibers.getUniformPoints(allFibers._ptsCheb),Dom)
 CLNet.setLinksFromFile('NetworkSteadyStates/F'+str(nFib)+'C'+str(nCL)+'.txt',Dom);
     
 # Initialize the temporal integrator
@@ -83,9 +89,9 @@ TIntegrator = CrankNicolson(allFibers, CLNet);
 TIntegrator.setMaxIters(1); # only 1 iteration since we do local drag
 
 # Prepare the output file and write initial locations
-of = prepareOutFile('LocsF'+str(nFib)+'C'+str(nCL)+'.txt');
+of = prepareOutFile('NewLocsF'+str(nFib)+'C'+str(nCL)+'REV.txt');
 allFibers.writeFiberLocations(of);
-saveCurvaturesAndStrains(nFib,nCL,allFibers,CLNet,wora='w')
+#saveCurvaturesAndStrains(nFib,nCL,allFibers,CLNet,wora='w')
 
 # Run to steady state
 stopSS = int(tf/dt+1e-10);
@@ -96,9 +102,14 @@ for iT in range(stopSS):
         wr=1;
     maxX = TIntegrator.updateAllFibers(iT,dt,stopSS,Dom,Ewald,grav/Lf,of,write=wr);
     if (wr==1): # save curvatures and strains
-        saveCurvaturesAndStrains(nFib,nCL,allFibers,CLNet)
+        #saveCurvaturesAndStrains(nFib,nCL,allFibers,CLNet)
         print('Max x (just to check stability): %f' %(maxX));
-    
+
+ofFinalX = prepareOutFile('SSLocsF'+str(nFib)+'C'+str(nCL)+'REV2.txt');
+allFibers.writeFiberLocations(ofFinalX);
+ofFinalXs = prepareOutFile('SSTanVecsF'+str(nFib)+'C'+str(nCL)+'REV2.txt');
+allFibers.writeFiberTangentVectors(ofFinalXs);
+ 
 # Destruction and cleanup
 of.close();
 del Dom;

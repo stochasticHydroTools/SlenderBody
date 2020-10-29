@@ -2,18 +2,21 @@
 function [Xnp1,Xsp1] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU)
     % Resampling matrices
     th=flipud(((2*(0:N-1)+1)*pi/(2*N))');
-    th_up = flipud(((2*(0:2*N-1)+1)*pi/(2*2*N))');
     Lmat = (cos((0:N-1).*th));
-    RS_up = (cos((0:N-1).*th_up))*Lmat^(-1);
-    RS_down = (cos((0:2*N-1).*th))*(cos((0:2*N-1).*th_up))^(-1);
     Xsin =reshape(Xsin,3,N)';
     Xsm1 =reshape(Xsm1,3,N)';
     % Compute new Xs
-    Xsk = RS_up*(1.5*Xsin-0.5*Xsm1);
-    dU_up = RS_up*dU;
-    Omega = cross(Xsk,dU_up);
+%     g1=Lmat(:,1:N-1)*alphas(1:N-1);
+%     g2=Lmat(:,1:N-1)*alphas(N:2*N-2);
+    Xsk = 1.5*Xsin-0.5*Xsm1;
+%     [theta,phi,~] = cart2sph(Xsk(:,1),Xsk(:,2),Xsk(:,3));
+%     theta(abs((abs(phi)-pi/2)) < 1e-12) =0;
+%     n1s=[-sin(theta) cos(theta) 0*theta];
+%     n2s=[-cos(theta).*sin(phi) -sin(theta).*sin(phi) cos(phi)];
+%     Omega=g1.*n2s-g2.*n1s;
+    Omega = cross(Xsk,reshape(dU,3,N)');
+    %max(abs(Omega-Omega1))
     % Increment Xs
-    Omega = RS_down*Omega;
     nOm = sqrt(sum(Omega.*Omega,2));
     % Have to truncate somewhere to avoid instabilities
     k = Omega./nOm;

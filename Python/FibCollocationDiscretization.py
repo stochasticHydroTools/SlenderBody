@@ -69,7 +69,7 @@ class FibCollocationDiscretization(object):
         VanderMat = np.vander(s_dim1scaled,increasing=True);
         self._FPMatrix = np.linalg.solve(VanderMat.T,q.T);
 
-    def initLocalcvals(self,delta=0.2):
+    def initLocalcvals(self,delta=0.1):
         """
         Initialize local leading order coefficients for the local drag matrix M. 
         The distance delta is the fraction of the fiber over which the ellipsoidal endpoint
@@ -80,19 +80,15 @@ class FibCollocationDiscretization(object):
         """
         radii = np.zeros(self._N);
         self._delta = delta;
-        for iS in range(len(self._s)):
-            s = self._s[iS];
-            if (s < delta*self._L or s > self._L-delta*self._L):
-                radii[iS] = 2.0*self._epsilon*np.sqrt(s*(self._L-s));
-            elif (s < 2.0*delta*self._L):
-                wCyl = 1/(1+np.exp(-23.0258/(delta*self._L)*s+34.5387));
-                radii[iS] = self._epsilon*(self._L*wCyl+(1-wCyl)*2.0*np.sqrt(s*(self._L-s)));
-            elif (s > self._L - 2.0*delta*self._L):
-                wCyl = 1/(1+np.exp(-23.0258/(delta*self._L)*(self._L-s)+34.5387));
-                radii[iS] = self._epsilon*(self._L*wCyl+(1-wCyl)*2.0*np.sqrt(s*(self._L-s)));
-            else:
-                radii[iS] = self._epsilon*self._L;
-        self._leadordercs = np.log(4.0*self._s*(self._L-self._s)/radii**2);
+        sNew = 0.5*self._L*np.ones(self._N);
+        if (delta < 0.5):
+            x = 2*self._s/self._L-1;
+            regwt = np.tanh((x+1)/delta)-np.tanh((x-1)/delta)-1;
+            sNew = self._s.copy();
+            sNew[self._s < self._L/2] =  regwt[self._s < self._L/2]*self._s[self._s < self._L/2]+\
+                (1-regwt[self._s < self._L/2]**2)*delta*self._L/2;
+            sNew[self._s > self._L/2] = self._L-np.flip(sNew[self._s < self._L/2]);
+        self._leadordercs = np.log(4.0*sNew*(self._L-sNew)/(self._epsilon*self._L)**2);
         self._matlist = [None]*self._N; # allocate memory for sparse matrix
 
     ## ====================================================
@@ -245,14 +241,11 @@ class FibCollocationDiscretization(object):
         This method solves the linear system for 
         lambda and alpha for a given RHS. 
         Specifically, the system we are solving is in block form
-        [-M K-impco*dt*M*L*K; K^T [0; impco*dt*I^T*L*K]] [lambda; alpha] = ...
-            [M*L*X^n + U_0 + nLvel + M*exF; [0; -I^T*L*X^n]
+        [-M K-impco*dt*M*L*K; K^T 0]] [lambda; alpha] = ...
+            [M*L*X^n + U_0 + nLvel + M*exF; 0]
         here impco = 1 for backward Euler, 1/2 for CN, 0 for explicit. 
         We solve the system using the Schur complement. 
-        Note that the [0; impco*dt*I^T*L*K] blocks show up because we enforce 
-        the sum of forces being 0 in the discrete sense, so the sum of any lambas 
-        cancels the sum in fE.
-        The Schur blocks are [M B; C D] correspdong to the LHS matrix above, and 
+        The Schur blocks are [M B; C 0] correspdong to the LHS matrix above, and 
         L is encoded via self._D4BC.
         Inputs: Xarg and Xsarg = X and Xs to build the matrices for
         dt = timestep, impco = implicit coefficient (coming from the temporal integrator)
@@ -265,14 +258,9 @@ class FibCollocationDiscretization(object):
         B = np.concatenate((K-impco*dt*np.dot(M,np.dot(self._D4BC,K)),\
          self._I-impco*dt*np.dot(M,np.dot(self._D4BC,self._I))),axis=1);
         C = np.concatenate((Kt,self._wIt));
-        D1 = np.zeros((2*self._N-2,2*self._N+1));
-        D2 = impco*dt*np.dot(self._wIt, np.dot(self._D4BC,K));
-        D3 = impco*dt*np.dot(self._wIt, np.dot(self._D4BC,self._I));
-        D = np.concatenate((D1,np.concatenate((D2,D3),axis=1)));
         fE = self.calcfE(Xarg);
-        RHS = np.dot(C,fE+exF)+np.concatenate((np.zeros(2*self._N-2),\
-            -np.dot(self._wIt,fE)))+np.dot(C,np.linalg.solve(M,nLvel));
-        S = np.dot(C,np.linalg.solve(M,B))+D;
+        RHS = np.dot(C,fE+exF)+np.dot(C,np.linalg.solve(M,nLvel));
+        S = np.dot(C,np.linalg.solve(M,B));
         alphaU,res,rank,s = np.linalg.lstsq(S,RHS,-1);
         vel = np.dot(K,alphaU[0:2*self._N-2])+\
             np.dot(self._I,alphaU[2*self._N-2:2*self._N+1]);
@@ -339,18 +327,17 @@ class FibCollocationDiscretization(object):
         n2x = -np.cos(theta)*np.sin(phi);
         n2y = -np.sin(theta)*np.sin(phi);
         n2z = np.cos(phi);
-        K = np.zeros((3*self._N,2*self._N-2));
-        K[0::3,0:self._N-1]= self.deAliasIntegral(n1x);
-        K[1::3,0:self._N-1]= self.deAliasIntegral(n1y);
-        K[2::3,0:self._N-1]= self.deAliasIntegral(n1z);
-        K[0::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2x);
-        K[1::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2y);
-        K[2::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2z);
-        Kt = K.copy();
-        Kt[0::3,:]*=np.reshape(self._w,(self._N,1));
-        Kt[1::3,:]*=np.reshape(self._w,(self._N,1));
-        Kt[2::3,:]*=np.reshape(self._w,(self._N,1));
-        Kt = Kt.T;
+        J = np.zeros((6*self._N,2*self._N-2));
+        J[0::3,0:self._N-1]= self.deAliasIntegral(n1x);
+        J[1::3,0:self._N-1]= self.deAliasIntegral(n1y);
+        J[2::3,0:self._N-1]= self.deAliasIntegral(n1z);
+        J[0::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2x);
+        J[1::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2y);
+        J[2::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2z);
+        K = np.dot(self._stackMatfrom2NtoN,J);
+        UTWU = np.dot(self._stackMatfromNto2N.T,np.dot(np.diag(np.repeat(self._w2N,3)),self._stackMatfromNto2N));
+        K = np.linalg.solve(UTWU,np.dot(self._stackMatfromNto2N.T,np.dot(np.diag(np.repeat(self._w2N,3)),J)));
+        Kt = np.dot(J.T,np.dot(np.diag(np.repeat(self._w2N,3)),self._stackMatfromNto2N));
         return K, Kt;
     
     def deAliasIntegral(self,f):
@@ -364,7 +351,7 @@ class FibCollocationDiscretization(object):
         UpSampMulti = np.reshape(f,(2*self._N,1)) \
             *np.dot(self._MatfromNto2N,self._Lmat[:,:self._N-1]);
         # Integrals on the original grid (integrate on upsampled grid and downsample)
-        OGIntegrals = np.dot(self._Matfrom2NtoN,np.dot(self._Dpinv2N,UpSampMulti));
+        OGIntegrals = np.dot(self._Dpinv2N,UpSampMulti);
         return OGIntegrals;
 
     def calcM(self,Xs):
@@ -409,17 +396,18 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16):
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1):
         super().__init__(L,epsilon,Eb,mu,N);
 		# Chebyshev grid and weights
         self._s = cf.chebPts(self._N,[0,self._L],chebGridType);
         self._w = cf.chebWts(self._N,[0,self._L],chebGridType);
+        self._w2N = cf.chebWts(2*self._N,[0,self._L],chebGridType);
         # Chebyshev initializations
         self._Lmat = cf.CoeffstoValuesMatrix(self._N,self._N,chebGridType);
         self._LUCoeffs = lu_factor(self._Lmat);
         self.initIs();
         self.initFPMatrix();
-        self.initLocalcvals();
+        self.initLocalcvals(deltaLocal);
         self.initDiffMatrices();
         self.initD4BC();
         self.initResamplingMatrices();
@@ -442,9 +430,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         OneD4BC = -self._Eb*np.dot(FourDMat_fromUptoDwn,TildeConfigMatrix);
         # Stack up OneD4BC three times since there are 3 coordinates
         self._D4BC = np.zeros((3*self._N,3*self._N));
-        self._D4BC[0::3,0::3]=OneD4BC;
-        self._D4BC[1::3,1::3]=OneD4BC;
-        self._D4BC[2::3,2::3]=OneD4BC;
+        for iD in range(3):
+            self._D4BC[iD::3,iD::3]=OneD4BC;
 
     def initResamplingMatrices(self):
         """
@@ -452,6 +439,11 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         """
         self._MatfromNto2N = cf.ResamplingMatrix(2*self._N,self._N,chebGridType,chebGridType);
         self._Matfrom2NtoN = cf.ResamplingMatrix(self._N,2*self._N,chebGridType,chebGridType);
+        self._stackMatfromNto2N = np.zeros((6*self._N,3*self._N));
+        self._stackMatfrom2NtoN = np.zeros((3*self._N,6*self._N));
+        for iD in range(3):
+            self._stackMatfromNto2N[iD::3,iD::3]=self._MatfromNto2N;
+            self._stackMatfrom2NtoN[iD::3,iD::3]=self._Matfrom2NtoN;
 
     def initSpecialQuadMatrices(self):
         """

@@ -36,6 +36,8 @@ double upsampdistance, specialdistance;
 vec FinitePartMatrix, DifferentiationMatrix;
 vec upsamplingMatrix, TwoPanelUpsampMatrix, ValuestoCoeffsMatrix;
 
+double aRPYFac = exp(1.5)*0.25;
+
 void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin, 
                    int NfibIn,int NChebIn, int NuniIn, double deltain, double fatDistIn){
     /**
@@ -52,7 +54,7 @@ void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin,
     cap the mobility at this radius). If fatDistIn = eps*L, we just call the original version 
     of the code without capping mobility. 
     **/
-    initRPYVars(sqrt(1.5)*epsIn*Lin, muin, NfibIn*NChebIn, Lengths);
+    initRPYVars(aRPYFac*epsIn*Lin, muin, NfibIn*NChebIn, Lengths);
     // Set domain lengths
     initLengths(Lengths[0],Lengths[1],Lengths[2]);
     epsilon = epsIn;
@@ -216,7 +218,7 @@ void OneSBTKernel(const vec3 &targ, const vec &sourcePts, const vec &ForceDs, co
     **/
     vec3 rvec;
     vec3 force;
-    double a = sqrt(1.5)*epsilon*L;
+    double a = aRPYFac*epsilon*L;
     double r, rdotf, F, G, co2;
     double outFront = 1.0/mu;
     for (int iSrc=first; iSrc < last; iSrc++){
@@ -253,6 +255,7 @@ void SBTKernelSplit(const vec3 &targpt, const vec &FibPts, const vec &ForceDens,
     double r, rdotf, u1, u3, u5;
     double outFront = 1.0/(8.0*M_PI*mu);
     int N = FibPts.size()/3;
+    double dco = exp(3)*1.0/24.0;
     for (int iPt=0; iPt < N; iPt++){
         for (int d=0; d < 3; d++){
             rvec[d] = targpt[d]-FibPts[3*iPt+d];
@@ -262,8 +265,8 @@ void SBTKernelSplit(const vec3 &targpt, const vec &FibPts, const vec &ForceDens,
         r = normalize(rvec);
         for (int d=0; d < 3; d++){
             u1 = forceDensity[d]/r;
-            u3 = (r*rvec[d]*rdotf+(epsilon*L)*(epsilon*L)*forceDensity[d])/(r*r*r);
-            u5 = -3.0*(epsilon*L)*(epsilon*L)*rvec[d]*r*rdotf/pow(r,5);
+            u3 = (r*rvec[d]*rdotf+dco*(epsilon*L)*(epsilon*L)*forceDensity[d])/(r*r*r);
+            u5 = -3.0*dco*(epsilon*L)*(epsilon*L)*rvec[d]*r*rdotf/pow(r,5);
             utarg[d]+=outFront*(u1*w1[iPt]+u3*w3[iPt]+u5*w5[iPt]);
         }
     }
@@ -420,24 +423,20 @@ void calcCLVelocity(const vec &FinitePartCoefficients, const vec &DerivCoefficie
     double Xsdotf = dot(Xs,forceDen);
     double s = (tapprox+1.0)*L/2.0;
     double r = fatepsilon*L;
-    double c = log(4.0*s*(L-s)/(r*r));
-    //std::cout << "tapprox and corresponding s " << tapprox << " , " << s << std::endl;
-    if (s < delta*L || s > L - delta*L){
-        r = 2.0*fatepsilon*sqrt(s*(L-s));
-        c = -log(fatepsilon*fatepsilon);
-    } else if (s < 2.0*delta*L){
-        double wCyl = 1.0/(1.0+exp(-23.0258/(delta*L)*s+34.5387));
-        r = fatepsilon*(L*wCyl+(1-wCyl)*2.0*sqrt(s*(L-s)));
-        c = log(4.0*s*(L-s)/(r*r));
-    } else if (s > L - 2.0*delta*L){
-        double wCyl = 1.0/(1.0+exp(-23.0258/(delta*L)*(L-s)+34.5387));
-        r = fatepsilon*(L*wCyl+(1-wCyl)*2.0*sqrt(s*(L-s)));
-        c = log(4.0*s*(L-s)/(r*r));
-    } else { 
-        r = fatepsilon*L;
-        c = log(4.0*s*(L-s)/(r*r));
+    double c = -log(fatepsilon*fatepsilon); // assume ellipsoidal tapering
+    std::cout << "Testing new local drag routine with delta and s=" << delta << " , " << s << std::endl;
+    if (delta < 0.5){
+        if (s > 0.5*L){
+            s = L-s; // reflect
+        }
+        // Regularize to cylindrical fibers
+        double x = 2*s/L-1;
+        double regwt = tanh((x+1)/delta)-tanh((x-1)/delta)-1;
+        double sNew = regwt*s + (1-regwt*regwt)*delta*L*0.5;
+        c = log(4.0*sNew*(L-sNew)/pow(epsilon*L,2));
+        //std::cout << "s= " << s << " sNew = " << sNew << std::endl;
     }
-    //std::cout << "Radius and coefficient " << r << " and " << c << std::endl;
+    std::cout << "Coefficient " << c << std::endl;
     for (int d =0; d < 3; d++){
         CLpart[d] += 1.0/(8*M_PI*mu)*(c*(forceDen[d]+Xs[d]*Xsdotf)+(forceDen[d]-3*Xs[d]*Xsdotf));
     }

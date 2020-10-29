@@ -44,14 +44,13 @@ class CrossLinkedNetwork(object):
         
         # The standard deviation of the cross linking Gaussian depends on the
         # number of points per fiber and the length of the fiber.
-        if (self._Npf < 20):
+        if (self._Npf < 24):
             self._sigma = 0.10*self._Lfib;
-        elif (self._Npf < 24):
-            self._sigma = 0.085*self._Lfib;
-        elif (self._Npf < 32):
+        elif (self._Npf < 28):
             self._sigma = 0.07*self._Lfib;
         # Cutoff distance to form the CLs (temporarily the same as the rest length)
         self._clcut = self._rl;
+        print('Sigma/L is %f' %(self._sigma/self._Lfib))
         # Uniform binding locations
         self._su = np.linspace(0.0,self._Lfib,self._NsitesPerf,endpoint=True);
         self._wCheb = fibDisc.getw();

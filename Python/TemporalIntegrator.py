@@ -6,6 +6,7 @@ from functools import partial
 from mykrypy.linsys import LinearSystem, Gmres # mykrypy is krypy with modified linsys.py
 from mykrypy.utils import ConvergenceError     # mykrypy is krypy with modified linsys.py
 from fiberCollection import fiberCollection
+from warnings import warn
 
 # Definitions 
 itercap = 1000; # cap on GMRES iterations if we converge all the way
@@ -139,7 +140,7 @@ class TemporalIntegrator(object):
             lamalph = BlockDiagAnswer;
         else:
             # GMRES set up and solve
-            RHS, relnorm = self._allFibers.calcNewRHS(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald);
+            RHS = self._allFibers.calcNewRHS(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald);
             systemSize = self._allFibers.getSysDimension();
             A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
                 X_nonLoc=XforNL, Xs_nonLoc=XsforNL, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
@@ -152,7 +153,7 @@ class TemporalIntegrator(object):
         if (verbose > 0):
             print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
             thist = time.time()
-            
+      
         # Update alpha and lambda and fiber positions
         self._allFibers.updateLambdaAlpha(lamalph,XsforNL);
         # Converged, update the fiber positions
