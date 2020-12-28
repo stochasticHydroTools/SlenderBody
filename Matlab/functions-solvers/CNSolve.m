@@ -34,7 +34,7 @@ function [Xp1,lambdas,fEstar,Xsp1] = CNSolve(nFib,N,deltaLoc,chebyshevmat,I,wIt,
         if (nonLocal)
             if (~Periodic)
                 nLvel = MNonLocalUnbounded(nFib,N,s0,w0,Lf,epsilon,reshape(fEarg+l_m+fext,3,N*nFib),...
-                     reshape(Xarg,3,N*nFib)',reshape(Xsarg,3,N*nFib)',Dmat(1:3:3*N,1:3:3*N),mu);
+                     reshape(Xarg,3,N*nFib)',reshape(Xsarg,3,N*nFib)',Dmat(1:3:3*N,1:3:3*N),mu,deltaLoc);
             else
                 nLvel = MNonLocalPeriodic(nFib,N,s0,w0,Lf,epsilon,reshape(fEarg+l_m+fext,3,N*nFib),...
                      reshape(Xarg,3,N*nFib)',reshape(Xsarg,3,N*nFib)',Dmat(1:3:3*N,1:3:3*N),mu,xi,L,L,L,strain);
@@ -58,6 +58,7 @@ function [Xp1,lambdas,fEstar,Xsp1] = CNSolve(nFib,N,deltaLoc,chebyshevmat,I,wIt,
 %                 end
 %             end
             [K,Kt]=getKMats3D(Xsarg(inds),chebyshevmat,w0,N,'U');
+            %[K,Kt]=getKMats3DLimited(Xsarg(inds),chebyshevmat,w0,N);
             K = [K I];   Kt = [Kt; wIt];
             B = K-0.5*dt*M*FE*K;
             RHS = Kt*fE(inds)+Kt*fext(inds)+Kt*M^(-1)*(U0(inds) + nLvel(inds));
@@ -79,8 +80,11 @@ function [Xp1,lambdas,fEstar,Xsp1] = CNSolve(nFib,N,deltaLoc,chebyshevmat,I,wIt,
     for iFib=1:nFib
         inds = (iFib-1)*3*N+1:3*N*iFib;
         [newX,newXs] = updateX(Xt(inds),(Xp1(inds)-Xt(inds))/dt,N,dt,...
-            Lf,Xs(inds),Xsm1(inds),dU(inds));
-        %max(abs(Xp1(inds)-newX))
+            Lf,Xs(inds),Xsm1(inds),dU(inds),2);
+        if (max(abs(Xp1(inds)-newX)) > 1e-3)
+%             keyboard
+            max(abs(Xp1(inds)-newX))
+        end
         Xp1(inds) = newX;
         Xsp1(inds) = newXs;
     end

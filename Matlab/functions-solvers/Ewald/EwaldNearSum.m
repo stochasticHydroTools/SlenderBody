@@ -10,7 +10,7 @@ function velNear = EwaldNearSum(Npts,pts,forces,xi,Lx,Ly,Lz,a,mu,g)
     rcuts = 0.01:0.01:(min([Lx Ly Lz])/2);
     nzation = min(norm(RPYNear([0 0 0],xi,a,mu)*[1;0;0],'inf'),1);
     for iCut=1:length(rcuts)
-        if (norm(RPYNear([rcuts(iCut) 0 0],xi,a,mu)*[1;0;0],'inf')/nzation < 1e-3)
+        if (norm(RPYNear([rcuts(iCut) 0 0],xi,a,mu)*[1;0;0],'inf')/nzation < 1e-10)
             rcut = rcuts(iCut);
             break;
         end

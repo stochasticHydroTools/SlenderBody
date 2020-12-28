@@ -1,5 +1,6 @@
 % Fully 3D slender body theory
-% Parameters
+% First half step update for the links
+%links=updateMovingLinks(links,reshape(Xt,3,N*nFib)',reshape(Xst,3,N*nFib)',N,s0,w0,Lf, Kspring, rl,g,Ld,dt/2);
 for count=0:stopcount-1 
     t=count*dt;
     if (mod(count,saveEvery)==0)
@@ -31,6 +32,12 @@ for count=0:stopcount-1
 %     totforce = lambdas+fEstar;
 %     totStress = 1/Ld^3*getStress(Xstar,totforce,w0,N,nFib,links,nCL,rl,Kspring,gn,Ld,s0,Lf);
 %     fibstresses(count+1)=totStress(2,1);
+    % Update myosin
+%     if (count==stopcount-1)
+%         links=updateMovingLinks(links,reshape(Xt,3,N*nFib)',reshape(Xst,3,N*nFib)',N,s0,w0,Lf, Kspring, rl,g,Ld,dt/2);
+%     else
+%         links=updateMovingLinks(links,reshape(Xt,3,N*nFib)',reshape(Xst,3,N*nFib)',N,s0,w0,Lf, Kspring, rl,g,Ld,dt);
+%     end
 end
 Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
 forces=[forces; reshape(lambdas,3,N*nFib)'];

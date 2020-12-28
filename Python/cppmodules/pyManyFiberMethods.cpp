@@ -21,12 +21,12 @@ typedef py::array_t<int, py::array::c_style | py::array::forcecast> npInt;
 typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub; 
 
       
-void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyNormalWts, npDoub pyUpNodes, npDoub pyUpWeights, npDoub pyVanderMat)
+void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyDirectWts, npDoub pyUpNodes, npDoub pyUpWeights, npDoub pyVanderMat)
 {
   /**
     Python wrapper for node and weight initialization in C++. 
     @param pyNormalNodes = Chebyshev nodes on the fiber (1D numpy array)
-    @param pyNormalWeights = Clenshaw-Curtis weights for direct quadrature on the fiber (1D numpy array)
+    @param pyDirectWts = Clenshaw-Curtis weights for direct quadrature on the fiber (1D numpy array)
     @param pyUpNodes  = upsampled Chebyshev nodes on the fiber (1D numpy array)
     @param pyNormalWeights = upsampled Clenshaw-Curtis weights for upsampled direct quadrature on the fiber (1D numpy array)
     @param pyVanderMat = vandermonde matrix (2D numpy array)
@@ -34,20 +34,20 @@ void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyNormalWts, npDoub pyU
   
   // allocate std::vector (to pass to the C++ function)
   vec normalNodes(pyNormalNodes.size());
-  vec normalWts(pyNormalWts.size());
+  vec DirectWts(pyDirectWts.size());
   vec upNodes(pyUpNodes.size());
   vec upWeights(pyUpWeights.size());
   vec SpecialVandermonde(pyVanderMat.size());
 
   // copy py::array -> std::vector
   std::memcpy(normalNodes.data(),pyNormalNodes.data(),pyNormalNodes.size()*sizeof(double));
-  std::memcpy(normalWts.data(),pyNormalWts.data(),pyNormalWts.size()*sizeof(double));
+  std::memcpy(DirectWts.data(),pyDirectWts.data(),pyDirectWts.size()*sizeof(double));
   std::memcpy(upNodes.data(),pyUpNodes.data(),pyUpNodes.size()*sizeof(double));
   std::memcpy(upWeights.data(),pyUpWeights.data(),pyUpWeights.size()*sizeof(double));
   std::memcpy(SpecialVandermonde.data(),pyVanderMat.data(),pyVanderMat.size()*sizeof(double));
 
   // call pure C++ function
-  initNodesandWeights(normalNodes,normalWts,upNodes,upWeights,SpecialVandermonde);
+  initNodesandWeights(normalNodes,DirectWts,upNodes,upWeights,SpecialVandermonde);
 } 
 
 // Python wrapper for node and weight initialization          
@@ -132,9 +132,48 @@ py::array py_RPYFiberKernel(npDoub pyPoints, npDoub pyForces)
   ));
 } 
 
+// Python wrappers for velocity corrections
 // Python wrapper for velocity corrections     
+py::array py_SubtractAllRPY(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyDirUpsampledWeights)
+{
+  /**
+    Python wrapper to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
+    @param pyChebPoints = Ndirect * 3 numpy array (2D) of Chebyshev points on ALL fibers
+    @param pyForceDens = Ndirect * 3 numpy array (2D) of force densities on ALL fibers
+    @param 
+  **/
+  
+  // allocate std::vector (to pass to the C++ function)
+  vec ChebPoints(pyChebPoints.size());
+  vec ForceDensities(pyForceDens.size());
+  vec DirUpsampledWeights(pyDirUpsampledWeights.size());
+
+  // copy py::array -> std::vector
+  std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
+  std::memcpy(ForceDensities.data(),pyForceDens.data(),pyForceDens.size()*sizeof(double));
+  std::memcpy(DirUpsampledWeights.data(),pyDirUpsampledWeights.data(),pyDirUpsampledWeights.size()*sizeof(double));
+
+  // call pure C++ function
+  vec velocities(pyChebPoints.shape()[0]*3,0.0);
+  subtractAllRPY(ChebPoints,ForceDensities,DirUpsampledWeights,velocities);
+
+  ssize_t              ndim    = 2;
+  std::vector<ssize_t> shape   = { pyChebPoints.shape()[0] , 3 };
+  std::vector<ssize_t> strides = { sizeof(double)*3 , sizeof(double) };
+
+  // return 2-D NumPy array
+  return py::array(py::buffer_info(
+    velocities.data(),                       /* data as contiguous array  */
+    sizeof(double),                          /* size of one scalar        */
+    py::format_descriptor<double>::format(), /* data type                 */
+    ndim,                                    /* number of dimensions      */
+    shape,                                   /* shape of the matrix       */
+    strides                                  /* strides for each axis     */
+  ));
+} 
+     
 py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints, npDoub pyForceDens, 
-     npDoub pyFinitePartVels, double g,  npInt pyNumbyFib, intvec &TargetNums, int nThreads, bool noCorrectionQuads)
+     npDoub pyFinitePartVels, double g,  npInt pyNumbyFib, intvec &TargetNums, int nThreads)
 {
   /**
     Python wrapper to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
@@ -147,7 +186,6 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
     @param pyNumbyFib = Npts (1D) numpy array of Nfib length with the number of targets that require correction for each fiber
     @param TargetNums = python LIST (not array) of the target indices that need correction in sequential order
     @param nThreads = number of threads to use in parallel processing
-    @param noCorrectionQuads = true if returning after subtracting the self RPY for a fiber (not doing special quad)
     @return velocities = Npts * 3 numpy array (2D) of corrections to the Ewald velocity. 
   **/
   
@@ -169,7 +207,7 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
 
   // call pure C++ function
   vec velocities(pyChebPoints.shape()[0]*3,0.0);
-  CorrectNonLocalVelocity(ChebPoints,UniformPoints,ForceDensities,CenterLineVels, g,NumbyFib,TargetNums, velocities,nThreads,noCorrectionQuads);
+  CorrectNonLocalVelocity(ChebPoints,UniformPoints,ForceDensities,CenterLineVels, g,NumbyFib,TargetNums, velocities,nThreads);
 
   ssize_t              ndim    = 2;
   std::vector<ssize_t> shape   = { pyChebPoints.shape()[0] , 3 };
@@ -230,5 +268,6 @@ PYBIND11_MODULE(ManyFiberMethods, m) {
     m.def("initFinitePartMatrix", &py_initFinitePartMatrix, "Initialize finite part matrix for C++");
     m.def("RPYFiberKernel", &py_RPYFiberKernel, "Evaluate the free space RPY kernel over a fiber");
     m.def("CorrectNonLocalVelocity", &py_CorrectNonLocalVelocity, "Evaluate corrections to the nonlocal velocity");
+    m.def("SubtractAllRPY",&py_SubtractAllRPY, "Subtract direct quadrature on each fiber individually");
     m.def("FinitePartVelocity", &py_FinitePartVelocity, "Compute the finite part density");
 }

@@ -28,17 +28,16 @@
 // GLOBAL VARIABLES AND THEIR INITIALIZATION
 //===========================================
 
-double epsilon, L, delta, fatdistance, fatepsilon;
+double epsilon, L, delta, aRPYFac, fatdistance, fatepsilon;
 int NFib, NChebperFib, NuniperFib, Nupsample;
-vec NormalChebNodes, upsampledNodes, NormalChebWts, UpsampledChebWts;
+vec NormalChebNodes, upsampledNodes, DirectChebWts, UpsampledChebWts;
 double dstarCL,dstarInterp, dstar2panels;
 double upsampdistance, specialdistance;
 vec FinitePartMatrix, DifferentiationMatrix;
 vec upsamplingMatrix, TwoPanelUpsampMatrix, ValuestoCoeffsMatrix;
 
-double aRPYFac = exp(1.5)*0.25;
 
-void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin, 
+void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin, double aRPYFacIn, 
                    int NfibIn,int NChebIn, int NuniIn, double deltain, double fatDistIn){
     /**
     Initialize variables relating to each fiber
@@ -54,6 +53,7 @@ void initFiberVars(double muin,vec3 Lengths, double epsIn, double Lin,
     cap the mobility at this radius). If fatDistIn = eps*L, we just call the original version 
     of the code without capping mobility. 
     **/
+    aRPYFac = aRPYFacIn;
     initRPYVars(aRPYFac*epsIn*Lin, muin, NfibIn*NChebIn, Lengths);
     // Set domain lengths
     initLengths(Lengths[0],Lengths[1],Lengths[2]);
@@ -93,7 +93,7 @@ void initNodesandWeights(const vec &normalNodesIn, const vec &normalWtsIn, const
     **/
     NormalChebNodes = normalNodesIn;
     NChebperFib = normalNodesIn.size();
-    NormalChebWts = normalWtsIn;
+    DirectChebWts = normalWtsIn;
     upsampledNodes = upNodes;
     Nupsample = upsampledNodes.size();
     UpsampledChebWts = upWeights;
@@ -255,7 +255,7 @@ void SBTKernelSplit(const vec3 &targpt, const vec &FibPts, const vec &ForceDens,
     double r, rdotf, u1, u3, u5;
     double outFront = 1.0/(8.0*M_PI*mu);
     int N = FibPts.size()/3;
-    double dco = exp(3)*1.0/24.0;
+    double dco = aRPYFac*aRPYFac*2.0/3.0;
     for (int iPt=0; iPt < N; iPt++){
         for (int d=0; d < 3; d++){
             rvec[d] = targpt[d]-FibPts[3*iPt+d];
@@ -385,25 +385,6 @@ void init2PanelsForSpecial(const vec &ChebFiberPoints, const vec &FibForceDensit
     DifferentiateCoefficients(Pan2Coeffs,3,Pan2DCoeffs);
 }
 
-void subtractAllRPY(const vec &ChebFiberPoints, const vec &FibForceDensities, vec &correctionUs){
-    /**
-    Method to subtract the RPY kernel at all targets due to the fiber that target belongs to. 
-    First step in correcting the Ewald velocities. 
-    @param ChebFiberPoints = points on all fibers 
-    @param FibForceDensities = fiber force densities on all fibers
-    @param correctionUs = correction velocities that are incremented
-    **/
-    for (int iPt=0; iPt < NChebperFib*NFib; iPt++){
-        int fibNum = iPt/NChebperFib;
-        vec3 uRPYSelf = {0,0,0};
-        vec3 target = {ChebFiberPoints[3*iPt], ChebFiberPoints[3*iPt+1], ChebFiberPoints[3*iPt+2]};
-        OneRPYKernel(target, ChebFiberPoints, FibForceDensities, NormalChebWts,NChebperFib*fibNum, NChebperFib*(fibNum+1), uRPYSelf);
-        for (int d =0; d< 3; d++){
-            correctionUs[3*iPt+d]-= uRPYSelf[d]; // SUBTRACT the RPY kernel
-        }
-    }
-}
-
 void calcCLVelocity(const vec &FinitePartCoefficients, const vec &DerivCoefficients, 
                     const vec &forceDCoefficients, double tapprox, vec3 &CLpart){
     /**
@@ -424,7 +405,7 @@ void calcCLVelocity(const vec &FinitePartCoefficients, const vec &DerivCoefficie
     double s = (tapprox+1.0)*L/2.0;
     double r = fatepsilon*L;
     double c = -log(fatepsilon*fatepsilon); // assume ellipsoidal tapering
-    std::cout << "Testing new local drag routine with delta and s=" << delta << " , " << s << std::endl;
+    //std::cout << "Testing new local drag routine with delta and s=" << delta << " , " << s << std::endl;
     if (delta < 0.5){
         if (s > 0.5*L){
             s = L-s; // reflect
@@ -436,7 +417,7 @@ void calcCLVelocity(const vec &FinitePartCoefficients, const vec &DerivCoefficie
         c = log(4.0*sNew*(L-sNew)/pow(epsilon*L,2));
         //std::cout << "s= " << s << " sNew = " << sNew << std::endl;
     }
-    std::cout << "Coefficient " << c << std::endl;
+    //std::cout << "Coefficient " << c << std::endl;
     for (int d =0; d < 3; d++){
         CLpart[d] += 1.0/(8*M_PI*mu)*(c*(forceDen[d]+Xs[d]*Xsdotf)+(forceDen[d]-3*Xs[d]*Xsdotf));
     }
@@ -445,9 +426,30 @@ void calcCLVelocity(const vec &FinitePartCoefficients, const vec &DerivCoefficie
 //===========================================
 // PUBLIC METHODS CALLED FROM OUTSIDE
 //===========================================
+void subtractAllRPY(const vec &ChebFiberPoints, const vec &FibForceDensities, const vec &DirUpsampledWeights, vec &correctionUs){
+    /**
+    Method to subtract the RPY kernel at all targets due to the fiber that target belongs to. 
+    First step in correcting the Ewald velocities. 
+    @param ChebFiberPoints = points on all fibers 
+    @param FibForceDensities = fiber force densities on all fibers
+    @param DirUpsampledWeights = weights for the direct quadrature to subract
+    @param correctionUs = correction velocities that are incremented
+    **/
+    int Ndirect = DirUpsampledWeights.size();
+    for (int iPt=0; iPt < Ndirect*NFib; iPt++){
+        int fibNum = iPt/Ndirect;
+        vec3 uRPYSelf = {0,0,0};
+        vec3 target = {ChebFiberPoints[3*iPt], ChebFiberPoints[3*iPt+1], ChebFiberPoints[3*iPt+2]};
+        OneRPYKernel(target, ChebFiberPoints, FibForceDensities, DirUpsampledWeights,Ndirect*fibNum, Ndirect*(fibNum+1), uRPYSelf);
+        for (int d =0; d< 3; d++){
+            correctionUs[3*iPt+d]+= uRPYSelf[d];
+        }
+    }
+}
+
 void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiberPoints, const vec &FibForceDensities, 
                              const vec &FinitePartVelocities, double g,const intvec &numTargsbyFib, 
-                             const intvec &allTargetNums, vec &correctionUs, int nThreads, bool noCorrectionQuads){
+                             const intvec &allTargetNums, vec &correctionUs, int nThreads){
     /**
     Method to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
     @param ChebFiberPoints = vector (row stacked) of Chebyshev points on ALL fibers
@@ -460,13 +462,7 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
     @param allTargetNums = vector of the target indices that need correction in sequential order
     @param correctionUs = vector (row stacked) of correction velocities (modified here) . 
     @param nThreads = number of threads to use in parallel processing
-    @param noCorrectionQuads = true if not doing special quad, false if doing special quad
     **/
-    // Subtract the self RPY for a single fiber
-    subtractAllRPY(ChebFiberPoints, FibForceDensities, correctionUs);
-    if (noCorrectionQuads){
-        return;
-    }
     // Cumulative sum of the number of targets by fiber to figure out where to start
     intvec endTargNum(numTargsbyFib.begin(),numTargsbyFib.end());
     std::partial_sum(endTargNum.begin(), endTargNum.end(),endTargNum.begin());
@@ -498,7 +494,7 @@ void CorrectNonLocalVelocity(const vec &ChebFiberPoints, const vec &UniformFiber
             int qtype = determineQuadratureMethod(UniformFiberPoints, iFib, g, targetPoint);
             if (qtype > 0){ // only do correction if necessary
                 // Subtract RPY kernel
-                OneRPYKernel(targetPoint,ChebFiberPoints,FibForceDensities,NormalChebWts,iFib*NChebperFib,(iFib+1)*NChebperFib, uRPY);
+                OneRPYKernel(targetPoint,ChebFiberPoints,FibForceDensities,DirectChebWts,iFib*NChebperFib,(iFib+1)*NChebperFib, uRPY);
                 if (qtype==1){
                     // Correct with upsampling (SBT kernel)
                     OneSBTKernel(targetPoint,UpsampledPos,UpsampledForceDs,UpsampledChebWts, 0, Nupsample, uSBT);

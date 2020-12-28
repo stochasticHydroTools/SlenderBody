@@ -49,8 +49,8 @@ tf=2.4          # final time
 gravity = 0.0   # gravity on the fibers
 giters = 1;
 
-Ns = [24];
-dts = [0.4, 0.2, 0.1, 0.05, 0.025, 0.0125];
+Ns = [16];
+dts = [0.1];
 for N in Ns:
     gits = [1];
     if (N==16):
@@ -60,17 +60,17 @@ for N in Ns:
             # Initialize the domain
             Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
-            # Initialize Ewald for non-local velocities
-            Ewald = EwaldSplitter(np.exp(1.5)/4*eps*Lf,mu,xi,Dom,N*nFib);
-
             # Initialize fiber discretization
-            fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1);
+            fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,NupsampleForDirect=N);
 
             # Initialize the master list of fibers
             allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0,Dom);
             fibList = makeThreeSheared(Lf,N,fibDisc);
             allFibers.initFibList(fibList,Dom);
             allFibers.fillPointArrays();
+            
+            # Initialize Ewald for non-local velocities
+            Ewald = EwaldSplitter(allFibers.getaRPY()*eps*Lf,mu,xi,Dom,N*nFib);
 
             # Initialize the temporal integrator
             TIntegrator = CrankNicolson(allFibers);
@@ -80,7 +80,7 @@ for N in Ns:
             TIntegrator.setMaxIters(giters);
 
             # Prepare the output file and write initial locations
-            of = prepareOutFile('NewLocationsN' +str(N)+'G'+str(giters)+str(dt)+'.txt');
+            of = prepareOutFile('New2LocationsN' +str(N)+'G'+str(giters)+str(dt)+'.txt');
             allFibers.writeFiberLocations(of);
 
             # Time loop

@@ -24,6 +24,7 @@ class Domain(object):
         self._Ly = Ly;
         self._Lz = Lz;
         self._Lens = np.array([self._Lx,self._Ly,self._Lz]);
+        self._g=0;
 
     ## ===================================
     ##          PUBLIC METHODS 
@@ -78,8 +79,6 @@ class Domain(object):
         For a general domain, check that the coordinates are in 
         the right boundaries and then stop.
         """
-        if (np.any(rprime > self._Lens) or np.any(rprime < 0) > 0):
-            raise ValueError('Points have gone out of the NON periodic domain');
         return rprime;
 
     def primecoords(self,ptsxyz):
@@ -124,6 +123,9 @@ class Domain(object):
         if (ing > 0):
             raise ValueError('Cannot set g (strain) in a non periodic domain');
         self._g = 0;
+        
+    def roundg(self):
+        return self._g; # will be zero
     
     def getg(self):
         return self._g;

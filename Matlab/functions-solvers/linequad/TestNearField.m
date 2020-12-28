@@ -48,7 +48,8 @@ for iFib=1:Nfib
     sqrt(sum((Xs).*(Xs),2));
     % Put some targets around it
     t=sort(rand(Ntarg,1)*Lf); % *still need to check what happens if slightly displaced from curve
-    dist = rand(Ntarg,1)*0.19*Lf+0.01*Lf;  % LONG DISTANCES
+    %dist = rand(Ntarg,1)*0.19*Lf+0.01*Lf;  % LONG DISTANCES N =16
+    dist = rand(Ntarg,1)*0.038*Lf+0.002*Lf; 
     %dist = rand(Ntarg,1)*8*epsilon*Lf+2*epsilon*Lf; % SHORT DISTANCES
     dists(iFib,:)=dist;
     utang = [xp(t);yp(t);zp(t)]; % sloppy unit tangents
@@ -68,17 +69,23 @@ for iFib=1:Nfib
     [sLg,wLg]=chebpts(6000,[0 Lf],1);
     thLg=acos(2*sLg/Lf -1);
     ptsUP = (cos((0:K-1).*thLg))*xhats;
-    fsUP = (cos((0:K-1).*thLg))*fhats; 
-    % Compute centerline velocity
-    % Local part
+    fsUP = (cos((0:K-1).*thLg))*fhats;
+    Ndir=128;
+    [s32,w32]=chebpts(Ndir,[0 Lf],1);
+    %[s32,w32]=SimpsonUniform(Ndir,[0 Lf]);
+    th32=acos(2*s32/Lf -1);
+    pts32 = (cos((0:K-1).*th32))*xhats;
+    fs32 = (cos((0:K-1).*th32))*fhats; 
     for iT=1:length(X)
         [uref1, uref2, uref3] = quadsum(ptsUP(:,1), ptsUP(:,2), ptsUP(:,3), wLg, ...
             fsUP(:,1),fsUP(:,2),fsUP(:,3),[X(iT) Y(iT) Z(iT)], 6000, epsilon,Lf);
+        [utarg(1),utarg(2),utarg(3)] = quadsum(pts32(:,1), pts32(:,2), pts32(:,3), w32, ...
+            fs32(:,1),fs32(:,2),fs32(:,3),[X(iT) Y(iT) Z(iT)], length(s32), epsilon,Lf);
         % Now compute the answer using the near field routine
-        [utarg,qtype] = nearFieldNoCL([X(iT) Y(iT) Z(iT)],fpts(:,1),fpts(:,2),fpts(:,3),forces(:,1),...
-            forces(:,2),forces(:,3),Lf,epsilon,mu,0);
+        %[utarg,qtype] = nearFieldNoCL([X(iT) Y(iT) Z(iT)],fpts(:,1),fpts(:,2),fpts(:,3),forces(:,1),...
+        %    forces(:,2),forces(:,3),Lf,epsilon,mu,0);
         er(iFib,iT) = compute_error(uref1, uref2, uref3, utarg(1),utarg(2),utarg(3));
-        qtypes(iFib,iT) = qtype;
+        %qtypes(iFib,iT) = qtype;
     end
 end
                                        
@@ -114,5 +121,19 @@ function errmax = compute_error(uref1, uref2, uref3, q1, q2, q3)
     err3 = abs(uref3-q3) ./ unorm;
     errmax = max(max(err1, err2), err3);
 end
+
+function [s,w] = SimpsonUniform(N,dom)
+    b=dom(2);
+    a=dom(1);
+    h = (b-a)/N;
+    s = (0:N)'*h;
+    w = zeros(N+1,1);
+    w(1)=h/3;
+    w(end)=h/3;
+    w(2:2:end)=4*h/3;
+    w(3:2:end-1)=2*h/3;
+    w=w';
+end
+    
 
 

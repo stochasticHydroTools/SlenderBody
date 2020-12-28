@@ -7,11 +7,10 @@
 % Output = (8*pi*mu)*fiber velocity. So it must be divided by 8*pi*mu to
 % give the correct result. Split into 2 pieces: the leading order local
 % term, and the non-local finite part integral
-function [Local,Oone] = calcSelf(N,s0,L,epsilon,X,Xs,f,D)
+function [Local,Oone] = calcSelf(N,s0,L,eps,X,Xs,f,D,delta)
     % The self term
     % Local part
     Local = zeros(N,3);
-    delta=0.1;
     if (delta < 0.5)
         x = 2*s0/L-1;
         regwt = tanh((x+1)/delta)-tanh((x-1)/delta)-1;
@@ -21,7 +20,7 @@ function [Local,Oone] = calcSelf(N,s0,L,epsilon,X,Xs,f,D)
     else
         sNew = L/2*ones(length(s0),1);
     end
-    Ls = log(4.*sNew.*(L-sNew)./(epsilon*L).^2);  
+    Ls = log(4.*sNew.*(L-sNew)./(eps*L).^2);    
     for iPt=1:N
         XsXs=Xs(iPt,:)'*Xs(iPt,:);
         Local(iPt,:) = ((eye(3)-3*XsXs)+...

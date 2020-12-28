@@ -4,8 +4,9 @@ import numba as nb
 import RPYKernels as RPYcpp
 import time
 from math import pi
+from warnings import warn
 
-verbose = -1;
+verbose = 1;
 
 class RPYVelocityEvaluator(object):
     """
@@ -21,6 +22,7 @@ class RPYVelocityEvaluator(object):
         Input variables: a = hydrodynamic radius of the RPY blobs, mu = fluid viscosity
         """
         self._a = float(a);
+        print('Ewald radius %f' %self._a)
         self._mu = float(mu);
         self._Npts = Npts;
 
@@ -73,8 +75,8 @@ class RPYVelocityEvaluator(object):
 
 
 ## Some parameters specific to Ewald
-nearcut = 1e-3; # cutoff for near field interactions
-fartol = 1e-3; # far field tolerance for FINUFFT
+nearcut = 1e-10; # cutoff for near field interactions
+fartol = 1e-10; # far field tolerance for FINUFFT
 rcuttol = 1e-2; # accuracy of truncation distance for Ewald
 trouble_xi_step = 0.1; # if we have to increase Ewald parameter xi mid-run, how much should we increase by?
 class EwaldSplitter(RPYVelocityEvaluator):
@@ -288,3 +290,76 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self._fzhat = np.zeros([self._nx,self._ny,self._nz],dtype=np.complex128,order='F');
         self._fhat = np.zeros([self._nx,self._ny,self._nz,3],dtype=np.complex128,order='F');
 
+
+# Parameters for Raul's code 
+#import uammd
+GPUtol = 1e-6 # single precision, so 1e-6 is smallest tolerance
+class GPUEwaldSplitter(EwaldSplitter):
+    
+    """
+    This class implements Ewald splitting using UAMMD 
+    """
+    ## ========================================
+    ##          METHODS FOR INITIALIZATION
+    ## ========================================
+    def __init__(self,a,mu,xi,PerDom,Npts):
+        """
+        Constructor. Initialize the Ewald splitter. 
+        Extra input variables: xi = Ewald splitting parameter,
+        PerDom = PeriodicDomain object, Npts = number of blobs
+        """
+        self._a = float(a);
+        self._mu = float(mu);
+        self._Npts = Npts;
+
+        self._xi = float(xi);
+        self._PerLengths = PerDom.getPeriodicLens()
+        self._currentDomain = PerDom;
+        
+        # Initialize C++ code (for checking rcut dynamically)
+        RPYcpp.initRPYVars(a,mu,Npts,PerDom.getPeriodicLens());
+        
+        # Raul's code
+        self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
+            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]),shearStrain=0);
+        self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
+        warn('GPU code only works for non-strained cells')
+        
+        # Calculate the truncation distance for Ewald
+        print('%.2E GPU tolerance' %GPUtol)
+        
+    ## =========================================
+    ##    PUBLIC METHODS CALLED OUTSIDE CLASS
+    ## =========================================
+    def calcBlobTotalVel(self,ptsxyz,forces,Dom,SpatialData,nThr=1):
+        """
+        Total velocity due to Ewald (far field + near field). 
+        Inputs: ptsxyz = the list of points 
+        in undeformed, Cartesian coordinates, forces = forces at those points,
+        SpatialData = SpatialDatabase object for fast neighbor computation.
+        nThr = number of threads for parallel processing
+        Output: the total velocity as an Npts x 3 array.
+        """
+        # First check if Ewald parameter is ok
+        self._currentDomain = Dom;
+        self.checkrcut();
+        # Reshape for GPU
+        positions = np.array(np.reshape(ptsxyz,3*self._Npts), np.float32);
+        forcesR = np.array(np.reshape(forces,3*self._Npts), np.float32);
+        # It is really important that the result array has the same floating precision as the compiled uammd, otherwise
+        # python will just silently pass by copy and the results will be lost
+        MF=np.zeros(3*self._Npts, np.float32);
+        t=time.time();
+        self._GPUEwald.Mdot(positions, forcesR, MF)
+        print('Time Raul: %f' %(time.time()-t));
+        return np.reshape(MF,(self._Npts,3))
+    
+    def updateFarFieldArrays(self):
+        """
+        Update GPU if the Ewald parameter has to be enlarged
+        """
+        print('Updating GPU far field arrays')
+        self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
+            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]),shearStrain=0);
+        self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
+        

@@ -1,5 +1,5 @@
 % Inextensible update by rotating tangent vectors and integrating
-function [Xnp1,Xsp1] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU)
+function [Xnp1,Xsp1] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU,solver)
     % Resampling matrices
     th=flipud(((2*(0:N-1)+1)*pi/(2*N))');
     Lmat = (cos((0:N-1).*th));
@@ -8,7 +8,10 @@ function [Xnp1,Xsp1] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU)
     % Compute new Xs
 %     g1=Lmat(:,1:N-1)*alphas(1:N-1);
 %     g2=Lmat(:,1:N-1)*alphas(N:2*N-2);
-    Xsk = 1.5*Xsin-0.5*Xsm1;
+    Xsk = Xsin;
+    if (solver > 1)
+        Xsk = 1.5*Xsin-0.5*Xsm1;
+    end
 %     [theta,phi,~] = cart2sph(Xsk(:,1),Xsk(:,2),Xsk(:,3));
 %     theta(abs((abs(phi)-pi/2)) < 1e-12) =0;
 %     n1s=[-sin(theta) cos(theta) 0*theta];
@@ -20,7 +23,7 @@ function [Xnp1,Xsp1] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU)
     nOm = sqrt(sum(Omega.*Omega,2));
     % Have to truncate somewhere to avoid instabilities
     k = Omega./nOm;
-    k(nOm < 1e-6,:) = 0;
+    k(nOm < 1e-8,:) = 0;
     % Rodriguez formula on the N grid. 
     Xsp1 = Xsin.*cos(nOm*dt)+cross(k,Xsin).*sin(nOm*dt)+k.*sum(k.*Xsin,2).*(1-cos(nOm*dt));
     % Integrate Xsp1 by going to Chebyshev space

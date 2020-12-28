@@ -88,7 +88,7 @@ class TemporalIntegrator(object):
         Dom.setg(self._allFibers.getg(t));
         self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep,of);
 
-    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,gravden,outfile=None,outfileCL=None,write=1):
+    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,gravden,outfile=None,outfileCL=None,write=1,updateNet=False):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the maximum number of steps numSteps,
@@ -98,7 +98,13 @@ class TemporalIntegrator(object):
         the CL network links to write=1 to write to it, 0 otherwise.  
         """   
         # Update the network (first time - when we do dynamic CLs)
-        # self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt,iT));
+        thist = time.time()
+        if (updateNet):
+            self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt,iT));
+        if (verbose > 0):
+            print('Time to update network (first time) %f' %(time.time()-thist))
+            thist = time.time()
+        
         # Set domain strain and fill up the arrays of points
         tvalSolve = self.gettval(iT,dt);
         Dom.setg(self._allFibers.getg(tvalSolve));
@@ -111,10 +117,9 @@ class TemporalIntegrator(object):
         
         # Forces from gravity and CLs to be treated EXPLICITLY
         forceExt = self._allFibers.uniformForce([0,0,gravden]);
-        thist = time.time()
         if (self._CLNetwork is not None):
             uniPoints = self._allFibers.getUniformPoints(XforNL);
-            forceExt += self._CLNetwork.CLForce(uniPoints,XforNL,Dom);
+            forceExt += self._CLNetwork.CLForce(uniPoints,XforNL,Dom,self._allFibers);
         if (verbose > 0):
             print('Time to calc CL force %f' %(time.time()-thist))
             thist = time.time()
@@ -149,6 +154,11 @@ class TemporalIntegrator(object):
             SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
             Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=GMREStolerance,maxiter=giters)
             lamalphT = Solution.xk;
+            if (giters > 5 and verbose > 0): 
+                resno = Solution.resnorms
+                print(resno)
+                print('Number of iterations %d' %len(resno))
+                print('Last residual %f' %resno[len(resno)-1])
             lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
         if (verbose > 0):
             print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
@@ -169,7 +179,10 @@ class TemporalIntegrator(object):
             thist = time.time()
             
         # Update the network (second time - when we do dynamic CLs)
-        #self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt,iT,numSteps));
+        if (updateNet):
+            self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt,iT,numSteps));
+        if (verbose > 0):
+            print('Time to update network (second time) %f' %(time.time()-thist))
         if (write):
             self._allFibers.writeFiberLocations(outfile);
         return maxX;    

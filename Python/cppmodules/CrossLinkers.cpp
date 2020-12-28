@@ -5,6 +5,7 @@
 #include <random>
 #include <chrono>
 #include "Domain.cpp"
+#include "Chebyshev.cpp"
 #include "types.h"
 
 /**
@@ -15,7 +16,7 @@ for cross linker related calculations in the C++ code
 // GLOBAL VARIABLES
 std::uniform_real_distribution<double> unif(0.0, 1.0);
 std::mt19937_64 rng;
-double kon0, koff0, cl_cut; // dynamic info
+double kon0, koff0, cl_Plusdelta, cl_Minusdelta; // dynamic info
 vec sUniform, sChebyshev, weights;
 int NCheb, Nuni, maxCLs; 
 double sigma,Kspring,restlen;
@@ -38,18 +39,19 @@ void seedRandomCLs(int myseed){
     }
 }
 
-void initDynamicCLVariables(double konin, double koffin, double cl_cutin, vec3 Lengths){
+void initDynamicCLVariables(double konin, double koffin, double cl_deltaMinus, double cl_deltaPlus, vec3 Lengths){
     /**
     Initialize variables related to dynamic cross linking. 
     @param konin = base binding rate in 1/s
     @param koffin = base unbinding rate in 1/s
-    @param cl_cutin = cutoff distance to form a link 
+    @param cl_deltaMinus,Plus = delta cutoff distance to form a link (1-cl_deltaMinus)*rest len , (1+cl_deltaPlus)*rest len
     @param Lengths = 3-vector of periodic lengths
     **/
     initLengths(Lengths[0],Lengths[1],Lengths[2]);
     kon0 = konin;
     koff0 = koffin;
-    cl_cut = cl_cutin;
+    cl_Plusdelta = cl_deltaPlus;
+    cl_Minusdelta = cl_deltaMinus;
 }
 
 void initCLForcingVariables(const vec &sU, const vec &sC, const vec &win, double sigin, double Kin, double rl, int nCL){
@@ -116,6 +118,70 @@ void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, con
         vec3 ds;
         for (int d =0; d < 3; d++){
             ds[d] = uniPoints[3*iPtstar+d] -  uniPoints[3*jPtstar+d] - Shifts[3*iL+d];
+        }
+        double nds = sqrt(dot(ds,ds));
+        for (int iPt=0; iPt < NCheb; iPt++){
+            for (int jPt=0; jPt < NCheb; jPt++){
+                // Displacement vector
+                double deltah1 = deltah(sChebyshev[iPt]-s1star);
+                double deltah2 = deltah(sChebyshev[jPt]-s2star);
+                // Multiplication due to rest length and densities
+                double factor = (1.0-restlen/nds)*deltah1*deltah2*rnorm;
+                vec3 forceij;
+                for (int d =0; d < 3; d++){
+                    forceij[d] = -Kspring*(chebPoints[iFib*3*NCheb+3*iPt+d] -  chebPoints[jFib*3*NCheb+3*jPt+d] - Shifts[3*iL+d])*factor;
+                    #pragma omp atomic update
+                    CLForces[iFib*3*NCheb+3*iPt+d] += forceij[d]*weights[jPt];
+                    #pragma omp atomic update
+                    CLForces[jFib*3*NCheb+3*jPt+d] -= forceij[d]*weights[iPt];
+                }
+            }
+        }
+    }
+}
+
+void calcCLForces2(const intvec &iFibs, const intvec &jFibs, const vec &iSstars, const vec & jSstars, const vec &Shifts,    
+    const vec &chebPoints, const vec &chebCoefficients, vec &CLForces, double Lfib,int nThreads){
+    /**
+    Compute force densities on the fibers from the list of links. 
+    @param iFibs = nLinks vector of fiber numbers where one CL end is
+    @param jFibs = nLinks vector of fiber numbers where the other end is
+    @param iSstars = nLinks vector of s locations where one end is
+    @param jSstars = nLinks vector of s locations for the other end
+    @param Shifts = rowstacked vector of nLinks shifts in link displacements due to periodicity
+    @param uniPoints = rowstacked vector of the uniform fiber points 
+    @param chebPoints = rowstacked vector of Chebyshev fiber points
+    @param chebCoefficients = rowstacked vector of Chebyshev coefficients
+    @param CLForces = force densities on the fibers (row stacked) to be modified
+    @param nThreads = number of threads for parallel processing
+    **/
+    #pragma omp parallel for num_threads(nThreads)
+    for (int iL=0; iL < iFibs.size(); iL++){
+        int iFib = iFibs[iL];
+        int jFib = jFibs[iL];
+        double s1star = iSstars[iL];
+        double s2star = jSstars[iL];
+        double totwt1=0;
+        double totwt2=0;
+        for (int kPt=0; kPt < NCheb; kPt++){
+            totwt1+=deltah(sChebyshev[kPt]-s1star)*weights[kPt];
+            totwt2+=deltah(sChebyshev[kPt]-s2star)*weights[kPt];
+        }
+        double rnorm = 1.0/(totwt1*totwt2); // normalization factor
+        vec3 ds;
+        // Find the two points on the fibers
+        // TEMP: copy coefficients into two vectors
+        vec Xihat(3*NCheb), Xjhat(3*NCheb);
+        for (int iPt=0; iPt < 3*NCheb; iPt++){
+            Xihat[iPt] = chebCoefficients[iFib*3*NCheb+iPt];
+            Xjhat[iPt] = chebCoefficients[jFib*3*NCheb+iPt];
+        }
+        vec3 Xistar={0,0,0};
+        vec3 Xjstar={0,0,0};
+        eval_Cheb3Dirs(Xihat, 2.0*s1star/Lfib-1, Xistar);
+        eval_Cheb3Dirs(Xjhat, 2.0*s2star/Lfib-1, Xjstar);
+        for (int d =0; d < 3; d++){
+            ds[d] = Xistar[d] -  Xjstar[d] - Shifts[3*iL+d];
         }
         double nds = sqrt(dot(ds,ds));
         for (int iPt=0; iPt < NCheb; iPt++){
@@ -222,7 +288,7 @@ double calcKoffOne(int iPt,int jPt,const vec &uniPts, double g){
 double calcKonOne(int iPt, int jPt,const vec &uniPts,double g){
     /**
     Calculate the rate of binding for a single link. We are assuming
-    in this method a UNIFORM binding rate WITHIN DISTANCE cl_cut.
+    in this method a UNIFORM binding rate WITHIN DISTANCE (1-cl_Minusdelta)*restlen, (1+cl_Plusdelta)*restlen.
     @param iPt = one end of a link (index of uniform fiber points)
     @param jPt = other end of the link (index of uniform fiber points)
     @param uniPts = Nuni*Nfib*3 row stacked vector of uniform fiber points
@@ -238,7 +304,8 @@ double calcKonOne(int iPt, int jPt,const vec &uniPts,double g){
     }
     calcShifted(rvec,g);
     double r = normalize(rvec);
-    if (r < cl_cut){
+    if (r < (1+cl_Plusdelta)*restlen && r > (1-cl_Minusdelta)*restlen){
+        //std::cout << r << std::endl;
         return kon0;
     }
     return 0;
@@ -261,30 +328,47 @@ intvec newEventsList(vec &rates, const intvec &iPts, const intvec &jPts, intvec 
     Each "event" is an index in iPts and jPts that says that pair will bind
     **/
     // Initialize times and events
-    std::vector <double> times(rates.size()); 
+    vec times(rates.size()); 
     // Compute times from rates by sampling from an exponential distribution
     for (int iPair = 0; iPair < rates.size(); iPair++){
         times[iPair] = -log(1.0-unif(rng))/rates[iPair];
     }
-    std::cout << "TEMPORARY: allowing multiple links per site" << std::endl;
+    //std::cout << "TEMPORARY: allowing multiple links per site" << std::endl;
     double systime = 0.0;
     std::vector <int> events;
     int nEvents=0;
     while (systime < tstep){
-        
-        // Find the minimum time and the nextEvent
+                   
         int nextEvent = std::distance(times.begin(), std::min_element(times.begin(), times.end()));
         int iPt = iPts[nextEvent];
         int jPt = jPts[nextEvent];
         systime = times[nextEvent];
+        if (nLinks == maxCLs){
+            //std::cout << "Old sys time " << systime << std::endl;
+            systime = tstep;
+            for (int iT=0; iT < times.size(); iT++){
+                if (nowBound[iT]==1 && times[iT] < systime){ // time is time to unbind
+                    systime=times[iT];
+                    nextEvent=iT;
+                }
+            }
+            iPt = iPts[nextEvent];
+            jPt = jPts[nextEvent];
+            //std::cout << "New sys time " << systime << std::endl;
+            for (int iT=0; iT < times.size(); iT++){
+                if (times[iT] < systime){ // redraw for events that got skipped 
+                    times[iT] = -log(1.0-unif(rng))/rates[iT]+systime;
+                }
+            }
+        }
         
         // Add the event to the list of events if possible
         if (systime < tstep){
             // Check if the event can actually happen
-            //if (nowBound[nextEvent]==1 || (added[iPt]==0 && added[jPt]==0 && nLinks < maxCLs)){
-            if (nowBound[nextEvent]==1 || nLinks < maxCLs){
+            if (nowBound[nextEvent]==1 || (added[iPt]==0 && added[jPt]==0 && nLinks < maxCLs)){
+            //if (nowBound[nextEvent]==1 || nLinks < maxCLs){
                 nEvents++;
-                
+                //std::cout << "System time " << systime << " and event " << nextEvent << std::endl;
                 // Find if event has already been done, so we need to undo it
                 auto iF = std::find(events.begin(), events.end(), nextEvent); 
                 if (iF != events.end()){ 

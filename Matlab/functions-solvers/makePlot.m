@@ -55,9 +55,7 @@ for iL=unique(plotlinks')
     ind1 = (iFib-1)*3*N+3*n1-2;
     [~,n2] = min(abs(s0-links(iL,4)));
     ind2 = (jFib-1)*3*N+3*n2-2;
-    sx=0;
-    sy=0;
-    sz=0;
+    sx=0; sy=0; sz=0;
     for iS=1:length(sx)
         if (thk==0.5)
             plot3(Xt(inds1)-Ld*(sx(iS)+gn*sy(iS)),Xt(inds1+1)-Ld*sy(iS),Xt(inds1+2)-Ld*sz(iS),...
@@ -72,16 +70,29 @@ for iL=unique(plotlinks')
                 Xt(inds2+2)-shift2(3)-Ld*sz(iS),'-','LineWidth',thk,...
                 'Color',Corder(mod(jFib,7)+(mod(jFib,7)==0)*7,:))
         end
-        plot3([Xt(ind1) Xt(ind2)-shift2(1)]-Ld*(sx(iS)+gn*sy(iS)),...
-            [Xt(ind1+1) Xt(ind2+1)-shift2(2)]-Ld*(sy(iS)), ...
-            [Xt(ind1+2) Xt(ind2+2)-shift2(3)]-Ld*(sz(iS)),...
-            '--k','LineWidth',0.1)
+        X1 = [Xt(inds1)-Ld*(sx(iS)+gn*sy(iS)) Xt(inds1+1)-Ld*sy(iS) Xt(inds1+2)-Ld*sz(iS)];
+        X2 = [Xt(inds2)-shift2(1)-Ld*(sx(iS)+gn*sy(iS)) Xt(inds2+1)-shift2(2)-Ld*sy(iS) Xt(inds2+2)-shift2(3)-Ld*sz(iS)];
+        % Find points on fibers where CL is bound
+        th=flipud(((2*(0:N-1)+1)*pi/(2*N))');
+        Lmat = (cos((0:N-1).*th));
+        % Calculate the force density on fiber 1
+        s1star=links(iL,2);
+        th1 = acos(2*s1star/Lf-1)';
+        U1 = (cos((0:N-1).*th1));
+        X1star = U1*(Lmat \ X1);
+        s2star=links(iL,4);
+        th2 = acos(2*s2star/Lf-1)';
+        U2 = (cos((0:N-1).*th2));
+        X2star = U2*(Lmat \ X2);
+        Linkpts = [X1star;X2star];
+        plot3(Linkpts(:,1),Linkpts(:,2),Linkpts(:,3),'--k','LineWidth',0.1)
+        
     end
 end
 end
 str=sprintf('$t=$ %1.2f s', t);
 title(str,'Interpreter','latex')
-%view(3)
+view(3)
 %view([48.86 14.73])
 % view([60 30])
 % xlim([-Ld/2 Ld/2])
@@ -90,7 +101,9 @@ title(str,'Interpreter','latex')
 % xlim([-1.2 1])
 % ylim([-1.2 1])
 % zlim([-1.2 1])
-% view(2)
+view(2)
+xlim([0 Ld])
+ylim([-0.05 0.2])
 xlabel('$x$','interpreter','latex')
 ylabel('$y$','interpreter','latex')
 zlabel('$z$','interpreter','latex')

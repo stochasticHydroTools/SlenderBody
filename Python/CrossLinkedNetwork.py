@@ -1,6 +1,11 @@
 import numpy as np
 import CrossLinking as clinks
 from warnings import warn 
+from scipy.sparse import csr_matrix
+from scipy.sparse.csgraph import connected_components, shortest_path
+import time
+
+verbose =-1;
 
 class CrossLinkedNetwork(object):
 
@@ -44,19 +49,28 @@ class CrossLinkedNetwork(object):
         
         # The standard deviation of the cross linking Gaussian depends on the
         # number of points per fiber and the length of the fiber.
-        if (self._Npf < 24):
+        if (self._Npf <= 24):
             self._sigma = 0.10*self._Lfib;
         elif (self._Npf < 28):
             self._sigma = 0.07*self._Lfib;
         # Cutoff distance to form the CLs (temporarily the same as the rest length)
-        self._clcut = self._rl;
+        self._lowercldelta = 0.01;
+        # Add fudge factor because of discrete sites
+        ds = self._Lfib/(self._NsitesPerf-1);
+        self._uppercldelta = np.sqrt(((1+self._lowercldelta)*self._rl)**2 + ds**2/4)/self._rl-1;
+        print('Discrete fudge factor %f ' % self._uppercldelta)
+        # Allow links to form if two sites are in distance range (1-_lowercldelta)*l, (1+_uppercldelta)*l
         print('Sigma/L is %f' %(self._sigma/self._Lfib))
         # Uniform binding locations
         self._su = np.linspace(0.0,self._Lfib,self._NsitesPerf,endpoint=True);
         self._wCheb = fibDisc.getw();
         # Seed C++ random number generator and initialize the C++ variables for cross linking 
         clinks.seedRandomCLs(CLseed);
-        clinks.initDynamicCLVariables(self._kon,self._koff,self._clcut,Dom.getPeriodicLens());
+        DLens = Dom.getPeriodicLens();
+        for iD in range(len(DLens)):
+            if (DLens[iD] is None):
+                DLens[iD] = 1e99;
+        clinks.initDynamicCLVariables(self._kon,self._koff,self._lowercldelta,self._uppercldelta,DLens);
         clinks.initCLForcingVariables(self._su,fibDisc.gets(),fibDisc.getw(),self._sigma,self._kCL,self._rl,self._nCL);
     
     ## ==============================================
@@ -77,7 +91,7 @@ class CrossLinkedNetwork(object):
         SpatialDatabase = fiberCol.getUniformSpatialData();
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
         nLinks = self._numLinks;
-        uniNeighbs = SpatialDatabase.selfNeighborList(self._clcut);
+        uniNeighbs = SpatialDatabase.selfNeighborList((1+self._uppercldelta)*self._rl);
         
         # Filter the list of neighbors to exclude those on the same fiber
         iFibs = uniNeighbs[:,0] // self._NsitesPerf;
@@ -135,7 +149,10 @@ class CrossLinkedNetwork(object):
             self.addLink(totiPts[newL],totjPts[newL],uniPts,Dom);
         if (of is not None): # write changes to file 
             self.writeLinks(of,uniPts,Dom);
-    
+ 
+    ## ==============================================
+    ##     METHODS FOR INFORMATION ABOUT THE NETWORK
+    ## ==============================================   
     def calcLinkStrains(self,uniPoints,Dom):
         """
         Method to compute the strain in each link
@@ -150,11 +167,79 @@ class CrossLinkedNetwork(object):
         shifts = Dom.unprimecoords(np.array(self._Shifts));
         for iLink in range(self._numLinks):
             ds = uniPoints[self._iPts[iLink],:]-uniPoints[self._jPts[iLink],:]-shifts[iLink,:];
-            linkStrains[iLink]=np.linalg.norm(ds)-self._rl;
+            linkStrains[iLink]=(np.linalg.norm(ds)-self._rl)/self._rl;
+        #print(np.amax(np.abs(linkStrains)))
         return linkStrains;
         
-            
-    def CLForce(self,uniPoints,chebPoints,Dom):
+    def NumSitesFull(self):
+        """
+        Determine how many sites on each fiber are occupied
+        """
+        NfullByFib = np.zeros(self._nFib);
+        for iFib in range(self._nFib):
+            NfullByFib[iFib]=np.sum(self._added[iFib*self._NsitesPerf:(iFib+1)*self._NsitesPerf]);
+        return NfullByFib;
+   
+    def FindBundles(self):
+        iFibs = np.array(self._iPts)//self._NsitesPerf;
+        jFibs = np.array(self._jPts)//self._NsitesPerf;
+        AdjacencyMatrix = csr_matrix((np.ones(self._numLinks),(iFibs,jFibs)),shape=(self._nFib,self._nFib));
+        ConnectedMatrix=csr_matrix((np.ones(AdjacencyMatrix.nnz),AdjacencyMatrix.nonzero()),shape=(self._nFib,self._nFib))
+        BundledFibs = AdjacencyMatrix -ConnectedMatrix; # only the ones that have 2 connections will be 1 now. 
+        n_components, labels = connected_components(csgraph=BundledFibs, directed=False, return_labels=True)
+        return n_components, labels;  
+    
+    def BundleOrderParameter(self,fibCollection,tanvecs,weights,n_components,labels):
+        """
+        Get the order parameter of each bundle
+        """
+        BundleMatrices = np.zeros((3*n_components,3));
+        NPerBundle = np.zeros(n_components);
+        OrderParams = np.zeros(n_components);
+        for iFib in range(self._nFib):
+            # Find cluster
+            clusterindex = labels[iFib];
+            NPerBundle[clusterindex]+=1;
+            iInds = fibCollection.getRowInds(iFib);
+            Xs = tanvecs[iInds,:];
+            for p in range(self._Npf):
+                BundleMatrices[clusterindex*3:clusterindex*3+3,:]+=np.outer(Xs[p,:],Xs[p,:])*weights[p];
+        for clusterindex in range(n_components):
+            B = 1/(NPerBundle[clusterindex]*self._Lfib)*BundleMatrices[clusterindex*3:clusterindex*3+3,:];
+            EigValues = np.linalg.eigvalsh(B);
+            OrderParams[clusterindex] = np.amax(np.abs(EigValues))
+        return OrderParams, NPerBundle;
+     
+    
+    def LocalOrientations(self,nEdges,fibCollection,tanvecs,weights):  
+        """
+        For every fiber within nEdges connections of me, what is the orientation
+        Returns an nFib array
+        """
+        iFibs = np.array(self._iPts)//self._NsitesPerf;
+        jFibs = np.array(self._jPts)//self._NsitesPerf;
+        AdjacencyMatrix = csr_matrix((np.ones(self._numLinks),(iFibs,jFibs)),shape=(self._nFib,self._nFib));
+        NeighborOrderParams = np.zeros(self._nFib);
+        numCloseBy = np.zeros(self._nFib);
+        Distances = shortest_path(AdjacencyMatrix, directed=False, unweighted=True, indices=None)
+        for iFib in range(self._nFib):
+            OtherFibDistances = Distances[iFib,:];
+            Fibs = np.arange(self._nFib);
+            CloseFibs = Fibs[OtherFibDistances <= nEdges];
+            ninBundle = len(CloseFibs);
+            numCloseBy[iFib]=ninBundle;
+            B = np.zeros((3,3));
+            for jFib in CloseFibs:
+                jInds = fibCollection.getRowInds(jFib);
+                Xs = tanvecs[jInds,:];
+                for p in range(self._Npf):
+                    B+=np.outer(Xs[p,:],Xs[p,:])*weights[p];
+            B*= 1/(ninBundle*self._Lfib);
+            EigValues = np.linalg.eigvalsh(B);
+            NeighborOrderParams[iFib] = np.amax(np.abs(EigValues))
+        return NeighborOrderParams, numCloseBy;
+                   
+    def CLForce(self,uniPoints,chebPoints,Dom,fibCollection):
         """
         Compute the total cross linking force.
         Inputs: uniPoints = uniform points for all fibers, chebPoints = Chebyshev points 
@@ -166,8 +251,29 @@ class CrossLinkedNetwork(object):
             return np.zeros(3*self._Npf*self._nFib);
         # Call the C++ function to compute forces
         shifts = Dom.unprimecoords(np.array(self._Shifts));
+        #import time
+        #t=time.time();
         Clforces = clinks.calcCLForces(self._iPts, self._jPts,shifts,uniPoints,chebPoints,self._nThreads);
         return Clforces;
+        #print('First method time %f' %(time.time()-t))
+        # Alternative implementation for arbitrary binding pts
+        t=time.time();
+        iFibs = np.array(self._iPts)//self._NsitesPerf;
+        iUnis = self._su[np.array(self._iPts) % self._NsitesPerf];
+        jFibs = np.array(self._jPts)//self._NsitesPerf;
+        jUnis = self._su[np.array(self._jPts) % self._NsitesPerf];
+        iCenters = np.zeros((self._numLinks,3));
+        jCenters = np.zeros((self._numLinks,3));
+        fD = fibCollection._fiberDisc;
+        # Compute coefficients of all fibers
+        Coefficients = np.zeros((self._nFib*self._Npf,3));
+        for iFib in range(self._nFib):
+            iInds = fibCollection.getRowInds(iFib);
+            Coefficients[iInds,:],_=fD.Coefficients(chebPoints[iInds,:]);
+        Clforces2 = clinks.calcCLForces2(iFibs.astype(int),jFibs.astype(int),iUnis,jUnis,shifts,chebPoints,Coefficients,self._Lfib,self._nThreads);
+        print('Second method time %f' %(time.time()-t))
+        print('Error %f e-8' %(1e8*np.amax(np.abs(Clforces-Clforces2))))
+        print(self._numLinks) 
     
     def CLStress(self,fibCollection,chebPts,Dom):
         """
@@ -252,14 +358,12 @@ class CrossLinkedNetwork(object):
         Set the links from a file name. The file has a list of iPts, 
         jPts (two ends of the links), and shift in zero strain coordinates 
         """
-        warn('Setting links from file - this is only functional for PERMANENT links')
         AllLinks = np.loadtxt(FileName);
         self._numLinks = len(AllLinks)-1;
         self._iPts = list(AllLinks[1:,0].astype(int));
         self._jPts = list(AllLinks[1:,1].astype(int));
         for iL in range(self._numLinks):
-            shiftUnprime = -AllLinks[iL+1,2:]
-            shiftPrime = Dom.primecoords(shiftUnprime);
+            shiftPrime = AllLinks[iL+1,2:]
             self._Shifts.append(shiftPrime);
 
     def calcKoff(self,uniPts,Dom):
@@ -293,8 +397,6 @@ class CrossLinkedNetwork(object):
         points to link, uniPts = (Nsites*Nfib)x3 array of uniform binding 
         sites on the fibers, Dom = Domain object
         Outputs: the rates of binding (units 1/s) for each link
-        In this parent class, we assume a constant rate of binding
-        as long as the 2 points are actually closer than self._clcut
         """
         nNew, _ = newLinks.shape;
         Kons = np.zeros(nNew);
@@ -314,20 +416,19 @@ class CrossLinkedNetwork(object):
         """
         rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
         r = np.linalg.norm(rvec);
-        if (r < self._clcut):
+        if (r < (1+self._uppercldelta)*self._rl and r > (1-self._lowercldelta)*self._rl):
             return self._kon;
         return 0;                        
 
-    def writeLinks(self,of,uniPts,Dom):
+    def writeLinks(self,of,uniPts):
         """
         Write the links to a file object of. 
         """
         of.write('%d \t %d \t %f \t %f \t %f \n' %(self._numLinks,-1,-1,-1,-1));
         for iL in range(self._numLinks):
-            shift = Dom.unprimecoords(self._Shifts[iL]); 
-            rvec = uniPts[self._iPts[iL],:]-uniPts[self._jPts[iL],:]-shift;
+            shift = self._Shifts[iL]; 
             of.write('%d \t %d \t %f \t %f \t %f \n' \
-                %(self._iPts[iL], self._jPts[iL],rvec[0],rvec[1],rvec[2]));
+                %(self._iPts[iL], self._jPts[iL],shift[0],shift[1],shift[2]));
     
     def writePossibles(self,newLinks):
         """
@@ -339,7 +440,8 @@ class CrossLinkedNetwork(object):
         for iL in range(nNew):
             of.write('%d \t %d \n' %(newLinks[iL,0], newLinks[iL,1]));
         of.close();
-        
+
+
 class KMCCrossLinkedNetwork(CrossLinkedNetwork):
     
     """
@@ -373,17 +475,20 @@ class KMCCrossLinkedNetwork(CrossLinkedNetwork):
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
         
         # Form two column array of possible pairs for linking. 
-        uniNeighbs = SpatialDatabase.selfNeighborList(self._clcut);
+        uniNeighbs = SpatialDatabase.selfNeighborList((1+self._uppercldelta)*self._rl);
         # Filter the list of neighbors to exclude those on the same fiber
         iFibs = uniNeighbs[:,0] // self._NsitesPerf;
         jFibs = uniNeighbs[:,1] // self._NsitesPerf;
         delInds = np.arange(len(iFibs));
         newLinks = np.delete(uniNeighbs,delInds[iFibs==jFibs],axis=0);
         nPairs, _ = newLinks.shape;
+        #print(nPairs)
         
         # Calculate (un)binding rates for each event
         rateUnbind = self.calcKoff(uniPts,Dom);
+        #print(rateUnbind)
         rateBind = clinks.calcKons(newLinks, uniPts,Dom.getg()); 
+        #print(rateBind)
             
         # Make lists of pairs of points and events
         totiPts = np.concatenate((np.array(self._iPts,dtype=int),newLinks[:,0]));
@@ -396,8 +501,10 @@ class KMCCrossLinkedNetwork(CrossLinkedNetwork):
         nLinks = self._numLinks; # local copy
         # C++ function gives a list of events in order, indexed by the number in the list
         # totiPts, totjPts, etc. 
-        #print(len(allRates))
+        start = time.time()
         events = clinks.newEvents(allRates, totiPts, totjPts, nowBound, added,nLinks, uniPts,Dom.getg(),tstep);
+        if (verbose > 0):
+            print('C++ update time %f' %(time.time()-start))
         #print(events)
         # Post process to do the events
         breakLinks = -np.sort(-events[events < len(self._iPts)]); # links to break

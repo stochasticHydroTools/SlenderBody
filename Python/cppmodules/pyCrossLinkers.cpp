@@ -88,6 +88,58 @@ py::array py_calcCLForces(const intvec &iPts, const intvec &jPts, npDoub pyShift
   return pyArray;
 } 
 
+py::array py_calcCLForces2(npInt pyiFibs, npInt pyjFibs, npDoub pyiSstars, npDoub pyjSstars, npDoub pyShifts, npDoub pyChebPoints, 
+    npDoub pychebCoefficients, double Lfib, int nThreads)
+{
+  /**
+    Python wrapper to evaluate the cross linking forces. 
+    @param iPts = 1D list (pybind turns into a vector) of first point in the pair of linked uniform points 
+    @param jPts = 1D list (to vector) of second point in the pair of linked uniform points 
+    @param pyShifts = 2D numpy array of shifts in the links due to periodicity
+    @param pyUnipoints = uniform points on the fibers for the force calculation
+    @param pyChebPoints = Chebyshev fiber points for the force calculation
+    @param nThreads = number of threads for parallel processing
+    @return the force densities at all the points due to cross-linking
+    
+  **/
+  
+  // allocate std::vector (to pass to the C++ function)
+  intvec iFibs(pyiFibs.size());
+  intvec jFibs(pyjFibs.size());
+  vec iSstars(pyiSstars.size());
+  vec jSstars(pyjSstars.size());
+  vec Shifts(pyShifts.size());
+  vec ChebPoints(pyChebPoints.size());
+  vec ChebCoefficients(pychebCoefficients.size());
+ 
+  // copy py::array -> std::vector
+  std::memcpy(iFibs.data(),pyiFibs.data(),pyiFibs.size()*sizeof(int));
+  std::memcpy(jFibs.data(),pyjFibs.data(),pyjFibs.size()*sizeof(int));
+ 
+  // copy py::array -> std::vector
+  std::memcpy(iSstars.data(),pyiSstars.data(),pyiSstars.size()*sizeof(double));
+  std::memcpy(jSstars.data(),pyjSstars.data(),pyjSstars.size()*sizeof(double));
+  std::memcpy(Shifts.data(),pyShifts.data(),pyShifts.size()*sizeof(double));
+  std::memcpy(ChebCoefficients.data(),pychebCoefficients.data(),pychebCoefficients.size()*sizeof(double));
+  std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
+
+  // call pure C++ function
+  vec CLForceDensities(pyChebPoints.shape()[0]*3,0.0);
+  calcCLForces2(iFibs, jFibs, iSstars, jSstars, Shifts, ChebPoints, ChebCoefficients,CLForceDensities, Lfib,nThreads);
+
+  // return 1-D NumPy array
+  // allocate py::array (to pass the result of the C++ function to Python)
+  auto pyArray = py::array_t<double>(pyChebPoints.shape()[0]*3);
+  auto result_buffer = pyArray.request();
+  double *result_ptr    = (double *) result_buffer.ptr;
+  // copy std::vector -> py::array
+  std::memcpy(result_ptr,CLForceDensities.data(),CLForceDensities.size()*sizeof(double));
+  
+  return pyArray;
+} 
+
+
+
 py::array py_calcCLStress(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints, int nThreads)
 {
   /**
@@ -225,6 +277,7 @@ PYBIND11_MODULE(CrossLinking, m) {
     m.def("initDynamicCLVariables",&initDynamicCLVariables, "Initialize global variables for dynamic CLs");
     m.def("initCLForcingVariables",&py_initCLForcingVariables,"Initialize global variables for CL force calculation");
     m.def("calcCLForces", &py_calcCLForces, "Forces due to the cross linkers");
+    m.def("calcCLForces2", &py_calcCLForces2, "Forces due to the cross linkers");
     m.def("calcCLStress", &py_calcCLStress, "Stress due to the cross linkers");
     m.def("calcKons", &py_calcKOns, "Rate binding constants");
     m.def("newEvents", &py_newEventsList, "Vector of new events");

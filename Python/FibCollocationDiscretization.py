@@ -9,7 +9,6 @@ from scipy.linalg import lu_factor, lu_solve
 numBCs = 4; # number of boundary conditions
 # Numbers of uniform/upsampled points
 nptsUpsample = 32; # number of points to upsample to for special quadrature
-nptsUniform = 16; # number of uniform points to estimate distance
 
 class FibCollocationDiscretization(object):
 
@@ -24,11 +23,12 @@ class FibCollocationDiscretization(object):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16):
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16):
         """
         Constructor. 
         L = fiber length, epsilon = fiber aspect ratio, Eb = bending stiffness, mu = fluid viscosity. 
         N = number of points on discretized fiber.
+        Nupsample = how much to upsample by for direct quad
         """
         self._L = L;
         self._epsilon = epsilon;
@@ -37,6 +37,7 @@ class FibCollocationDiscretization(object):
         self._N = N;
         self._nptsUpsample = nptsUpsample;
         self._nptsUniform = nptsUniform;
+        self._nptsDirect = NupsampleForDirect;
 
     def initIs(self):
         """
@@ -101,6 +102,22 @@ class FibCollocationDiscretization(object):
         The number of uniform points should have been set in the precomputation.
         """
         return np.dot(self._MatfromNtoUniform,Xarg);
+    
+    def resampleForDirectQuad(self,Xarg):
+        """ 
+        Get the locations of nodes for direct quad (Ndirect pts) on the fiber.
+        Xarg = the fiber coordinates (self._N x 3 vector).
+        The number of uniform points should have been set in the precomputation.
+        """
+        return np.dot(self._MatfromNtoDirectN,Xarg);
+        
+    def downsampleFromDirectQuad(self,Xarg):
+        """ 
+        Get the locations of nodes for direct quad (Ndirect pts) on the fiber.
+        Xarg = the fiber coordinates (self._N x 3 vector).
+        The number of uniform points should have been set in the precomputation.
+        """
+        return np.dot(self._MatfromDirectNtoN,Xarg);
     
     def upsampleGlobally(self,Xarg):
         """
@@ -197,6 +214,9 @@ class FibCollocationDiscretization(object):
     def getNumUniform(self):
         return self._nptsUniform;
     
+    def getNumDirect(self):
+        return self._nptsDirect;
+    
     def getSpecialQuadNodes(self):
         return self._specQuadNodes;
     
@@ -211,6 +231,9 @@ class FibCollocationDiscretization(object):
     
     def getw(self):
         return self._w;
+    
+    def getwDirect(self):
+        return self._wForDirect;
     
     def getepsilonL(self):
         return self._epsilon, self._L;
@@ -396,12 +419,13 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1):
-        super().__init__(L,epsilon,Eb,mu,N);
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16):
+        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform);
 		# Chebyshev grid and weights
         self._s = cf.chebPts(self._N,[0,self._L],chebGridType);
         self._w = cf.chebWts(self._N,[0,self._L],chebGridType);
         self._w2N = cf.chebWts(2*self._N,[0,self._L],chebGridType);
+        self._wForDirect = cf.chebWts(self._nptsDirect, [0,self._L],chebGridType);
         # Chebyshev initializations
         self._Lmat = cf.CoeffstoValuesMatrix(self._N,self._N,chebGridType);
         self._LUCoeffs = lu_factor(self._Lmat);
@@ -438,12 +462,19 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         Pre-compute resampling matrices that go from N points to 2N points and vice versa.
         """
         self._MatfromNto2N = cf.ResamplingMatrix(2*self._N,self._N,chebGridType,chebGridType);
+        self._MatfromNtoDirectN = cf.ResamplingMatrix(self._nptsDirect,self._N,chebGridType,chebGridType);
+        self._MatfromDirectNtoN = cf.ResamplingMatrix(self._N,self._nptsDirect,chebGridType,chebGridType);
         self._Matfrom2NtoN = cf.ResamplingMatrix(self._N,2*self._N,chebGridType,chebGridType);
         self._stackMatfromNto2N = np.zeros((6*self._N,3*self._N));
         self._stackMatfrom2NtoN = np.zeros((3*self._N,6*self._N));
         for iD in range(3):
             self._stackMatfromNto2N[iD::3,iD::3]=self._MatfromNto2N;
             self._stackMatfrom2NtoN[iD::3,iD::3]=self._Matfrom2NtoN;
+        W2N = np.diag(np.repeat(self._w2N,3));
+        UTWU = np.dot(self._stackMatfromNto2N.T,np.dot(W2N,self._stackMatfromNto2N));
+        self._LeastSquaresDownsampler = np.linalg.solve(UTWU,np.dot(self._stackMatfromNto2N.T,W2N))
+        self._WeightedUpsamplingMat= np.dot(W2N,self._stackMatfromNto2N);
+        self._UpsampledChebPolys = np.dot(self._MatfromNto2N,self._Lmat[:,:self._N-1]).T;
 
     def initSpecialQuadMatrices(self):
         """

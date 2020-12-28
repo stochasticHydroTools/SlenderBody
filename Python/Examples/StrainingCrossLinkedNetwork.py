@@ -58,7 +58,7 @@ for iO in [9]:
     T = 1.0/omHz;       # one period
     nCyc = ceil(omHz) + 3; # 3 cycles + 1 second to relax the network 
     tf = nCyc*T;
-    dt = min(T/20,5e-3); # maximum stable timestep is 1e-3
+    dt = min(T/20,5e-3); # maximum stable timestep is 5e-3
     saveEvery = 1;#int(T/(4*dt)+1e-10); # measure curvature at the start and middle of each cycle
     print('Omega %f: stopping time %f, saveEvery %f' %(omHz,tf,saveEvery*dt))
 
