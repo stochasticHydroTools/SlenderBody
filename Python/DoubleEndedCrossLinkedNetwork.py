@@ -9,9 +9,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     with cross links where each end matters seaprately
     There are 4 rates:
     Rate of one end to attach (self._kon) 
-    Rate of the other end to attach (self._konboth)
+    Rate of the other end to attach (self._konSecond)
     Rate of one end to dettach (self._koff)
-    Rate of both ends to dettach and the link to float off into oblivion (self._koffBoth) 
     """
     
     ## =============================== ##
@@ -25,9 +24,12 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         This list is self._FreeLinkBound. All other information is samea as super 
         """
         super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc,nThreads);
-        self._koffBoth = 1;
         self._FreeLinkBound = np.zeros(self._NsitesPerf*self._nFib,dtype=np.int64); # says whether or not a link is bound to a site with a free end
-        self._konBoth = 1;
+        self._kon = kon*self._ds;
+        print(self._kon)
+        self._konSecond = 0.5;
+        import sys
+        sys.exit()
         random.seed(CLseed)
         
     ## =============================== ##
@@ -100,28 +102,23 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         EventTwos = -np.ones(nBoundEnds,dtype=np.int64);
         linkIDTwos = -np.ones(nBoundEnds,dtype=np.int64); 
         
-        # 3) Unbinding of both ends of a bound link (code -2)
-        BothEndUnbindings, BothEndUnbindingRates = self.getBothUnbindingEvents();
-        EventThrees = -2*np.ones(self._numLinks,dtype=np.int64);
-        linkIDThrees = np.arange(self._numLinks,dtype=np.int64);
-        
         # 4) Binding of links (hardest part - requires neighbor search, code +2)
         BothEndBindings, BothEndBindingRates = self.getBothBindingEvents(SpatialDatabase,uniPts,Dom);
         nPairs = len(BothEndBindingRates);
-        EventFours = 2*np.ones(nPairs);
-        linkIDFours = -np.ones(nPairs,dtype=np.int64);
+        EventThrees = 2*np.ones(nPairs);
+        linkIDThrees = -np.ones(nPairs,dtype=np.int64);
 
-        # 5) Unbinding of one end of a doubly-bound CL but not both (code -3)
+        # 5) Unbinding of one end of a doubly-bound CL but not both (code -2)
         OneEndofCLUnbinding, OneEndofCLUnbindingRates = self.getOneCLEndUnbindingEvents();
-        EventFives = -3*np.ones(self._numLinks,dtype=np.int64);
-        linkIDFives = np.arange(self._numLinks,dtype=np.int64);
+        EventFours = -2*np.ones(self._numLinks,dtype=np.int64);
+        linkIDFours = np.arange(self._numLinks,dtype=np.int64);
         CurrentID = self._numLinks;
         
         # Make master lists of pairs of points and events, sample times as well
-        allPairs = np.concatenate((OneEndBindings,OneEndUnbindings,BothEndUnbindings,BothEndBindings,OneEndofCLUnbinding));
-        allRates = np.concatenate((OneEndBindingRates,OneEndUnbindingRates,BothEndUnbindingRates,BothEndBindingRates,OneEndofCLUnbindingRates));
-        allTypes = np.concatenate((EventOnes,EventTwos,EventThrees,EventFours,EventFives));
-        allIDs = np.concatenate((linkIDOnes,linkIDTwos,linkIDThrees,linkIDFours,linkIDFives));
+        allPairs = np.concatenate((OneEndBindings,OneEndUnbindings,BothEndBindings,OneEndofCLUnbinding));
+        allRates = np.concatenate((OneEndBindingRates,OneEndUnbindingRates,BothEndBindingRates,OneEndofCLUnbindingRates));
+        allTypes = np.concatenate((EventOnes,EventTwos,EventThrees,EventFours));
+        allIDs = np.concatenate((linkIDOnes,linkIDTwos,linkIDThrees,linkIDFours));
         allTimes = -np.log(1-np.random.rand(len(allRates)))/allRates;
         
         # Event-driven algorithm
@@ -137,20 +134,18 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             elif (eventType == -1): # unbinding of one end
                 # Remove unbinding event from the list
                 allPairs, allRates, allTypes, allTimes, allIDs = self.unBindOneEnd(event,allPairs, allRates, allTypes, allTimes, allIDs);  
-            elif (eventType < -1): # unbinding of a link
+            elif (eventType == -2): # unbinding of a link
                 # First assume unbinding of both ends
                 Pair = allPairs[event,:];
                 # Remove unbinding events from list (both one end and both ends)
                 allPairs, allRates, allTypes, allTimes, allIDs = self.unBindBothEnds(event,allPairs, allRates, allTypes, allTimes, allIDs);
-                if (eventType == -3): # one end still bound
-                    # Choose which end is still bound
-                    r = int(np.random.rand() < 0.5);
-                    stillbound = Pair[0]*r+Pair[1]*(1-r);
-                    # Add unbinding event to the list, increment number of bound ends
-                    allPairs, allRates, allTypes, allTimes, allIDs = self.addOneEnd(stillbound,systime,allPairs, allRates, allTypes, allTimes, allIDs);
+                # Choose which end is still bound
+                r = int(np.random.rand() < 0.5);
+                stillbound = Pair[0]*r+Pair[1]*(1-r);
+                # Add unbinding event to the list, increment number of bound ends
+                allPairs, allRates, allTypes, allTimes, allIDs = self.addOneEnd(stillbound,systime,allPairs, allRates, allTypes, allTimes, allIDs);
             elif (eventType == 2):
-                # Bind a link. Remove unbinding event associated with singly-bound link, and add unbinding events (both single
-                # and double) for the link.
+                # Bind a link. Remove unbinding event associated with singly-bound link, and add unbinding event 
                 allPairs,allRates,allTypes,allTimes,allIDs, CurrentID = \
                     self.addLink(event,systime,uniPts,Dom,allPairs, allRates, allTypes, allTimes, allIDs,CurrentID);
             event = np.argmin(allTimes);
@@ -208,7 +203,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         jIndices = np.argwhere(np.array(self._jPts,dtype=np.int64)==Pair[1]);
         iL = np.intersect1d(iIndices,jIndices);
         super().removeLink(iL[0]);
-        # Remove exactly 2 unbinding events from list (have to be the right ones)
+        # Remove the unbinding event from list (has to be the right one)
         allInds = np.arange(len(allPairs[:,0])); 
         delInds = allInds[allIDs==allIDs[event]]; # match the ID
         #print('Deleting indices')
@@ -253,13 +248,12 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             delInds = allInds[np.logical_and(allPairs[:,0]==freeLinkLoc,allTypes==-1)];
             delInd = random.choice(delInds);
             allPairs, allRates, allTypes, allTimes, allIDs = self.unBindOneEnd(delInd,allPairs,allRates,allTypes,allTimes,allIDs)
-            # Add 2 unbinding events associated with new link
-            allPairs = np.concatenate((allPairs,np.array([[site1,site2],[site1,site2]])));
-            offRates = np.array([self._koffBoth,self._koff])
-            allRates = np.concatenate((allRates,offRates));
-            allTypes = np.concatenate((allTypes,np.array([-2,-3])));
-            allTimes = np.concatenate((allTimes, -np.log(1-np.random.rand(2))/offRates+systime));
-            allIDs = np.concatenate((allIDs,[CurrentID, CurrentID]))
+            # Add unbinding event associated with new link
+            allPairs = np.concatenate((allPairs,np.array([[site1,site2]])));
+            allRates = np.concatenate((allRates,np.array([self._koff])));
+            allTypes = np.concatenate((allTypes,np.array([-2])));
+            allTimes = np.concatenate((allTimes, [-np.log(1-np.random.rand())/self._koff+systime]));
+            allIDs = np.concatenate((allIDs,[CurrentID]))
             CurrentID+=1;
         return allPairs,allRates,allTypes,allTimes,allIDs, CurrentID;              
                
@@ -275,7 +269,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
         r = np.linalg.norm(rvec);
         if (r < (1+self._uppercldelta)*self._rl and r > (1-self._lowercldelta)*self._rl):
-            return self._konBoth; # binds with probability 1 at every time step
+            return self._konSecond; # binds with probability 1 at every time step
         return 0;  
      
     def getOneBindingEvents(self):
@@ -295,17 +289,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         OneEndUnbindings = np.zeros((nBoundEnds,2),dtype=np.int64)-1;
         OneEndUnbindings[:,0] = np.repeat(np.arange(self._NsitesPerf*self._nFib,dtype=np.int64),self._FreeLinkBound);
         OneEndUnbindingRates = self._koff*np.ones(nBoundEnds);
-        return OneEndUnbindings, OneEndUnbindingRates;
-    
-    def getBothUnbindingEvents(self):
-        """
-        Generate list of events for unbinding of a doubly-bound link from both sites
-        """
-        BothEndUnbindings = np.zeros((self._numLinks,2),dtype=np.int64);
-        BothEndUnbindings[:,0] = np.array(self._iPts,dtype=np.int64);
-        BothEndUnbindings[:,1] = np.array(self._jPts,dtype=np.int64);
-        BothEndUnbindingRates = self._koffBoth*np.ones(self._numLinks);
-        return  BothEndUnbindings, BothEndUnbindingRates;     
+        return OneEndUnbindings, OneEndUnbindingRates;   
    
     def getBothBindingEvents(self,SpatialDatabase,uniPts,Dom):
         """
