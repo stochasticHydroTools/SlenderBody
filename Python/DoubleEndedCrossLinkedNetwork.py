@@ -127,7 +127,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
                 LeftEnds = NonzeroEntries[0];
                 RightEnds = NonzeroEntries[1];
                 probabilities = NonzeroEntries[2]/self._nDoubleBoundLinks;
-                # Choose the link and end
+                # Choose the link
                 Link = np.random.choice(np.arange(len(LeftEnds),dtype=np.int64),p=probabilities);
                 # Unbind it (remove from matrix)
                 self._PairConnections[LeftEnds[Link],RightEnds[Link]]-=1;
