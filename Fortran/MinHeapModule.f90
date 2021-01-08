@@ -19,8 +19,8 @@ module MinHeapModule
 
    type, private :: MinHeap
 
-      type (EventType), allocatable :: priorityQueue (:)
       integer :: heapSize = 0 ! Current heap size
+      type (EventType), allocatable :: priorityQueue (:)
       integer, allocatable :: positionInHeap (:) ! Important for event-driven simulation, same size/indexing as priorityQueue
    
    end type MinHeap
@@ -43,13 +43,24 @@ contains
       end if
       allocate(heap%priorityQueue(size+1)) ! We use size+1 to avoid overflow when referring to the child of some element
       allocate(heap%positionInHeap(size))
-      call resetHeap(heap)
+      call resetHeap()
 
    end subroutine initializeHeap
+
+   subroutine deleteHeap() bind(C,name="deleteHeap")
+      !type (MinHeap), intent(inout) :: heap
+
+      if(allocated(heap%priorityQueue)) then ! Re-initialize heap
+         deallocate(heap%priorityQueue, heap%positionInHeap)
+      end if
+      heap%heapSize=0
+
+   end subroutine deleteHeap
    
    ! Doubles the size of the heap, used when we run out of space
    ! We do not provide a routine to shrink, if you want that just call initializeHeap again with new size
    subroutine increaseHeapSize() bind(C,name="increaseHeapSize")
+      !type (MinHeap), intent(inout) :: heap
    
       type (EventType), allocatable :: priorityQueue_new (:)
       integer, allocatable :: positionInHeap_new (:)
@@ -68,6 +79,19 @@ contains
       call move_alloc(positionInHeap_new, heap%positionInHeap)
       
    end subroutine increaseHeapSize
+
+   subroutine resetHeap()  bind(C,name="resetHeap")
+      !type (MinHeap), intent(inout) :: heap
+
+      ! In our speciifc case this is the beginning of the time step
+
+      heap%priorityQueue(:)%time = huge(1.0_wp) ! Times of events for each element relative to the last time the queue was reset (time origin)
+      heap%priorityQueue(:)%elementType = 0
+      heap%priorityQueue(:)%elementIndex = 0
+      heap%heapSize = 0
+      heap%positionInHeap = 0
+      
+   end subroutine resetHeap
    
    ! --------------------- UNFINISHED here on
 
@@ -228,17 +252,6 @@ contains
    end subroutine modifyHeap
 
 
-   subroutine resetHeap(heap)
-      type (MinHeap), intent(inout) :: heap
-
-      ! In our speciifc case this is the beginning of the time step
-
-      heap%priorityQueue(:)%time = huge(1.0_wp) ! Times of events for each element relative to the last time the queue was reset (time origin)
-      heap%priorityQueue(:)%elementIndex = 0
-      heap%heapSize = 0
-      heap%positionInHeap = 0
-      
-   end subroutine resetHeap
 
 
    subroutine testHeap(heap)
