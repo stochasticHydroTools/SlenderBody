@@ -1,6 +1,8 @@
 from CrossLinkedNetwork import CrossLinkedNetwork
 import scipy.sparse as sp
 import numpy as np
+from CrossLinkingEvent import EventQueue as heap
+from CrossLinkingEvent import CrossLinkingEvent as cle 
 
 class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
 
@@ -33,8 +35,15 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._TotNumSites = self._NsitesPerf*self._nFib;
         self._SiteIndices = np.arange(self._TotNumSites,dtype=np.int64);
         self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # says whether or not a link is bound to a site with a free end
-        self._PairConnections = sp.lil_matrix((self._TotNumSites,self._TotNumSites),dtype=np.int64)
         self._konSecond = konsecond;
+        self._nFreeEnds = 0;
+        self._nDoubleBoundLinks = 0;
+        self._PairConnections = sp.lil_matrix((self._TotNumSites,self._TotNumSites),dtype=np.int64)
+        self._MaxLinks = 2*int(konsecond/koff*kon/koff)*self._TotNumSites
+        self._MaxEnds = 2*int(kon/koff)*self._TotNumSites
+        self._MaxEventsOtherThanBinding = 2*self._MaxLinks+self._MaxEnds+1;
+        self._HeadsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
+        self._TailsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -82,6 +91,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         """
         if (self._nCL==0): # do nothing if there are no CLs
             return; 
+
         # Obtain Chebyshev points and uniform points, and get
         # the neighbors of the uniform points
         chebPts = fiberCol.getX();
@@ -93,67 +103,115 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         nPairs, BindingPairs = self.getPairsThatCanBind(SpatialDatabase)
         UniquePairs = BindingPairs[0:nPairs,:];
         PairIndices = np.arange(2*nPairs,dtype=np.int64)
+        BaseCLRates, FirstLinkPerSite,NextLinkByLink = self.getSecondBindingRates(UniquePairs,uniPts,Dom);
+        RatesSecondBind, TimesSecondBind = self.calcAllSecondBindingRates(nPairs,BaseCLRates,BindingPairs);
+        # Initialize que
+        queue = heap([],self._MaxEventsOtherThanBinding+2*nPairs);
+        # Add double binding to heap
+        indexstart = 0;
+        for iEv in range(len(TimesSecondBind)):
+            queue.heappush(cle(TimesSecondBind[iEv],indexstart),tstep)
+            indexstart+=1;
         
-        # Precompute total number quantities (to be incremented)
-        self._nFreeEnds = np.sum(self._FreeLinkBound);
-        self._nDoubleBoundLinks = self._PairConnections.sum();
-        allRates = np.zeros(2*nPairs+3);
-        allTimes = np.zeros(2*nPairs+3);
+        # Rate and time for free link binding
+        RateFreeBind = self.getOneBindingRate();
+        TimeFreeBind = self.logrand()/RateFreeBind;
+        # Add binding to heap
+        indexFreeBinding = indexstart;
+        queue.heappush(cle(TimeFreeBind,indexFreeBinding),tstep)
+        indexstart+=1;
         
-        # Initial rates and times
-        systime = 0;
-        allRates[0] = self.getOneBindingRate();  # always the same, based on # of sites
-        allRates[1] = self.getOneUnbindingRate(); # based on # of currently bound single ends
-        allRates[2] = self.getOneCLEndUnbindingRate(); # based on # of doubly-bound links
-        allTimes[0:3] = -np.log(1-np.random.rand(3))/allRates[0:3];
-        BaseCLRates = self.getSecondBindingRates(UniquePairs,uniPts,Dom);
-        allRates[3:], allTimes[3:] = self.updateSecondBindingRate(BaseCLRates,allRates[3:],allTimes[3:],PairIndices,BindingPairs,systime)
+        # For free link unbinding
+        nSites = self._TotNumSites;
+        RatesFreeUnbind = self.getOneUnbindingRates();
+        TimesFreeUnbind = self.logrand(nSites)/RatesFreeUnbind;
+        # Add to heap
+        indexFreeUnbinding = indexstart;
+        for iEv in range(len(TimesFreeUnbind)):
+            queue.heappush(cle(TimesFreeUnbind[iEv],indexstart),tstep)
+            indexstart+=1;
+        
+        # For CL unbinding (numLinks)
+        RatesSecondUnbind = self._koff*np.ones(self._nDoubleBoundLinks)
+        TimesSecondUnbind = self.logrand(self._nDoubleBoundLinks)/RatesSecondUnbind
+        # Add to heap
+        indexSecondUnbind = indexstart;
+        for iEv in range(self._nDoubleBoundLinks):
+            queue.heappush(cle(TimesSecondUnbind[iEv],indexstart),tstep)
+            indexstart+=1;
+        
         import time
         thist = time.time();
+        systime=0;
         while (systime < tstep):
             # Compute rates for binding, unbinding, one end unbinding, both ends binding
-            event = np.argmin(allTimes);
-            systime = allTimes[event];
-            if (event==0): # end binding, choose random site and bind an end
+            theEvent = queue.heappop();
+            if (theEvent.time() < systime):
+                raise ValueError('You went backwards in time!') 
+            systime = theEvent.time();
+            event = theEvent.index();
+            if (event==indexFreeBinding): # end binding, choose random site and bind an end
+                #print('Index %d and binding' %event)
                 BoundEnd = int(np.random.rand()*self._TotNumSites);
                 PlusOrMinusSingleBound=1;
-            elif (event==1): # free end unbinding, choose random site with correct probability and unbind
-                probabilities = self._FreeLinkBound/self._nFreeEnds;
-                BoundEnd = np.random.choice(self._SiteIndices,p=probabilities);
+                # Update binding time in queue
+                TimeFreeBind = self.logrand()/RateFreeBind+systime;
+                queue.heappush(cle(TimeFreeBind,indexFreeBinding),tstep)
+            elif (event >= indexFreeUnbinding and event < indexSecondUnbind): 
+                #print('Index %d and unbinding end' %event)
+                BoundEnd = event-indexFreeUnbinding;
                 PlusOrMinusSingleBound=-1;
-            elif (event==2): # one end of CL unbinding
-                # Choose a CL (random entry from sparse matrix) 
-                NonzeroEntries = sp.find(self._PairConnections)
-                LeftEnds = NonzeroEntries[0];
-                RightEnds = NonzeroEntries[1];
-                probabilities = NonzeroEntries[2]/self._nDoubleBoundLinks;
-                # Choose the link
-                Link = np.random.choice(np.arange(len(LeftEnds),dtype=np.int64),p=probabilities);
-                # Unbind it (remove from matrix)
-                self._PairConnections[LeftEnds[Link],RightEnds[Link]]-=1;
+            elif (event >=indexSecondUnbind): # one end of CL unbinding
+                #print('Index %d and unbinding CL end' %event)
+                linkNum = event - indexSecondUnbind;
+                BoundEnd = self._HeadsOfLinks[linkNum];
+                UnbindingEnd = self._TailsOfLinks[linkNum];
+                self._PairConnections[BoundEnd,UnbindingEnd]-=1;
+                # Unbind it (remove from lists)
+                self._HeadsOfLinks[linkNum] = self._HeadsOfLinks[self._nDoubleBoundLinks-1];
+                self._TailsOfLinks[linkNum] = self._TailsOfLinks[self._nDoubleBoundLinks-1];
+                # Update index of the previous last entry in the heap
+                #print('Changing old index %d to %d' %(indexSecondUnbind+self._nDoubleBoundLinks-1, event))
+                if (event <  indexSecondUnbind+self._nDoubleBoundLinks-1):
+                    queue.updateEventIndex(indexSecondUnbind+self._nDoubleBoundLinks-1,event);
                 self._nDoubleBoundLinks-=1;
                 # Add a free end at the other site. Always assume the remaining bound end is at the left
-                BoundEnd = LeftEnds[Link];
                 PlusOrMinusSingleBound=1;   
             else: # second end of CL binding
                 # The index now determines which pair of sites the CL is binding to
                 # In addition, we always assume the bound end is the one at the left 
-                linkindex = event-3;
-                Pair = BindingPairs[linkindex,:];
-                self._PairConnections[Pair[0],Pair[1]]+=1;
+                #print('Index %d and binding CL end' %event)
+                BoundEnd = BindingPairs[event,0];
+                UnboundEnd = BindingPairs[event,1];
+                self._PairConnections[BoundEnd,UnboundEnd]+=1;
+                self._HeadsOfLinks[self._nDoubleBoundLinks] = BoundEnd;
+                self._TailsOfLinks[self._nDoubleBoundLinks] = UnboundEnd;
+                UnbindTime = self.logrand()/self._koff+systime; # this is the time for UnboundEnd to unbind
+                # Add link unbinding event
+                queue.heappush(cle(UnbindTime,indexSecondUnbind+self._nDoubleBoundLinks),tstep)
                 self._nDoubleBoundLinks+=1;
-                BoundEnd = Pair[0];
                 PlusOrMinusSingleBound=-1;
+            
             # Recompute subset of rates and times
             self._nFreeEnds+= PlusOrMinusSingleBound;
             self._FreeLinkBound[BoundEnd]+= PlusOrMinusSingleBound
-            allRates[1] = self.getOneUnbindingRate(); # based on # of currently bound single ends (this always changes)
-            allRates[2] = self.getOneCLEndUnbindingRate(); # not always necessary but too easy
-            allTimes[:3] = -np.log(1-np.random.rand(3))/allRates[:3]+systime;
-            # For doubly-binding links, only the end where the one end is already bound needs to updated
-            # (only need to search the first column)
-            allRates[3:], allTimes[3:] = self.updateSecondBindingRate(BaseCLRates,allRates[3:],\
-                allTimes[3:],PairIndices[BindingPairs[:,0]==BoundEnd],BindingPairs,systime)
+            
+            # Rates of binding change based on number of bound ends
+            RatesSecondBind, TimesSecondBind, updatedLinks = self.updateSecondBindingRate(BoundEnd,BaseCLRates,\
+                RatesSecondBind,TimesSecondBind,FirstLinkPerSite,NextLinkByLink,systime);
+            
+            misses = np.setdiff1d(PairIndices[BindingPairs[:,0]==BoundEnd],updatedLinks);
+            if (np.any(BaseCLRates[misses])):
+                raise ValueError('Link missed!')
+
+            for iInd in (PairIndices[BindingPairs[:,0]==BoundEnd]):
+                queue.heapupdate(iInd,TimesSecondBind[iInd],tstep);
+                
+            # Update unbinding event at BoundEnd (the end whose state has changed)
+            RatesFreeUnbind[BoundEnd] = self._koff*self._FreeLinkBound[BoundEnd];
+            TimesFreeUnbind[BoundEnd] = self.logrand()/RatesFreeUnbind[BoundEnd]+systime;
+            queue.heapupdate(BoundEnd+indexFreeUnbinding,TimesFreeUnbind[BoundEnd],tstep)         
+            #queue.checkIndices(indexSecondUnbind+self._nDoubleBoundLinks-1);
             
         print('Time step time %f ' %(time.time()-thist))
             
@@ -181,19 +239,15 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         """
         return self._kon*self._TotNumSites;
     
-    def getOneUnbindingRate(self):
+    def logrand(self,N=1):
+        return -np.log(1-np.random.rand(N));
+        
+    def getOneUnbindingRates(self):
         """
         Compute rate for unbinding, which is the number of freely bound links x koff
         """
-        return self._koff*self._nFreeEnds;
-    
-    def getOneCLEndUnbindingRate(self): 
-        """
-        Generate list of events for unbinding of one end of a doubly-bound link
-        """  
-        OneEndofCLUnbindingRate = 2*self._koff*self._nDoubleBoundLinks; # There are 2 ends (2 events per link)
-        return OneEndofCLUnbindingRate;
-   
+        return self._koff*self._FreeLinkBound;
+      
     def getPairsThatCanBind(self,SpatialDatabase):
         """
         Generate list of events for binding of a doubly-bound link to both sites
@@ -216,20 +270,46 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     def getSecondBindingRates(self,BothEndBindings,uniPts,Dom):
         nPairs = len(BothEndBindings[:,0]);
         BothEndBindingRates = np.zeros(2*nPairs);
+        FirstLinkPerSite = np.zeros(self._TotNumSites,dtype=np.int64)-1;
+        NextLinkByLink = np.zeros(2*nPairs,dtype=np.int64)-1;
         for iPair in range(nPairs):
+            thiskOn = self.calcKonSecondRate(BothEndBindings[iPair,0],BothEndBindings[iPair,1],uniPts,Dom);
             for bE in [0,1]:       
                 BoundEnd = BothEndBindings[iPair,bE];     
                 UnboundEnd = BothEndBindings[iPair,1-bE];
-                # Rate is k_on, second * number of free links bound at that end
-                BothEndBindingRates[iPair+bE*nPairs] = self.calcKonSecondRate(BoundEnd,UnboundEnd,uniPts,Dom);
-        return BothEndBindingRates;
+                if (thiskOn > 0):
+                    linkNum = iPair+bE*nPairs;
+                    BothEndBindingRates[linkNum]=thiskOn;
+                    # Build link lists
+                    if (FirstLinkPerSite[BoundEnd]==-1):
+                        FirstLinkPerSite[BoundEnd] = linkNum;
+                    else:
+                        newLink = FirstLinkPerSite[BoundEnd]; 
+                        while (newLink > -1):
+                            prevnewLink = newLink;
+                            newLink = NextLinkByLink[newLink];   
+                        NextLinkByLink[prevnewLink] = linkNum;
+        return BothEndBindingRates, FirstLinkPerSite,NextLinkByLink;
     
-    def updateSecondBindingRate(self,BaseRates,BothEndRates,BothEndBindingTimes,PairIndices,BothEndBindings,systime):
-        for iPair in PairIndices:
-            BoundEnd = BothEndBindings[iPair,0];   
+    def calcAllSecondBindingRates(self,nPairs,BaseRates,BothEndBindings):
+        BothEndRates = np.zeros(2*nPairs);
+        BothEndBindingTimes = np.zeros(2*nPairs)
+        for iPair in range(2*nPairs):
+            BoundEnd = BothEndBindings[iPair,0];  
             BothEndRates[iPair] = BaseRates[iPair]*self._FreeLinkBound[BoundEnd];
-            BothEndBindingTimes[iPair] = -np.log(1-np.random.rand())/BothEndRates[iPair] + systime;
+            BothEndBindingTimes[iPair] =self.logrand()/BothEndRates[iPair];
         return BothEndRates, BothEndBindingTimes;    
+    
+    def updateSecondBindingRate(self,BoundEnd,BaseRates,BothEndRates,BothEndBindingTimes,FirstLink,NextLink,systime=0):
+        ThisLink = FirstLink[BoundEnd];
+        updatedLinks=[];
+        while (ThisLink > -1):
+            BothEndRates[ThisLink] = BaseRates[ThisLink]*self._FreeLinkBound[BoundEnd];
+            eltime = self.logrand()/BothEndRates[ThisLink];
+            BothEndBindingTimes[ThisLink] = eltime + systime;
+            updatedLinks.append(ThisLink);
+            ThisLink = NextLink[ThisLink];
+        return BothEndRates, BothEndBindingTimes, updatedLinks;  
     
     
     
