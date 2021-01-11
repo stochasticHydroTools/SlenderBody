@@ -24,8 +24,9 @@ class EventQueue(object):
             print(i)
         return ''
     
-    def heappush(self,item,maxTime):
+    def heappush(self,index,time,maxTime):
         """Push item onto heap, maintaining the heap invariant."""
+        item = CrossLinkingEvent(time,index)
         if (item.time() <= maxTime):
             self._que.append(item)
             self.siftdown(0, len(self._que)-1)
@@ -49,7 +50,7 @@ class EventQueue(object):
     def heapupdate(self,index,newtime,tstep):
         pos = self._indexInQueue[index];
         if (pos==-1): # item already popped, or not in list yet 
-            self.heappush(CrossLinkingEvent(newtime,index),tstep);
+            self.heappush(index,newtime,tstep);
         else:
             heapitem = self._que[pos]
             oldtime = heapitem.time();
@@ -71,6 +72,7 @@ class EventQueue(object):
         for i in range(len(self._que)):
             eventindex = self._que[i].index();
             if (eventindex > maxindex):
+                print('There is an event with index %d when the max inde is %d' %(eventindex,maxindex))
                 raise ValueError('Index is too large!')
             if not (i==self._indexInQueue[eventindex]):
                 print('Mismatcched index %d' %self._indexInQueue[eventindex])

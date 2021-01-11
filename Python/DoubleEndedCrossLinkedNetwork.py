@@ -2,7 +2,6 @@ from CrossLinkedNetwork import CrossLinkedNetwork
 import scipy.sparse as sp
 import numpy as np
 from CrossLinkingEvent import EventQueue as heap
-from CrossLinkingEvent import CrossLinkingEvent as cle 
 
 class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
 
@@ -33,17 +32,17 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         # self._PairConnections[i,j] is the number of connections where the left-end of the link is bound to site i 
         # and the right end is bound to site j
         self._TotNumSites = self._NsitesPerf*self._nFib;
-        self._SiteIndices = np.arange(self._TotNumSites,dtype=np.int64);
         self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # says whether or not a link is bound to a site with a free end
         self._konSecond = konsecond;
         self._nFreeEnds = 0;
         self._nDoubleBoundLinks = 0;
-        self._PairConnections = sp.lil_matrix((self._TotNumSites,self._TotNumSites),dtype=np.int64)
         self._MaxLinks = 2*int(konsecond/koff*kon/koff)*self._TotNumSites
         self._MaxEnds = 2*int(kon/koff)*self._TotNumSites
         self._MaxEventsOtherThanBinding = 2*self._MaxLinks+self._MaxEnds+1;
         self._HeadsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
         self._TailsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
+        self._kDoubleOn = 16/15;
+        self._kDoubleOff = 1;
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -58,6 +57,16 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         """
         Return the number of links between all possible sites
         """
+        PairConnections = sp.lil_matrix((self._TotNumSites,self._TotNumSites),dtype=np.int64)
+        # Figure out which sites have links  
+        for iLink in range(self._nDoubleBoundLinks):
+            head = self._HeadsOfLinks[iLink];
+            tail = self._TailsOfLinks[iLink];
+            row = min(head,tail);
+            col = max(head,tail);
+            PairConnections[row,col]+=1;
+        
+        # Compute possible pairs
         chebPts = fiberCol.getX();
         uniPts = fiberCol.getUniformPoints(chebPts);
         SpatialDatabase = fiberCol.getUniformSpatialData();
@@ -74,9 +83,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         nLinksPerPair = [];
         for iPair in range(nPairs):            
             if (self.calcKonOne(BothEndBindings[iPair,0],BothEndBindings[iPair,1],uniPts,Dom) > 0):
-                nLinksPerPair.append(self.getnLinksBetween2Sites(BothEndBindings[iPair,:]));
                 PossiblePairs.append(BothEndBindings[iPair,:]);
-        print(nLinksPerPair)
+        
+        for pair in PossiblePairs:
+            nLinksPerPair.append(PairConnections[pair[0],pair[1]]);    
         return nLinksPerPair, PossiblePairs;
     
     def updateNetwork(self,fiberCol,Dom,tstep,of=None):
@@ -105,40 +115,51 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         PairIndices = np.arange(2*nPairs,dtype=np.int64)
         BaseCLRates, FirstLinkPerSite,NextLinkByLink = self.getSecondBindingRates(UniquePairs,uniPts,Dom);
         RatesSecondBind, TimesSecondBind = self.calcAllSecondBindingRates(nPairs,BaseCLRates,BindingPairs);
+        TruePairs = PairIndices[BaseCLRates > 0];
+        nTruePairs = len(TruePairs);
         # Initialize que
         queue = heap([],self._MaxEventsOtherThanBinding+2*nPairs);
         # Add double binding to heap
         indexstart = 0;
         for iEv in range(len(TimesSecondBind)):
-            queue.heappush(cle(TimesSecondBind[iEv],indexstart),tstep)
+            queue.heappush(indexstart,TimesSecondBind[iEv],tstep)
             indexstart+=1;
         
         # Rate and time for free link binding
-        RateFreeBind = self.getOneBindingRate();
+        RateFreeBind = self._kon*self._TotNumSites;
         TimeFreeBind = self.logrand()/RateFreeBind;
         # Add binding to heap
         indexFreeBinding = indexstart;
-        queue.heappush(cle(TimeFreeBind,indexFreeBinding),tstep)
+        queue.heappush(indexFreeBinding,TimeFreeBind,tstep)
         indexstart+=1;
         
         # For free link unbinding
         nSites = self._TotNumSites;
-        RatesFreeUnbind = self.getOneUnbindingRates();
+        RatesFreeUnbind = self._koff*self._FreeLinkBound;
         TimesFreeUnbind = self.logrand(nSites)/RatesFreeUnbind;
         # Add to heap
         indexFreeUnbinding = indexstart;
         for iEv in range(len(TimesFreeUnbind)):
-            queue.heappush(cle(TimesFreeUnbind[iEv],indexstart),tstep)
+            queue.heappush(indexstart,TimesFreeUnbind[iEv],tstep)
             indexstart+=1;
         
-        # For CL unbinding (numLinks)
-        RatesSecondUnbind = self._koff*np.ones(self._nDoubleBoundLinks)
-        TimesSecondUnbind = self.logrand(self._nDoubleBoundLinks)/RatesSecondUnbind
+        # For CL unbinding
+        RateSecondUnbind = self._koff*self._nDoubleBoundLinks;
+        TimeSecondUnbind = self.logrand()/RateSecondUnbind;
         # Add to heap
         indexSecondUnbind = indexstart;
-        for iEv in range(self._nDoubleBoundLinks):
-            queue.heappush(cle(TimesSecondUnbind[iEv],indexstart),tstep)
-            indexstart+=1;
+        queue.heappush(indexstart,TimeSecondUnbind,tstep)
+        
+        # Events for double binding and unbinding
+        RateDoubleBind = self._kDoubleOn*nTruePairs;
+        TimeDoubleBind = self.logrand()/RateDoubleBind;
+        indexDoubleBind = indexstart+1;
+        queue.heappush(indexDoubleBind,TimeDoubleBind,tstep)
+        
+        RateDoubleUnbind = self._kDoubleOff*self._nDoubleBoundLinks;
+        TimeDoubleUnbind = self.logrand()/RateDoubleUnbind;
+        indexDoubleUnbind = indexstart+2;
+        queue.heappush(indexDoubleUnbind,TimeDoubleUnbind,tstep)
         
         import time
         thist = time.time();
@@ -150,59 +171,67 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
                 raise ValueError('You went backwards in time!') 
             systime = theEvent.time();
             event = theEvent.index();
+            linkChange = False;
             if (event==indexFreeBinding): # end binding, choose random site and bind an end
                 #print('Index %d and binding' %event)
                 BoundEnd = int(np.random.rand()*self._TotNumSites);
                 PlusOrMinusSingleBound=1;
                 # Update binding time in queue
                 TimeFreeBind = self.logrand()/RateFreeBind+systime;
-                queue.heappush(cle(TimeFreeBind,indexFreeBinding),tstep)
+                queue.heappush(indexFreeBinding,TimeFreeBind,tstep)
             elif (event >= indexFreeUnbinding and event < indexSecondUnbind): 
                 #print('Index %d and unbinding end' %event)
                 BoundEnd = event-indexFreeUnbinding;
                 PlusOrMinusSingleBound=-1;
-            elif (event >=indexSecondUnbind): # one end of CL unbinding
-                #print('Index %d and unbinding CL end' %event)
-                linkNum = event - indexSecondUnbind;
+            elif (event == indexSecondUnbind or event==indexDoubleUnbind): # CL unbinding
+                linkNum = int(np.random.rand()*self._nDoubleBoundLinks);
                 BoundEnd = self._HeadsOfLinks[linkNum];
                 UnbindingEnd = self._TailsOfLinks[linkNum];
-                self._PairConnections[BoundEnd,UnbindingEnd]-=1;
                 # Unbind it (remove from lists)
                 self._HeadsOfLinks[linkNum] = self._HeadsOfLinks[self._nDoubleBoundLinks-1];
                 self._TailsOfLinks[linkNum] = self._TailsOfLinks[self._nDoubleBoundLinks-1];
-                # Update index of the previous last entry in the heap
-                #print('Changing old index %d to %d' %(indexSecondUnbind+self._nDoubleBoundLinks-1, event))
-                if (event <  indexSecondUnbind+self._nDoubleBoundLinks-1):
-                    queue.updateEventIndex(indexSecondUnbind+self._nDoubleBoundLinks-1,event);
                 self._nDoubleBoundLinks-=1;
+                linkChange = True;
                 # Add a free end at the other site. Always assume the remaining bound end is at the left
-                PlusOrMinusSingleBound=1;   
-            else: # second end of CL binding
+                if (event == indexSecondUnbind):
+                    #print('Index %d and unbinding CL end' %event)
+                    PlusOrMinusSingleBound=1;
+                else:
+                    #print('Index %d and unbinding both CL end' %event)
+                    PlusOrMinusSingleBound=0;
+            else: # CL binding
                 # The index now determines which pair of sites the CL is binding to
                 # In addition, we always assume the bound end is the one at the left 
-                #print('Index %d and binding CL end' %event)
-                BoundEnd = BindingPairs[event,0];
-                UnboundEnd = BindingPairs[event,1];
-                self._PairConnections[BoundEnd,UnboundEnd]+=1;
+                if (event == indexDoubleBind):
+                    #print('Index %d and double binding' %index)
+                    pair = TruePairs[int(np.random.rand()*nTruePairs)];
+                    BoundEnd = BindingPairs[pair,0];
+                    UnboundEnd = BindingPairs[pair,1]; 
+                    PlusOrMinusSingleBound=0;
+                    TimeDoubleBind = self.logrand()/RateDoubleBind+systime;
+                    queue.heappush(indexDoubleBind,TimeDoubleBind,tstep)   # push double binding
+                else:
+                    #print('Index %d and binding CL end' %event)
+                    BoundEnd = BindingPairs[event,0];
+                    UnboundEnd = BindingPairs[event,1];
+                    PlusOrMinusSingleBound=-1;
                 self._HeadsOfLinks[self._nDoubleBoundLinks] = BoundEnd;
                 self._TailsOfLinks[self._nDoubleBoundLinks] = UnboundEnd;
-                UnbindTime = self.logrand()/self._koff+systime; # this is the time for UnboundEnd to unbind
-                # Add link unbinding event
-                queue.heappush(cle(UnbindTime,indexSecondUnbind+self._nDoubleBoundLinks),tstep)
                 self._nDoubleBoundLinks+=1;
-                PlusOrMinusSingleBound=-1;
+                linkChange = True;
+                
             
             # Recompute subset of rates and times
             self._nFreeEnds+= PlusOrMinusSingleBound;
             self._FreeLinkBound[BoundEnd]+= PlusOrMinusSingleBound
             
-            # Rates of binding change based on number of bound ends
+            # Rates of CL binding change based on number of bound ends
             RatesSecondBind, TimesSecondBind, updatedLinks = self.updateSecondBindingRate(BoundEnd,BaseCLRates,\
                 RatesSecondBind,TimesSecondBind,FirstLinkPerSite,NextLinkByLink,systime);
             
-            misses = np.setdiff1d(PairIndices[BindingPairs[:,0]==BoundEnd],updatedLinks);
-            if (np.any(BaseCLRates[misses])):
-                raise ValueError('Link missed!')
+            #misses = np.setdiff1d(PairIndices[BindingPairs[:,0]==BoundEnd],updatedLinks);
+            #if (np.any(BaseCLRates[misses])):
+            #    raise ValueError('Link missed!')
 
             for iInd in (PairIndices[BindingPairs[:,0]==BoundEnd]):
                 queue.heapupdate(iInd,TimesSecondBind[iInd],tstep);
@@ -211,8 +240,17 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             RatesFreeUnbind[BoundEnd] = self._koff*self._FreeLinkBound[BoundEnd];
             TimesFreeUnbind[BoundEnd] = self.logrand()/RatesFreeUnbind[BoundEnd]+systime;
             queue.heapupdate(BoundEnd+indexFreeUnbinding,TimesFreeUnbind[BoundEnd],tstep)         
-            #queue.checkIndices(indexSecondUnbind+self._nDoubleBoundLinks-1);
             
+            # Update unbinding events (links)
+            if (linkChange):
+                RateSecondUnbind = self._koff*self._nDoubleBoundLinks;
+                TimeSecondUnbind = self.logrand()/RateSecondUnbind+systime;
+                queue.heapupdate(indexSecondUnbind,TimeSecondUnbind,tstep)
+                RateDoubleUnbind = self._kDoubleOff*self._nDoubleBoundLinks;
+                TimeDoubleUnbind = self.logrand()/RateDoubleUnbind+systime;
+                queue.heapupdate(indexDoubleUnbind,TimeDoubleUnbind,tstep)
+            
+            #queue.checkIndices(indexSecondUnbind+2);
         print('Time step time %f ' %(time.time()-thist))
             
     
@@ -232,22 +270,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         if (r < (1+self._uppercldelta)*self._rl and r > (1-self._lowercldelta)*self._rl):
             return self._konSecond; # binds with probability 1 at every time step
         return 0;  
-     
-    def getOneBindingRate(self):
-        """
-        Compute rate for binding 
-        """
-        return self._kon*self._TotNumSites;
-    
+        
     def logrand(self,N=1):
         return -np.log(1-np.random.rand(N));
         
-    def getOneUnbindingRates(self):
-        """
-        Compute rate for unbinding, which is the number of freely bound links x koff
-        """
-        return self._koff*self._FreeLinkBound;
-      
     def getPairsThatCanBind(self,SpatialDatabase):
         """
         Generate list of events for binding of a doubly-bound link to both sites
