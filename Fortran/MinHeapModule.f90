@@ -2,7 +2,7 @@ module MinHeapModule
    use iso_c_binding
    implicit none
    public
-
+   
    ! Constants that require recompilation:
    integer, parameter, private :: dp=c_double, sp=c_float
    integer, parameter, public :: wp = dp ! Double precision event times
@@ -11,17 +11,16 @@ module MinHeapModule
    ! Element of the priority queue.
    type, public, bind(C) :: EventType
       real (wp) :: time
-      integer(c_int) :: elementType=0 ! What kind of event is this?
-      integer(c_int) :: elementIndex = 0 ! An integer telling you agent (site, link, pair) event is associated with
+      integer(c_int) :: elementIndex = 0 ! An integer telling you id of this event (a hash into any data structure that contains further info on events)
+        ! Important: This Fortran code starts indexing from 1 not from 0!
         ! Important: elementIndex==0 means invalid entry in this implementation, so if you want to start indexing with zero 
-        ! either change to -1, or, make elementType==0 mean not in heap
    end type EventType
 
    type, private :: MinHeap
 
-      integer :: heapSize = 0 ! Current heap size
+      integer(c_int) :: heapSize = 0 ! Current heap size
       type (EventType), allocatable :: priorityQueue (:)
-      integer, allocatable :: positionInHeap (:) ! Important for event-driven simulation, same size/indexing as priorityQueue
+      integer(c_int), allocatable :: positionInHeap (:) ! Important for event-driven simulation, same size/indexing as priorityQueue
    
    end type MinHeap
    
@@ -29,11 +28,11 @@ module MinHeapModule
    ! so there can only be ONE heap per run in this version of the code, sorry
    ! It is possible to avoid using C_F_POINTER but for now I don't do that
    type(MinHeap), private :: heap
+   private :: modifyHeap
 
 contains
  
    ! void initializeHeap(int size)
-   ! Donev: UNSOLVED: Reallocation or fixed size or fixed max size?
    subroutine initializeHeap(size) bind(C,name="initializeHeap")
       !type (MinHeap), intent(inout) :: heap
       integer, intent(in), value :: size
@@ -47,6 +46,7 @@ contains
 
    end subroutine initializeHeap
 
+   ! void deleteHeap()
    subroutine deleteHeap() bind(C,name="deleteHeap")
       !type (MinHeap), intent(inout) :: heap
 
@@ -57,9 +57,10 @@ contains
 
    end subroutine deleteHeap
    
-   ! Doubles the size of the heap, used when we run out of space
-   ! We do not provide a routine to shrink, if you want that just call initializeHeap again with new size
+   ! void increaseHeapSize()
    subroutine increaseHeapSize() bind(C,name="increaseHeapSize")
+      ! Doubles the size of the heap, used when we run out of space
+      ! We do not provide a routine to shrink, if you want that just call initializeHeap again with new size
       !type (MinHeap), intent(inout) :: heap
    
       type (EventType), allocatable :: priorityQueue_new (:)
@@ -80,31 +81,30 @@ contains
       
    end subroutine increaseHeapSize
 
-   subroutine resetHeap()  bind(C,name="resetHeap")
+   ! void resetHeap
+   subroutine resetHeap() bind(C,name="resetHeap")
       !type (MinHeap), intent(inout) :: heap
 
       ! In our speciifc case this is the beginning of the time step
 
       heap%priorityQueue(:)%time = huge(1.0_wp) ! Times of events for each element relative to the last time the queue was reset (time origin)
-      heap%priorityQueue(:)%elementType = 0
       heap%priorityQueue(:)%elementIndex = 0
       heap%heapSize = 0
       heap%positionInHeap = 0
       
    end subroutine resetHeap
    
-   ! --------------------- UNFINISHED here on
-
-   subroutine insertInHeap(heap,elementIndex,time) ! AD: Made this routine safe to call even if already in heap
-      type (MinHeap), intent(inout) :: heap
-      integer, intent(in) :: elementIndex
-      real (wp), intent(in) :: time
+   ! void insertInHeap(int index, float/double time)
+   subroutine insertInHeap(elementIndex,time) bind(C,name="insertInHeap") ! AD: Made this routine safe to call even if already in heap
+      !type (MinHeap), intent(inout) :: heap
+      integer, intent(in), value :: elementIndex
+      real (wp), intent(in), value :: time
 
       integer :: parent, child, tempElementIndex
       real (wp) :: tempTime
       
       if(heap%positionInHeap(elementIndex)/=0) then ! This is already in the heap
-         call  updateHeap(heap,elementIndex,time)
+         call  updateHeap(elementIndex,time)
          return
       end if
 
@@ -131,9 +131,11 @@ contains
       end do SiftUpLoop
    end subroutine insertInHeap
 
-   subroutine deleteFromHeap(heap,elementIndex) ! AD: Made this routine safe to call on previously deleted entries
-      type (MinHeap), intent(inout) :: heap
-      integer, intent(in) :: elementIndex
+   ! void deleteFromHeap(int index)
+   subroutine deleteFromHeap(elementIndex) bind(C,name="deleteFromHeap") 
+      ! AD made this routine safe to call on previously deleted entries
+      !type (MinHeap), intent(inout) :: heap
+      integer, intent(in), value :: elementIndex
 
       integer :: tempIndex, parent, self, last
       real (wp) :: tempTime
@@ -167,11 +169,11 @@ contains
       end if
    end subroutine deleteFromHeap
 
-
-   subroutine updateHeap(heap,elementIndex,time)
-      type (MinHeap), intent(inout) :: heap
-      integer, intent(in) :: elementIndex
-      real (wp), intent(in) :: time
+   ! void updateHeap(int index, float/double time)
+   subroutine updateHeap(elementIndex,time) bind(C,name="updateHeap")
+      !type (MinHeap), intent(inout) :: heap
+      integer, intent(in), value :: elementIndex
+      real (wp), intent(in), value :: time
 
       integer :: tempIndex
 
@@ -182,7 +184,31 @@ contains
       call modifyHeap(heap,tempIndex)
 
    end subroutine updateHeap
+   
+   ! void testHeap()
+   subroutine testHeap() bind(C,name="testHeap")
+      ! type (MinHeap), intent(inout) :: heap
 
+      integer :: i, leftChild, rightChild
+
+      do i = 1, heap%heapSize
+         leftChild = i*2
+         rightChild = i*2+1
+         if (leftChild<=heap%heapSize) then
+            if (heap%priorityQueue(leftChild)%time < heap%priorityQueue(i)%time) stop 'Wrong heap'
+         end if
+         if (rightChild<=heap%heapSize) then
+            if (heap%priorityQueue(rightChild)%time < heap%priorityQueue(i)%time) stop 'Wrong heap'
+         end if
+      end do
+      do i = 1, heap%heapSize
+         if (heap%positionInHeap(heap%priorityQueue(i)%elementIndex)/=i) stop 'Problem in heap'
+      end do
+   end subroutine testHeap
+
+   ! -------------------------------------------------
+   ! Private routines
+   ! -------------------------------------------------
 
    ! QY: new subroutine, used in delete and renew
    subroutine modifyHeap(heap,tempIndex)
@@ -250,29 +276,5 @@ contains
       heap%positionInHeap(elementIndex)=self
 
    end subroutine modifyHeap
-
-
-
-
-   subroutine testHeap(heap)
-      type (MinHeap), intent(inout) :: heap
-
-      integer :: i, leftChild, rightChild
-
-      do i = 1, heap%heapSize
-         leftChild = i*2
-         rightChild = i*2+1
-         if (leftChild<=heap%heapSize) then
-            if (heap%priorityQueue(leftChild)%time < heap%priorityQueue(i)%time) stop 'Wrong heap'
-         end if
-         if (rightChild<=heap%heapSize) then
-            if (heap%priorityQueue(rightChild)%time < heap%priorityQueue(i)%time) stop 'Wrong heap'
-         end if
-      end do
-      do i = 1, heap%heapSize
-         if (heap%positionInHeap(heap%priorityQueue(i)%elementIndex)/=i) stop 'Problem in heap'
-      end do
-   end subroutine testHeap
-
 
 end module MinHeapModule
