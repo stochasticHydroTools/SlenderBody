@@ -25,12 +25,6 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         This list is self._FreeLinkBound. All other information is samea as super 
         """
         super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc,nThreads);
-        # We need the following data structures
-        # 1) A count of the number of free links bound to each site
-        # 2) A count of the number of links connecting each pair
-        # For 2) we pre-allocate a sparse matrix of size Nsite x Nsite
-        # self._PairConnections[i,j] is the number of connections where the left-end of the link is bound to site i 
-        # and the right end is bound to site j
         self._TotNumSites = self._NsitesPerf*self._nFib;
         self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # says whether or not a link is bound to a site with a free end
         self._konSecond = konsecond;
@@ -49,9 +43,6 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     def getnBoundEnds(self):
         return self._FreeLinkBound;
-    
-    def getnLinksBetween2Sites(self,Pair):
-        return self._PairConnections[Pair[0],Pair[1]]+self._PairConnections[Pair[1],Pair[0]];
         
     def nLinksAllSites(self,fiberCol,Dom):
         """
@@ -99,9 +90,6 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         the basic idea is to sample times for each event, then update 
         those times as the state of the network changes. 
         """
-        if (self._nCL==0): # do nothing if there are no CLs
-            return; 
-
         # Obtain Chebyshev points and uniform points, and get
         # the neighbors of the uniform points
         chebPts = fiberCol.getX();
@@ -337,7 +325,88 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             ThisLink = NextLink[ThisLink];
         return BothEndRates, BothEndBindingTimes, updatedLinks;  
     
+
+from EndedCrossLinkedNetwork import EndedCrossLinkedNetwork
+class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
+
+    """
+    This class is a child of CrossLinkedNetwork which implements a network 
+    with cross links where each end matters seaprately
+    There are 4 rates:
+    Rate of one end to attach (self._kon) 
+    Rate of the other end to attach (self._konSecond)
+    Rate of one end to dettach (self._koff)
+    """
     
-    
+    ## =============================== ##
+    ##    METHODS FOR INITIALIZATION
+    ## =============================== ##
+    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,CLseed,Dom,fibDisc,nThreads=1):
+        """
+        Constructor
+        # In addition to iPts and jPts (lists of completed links), there is now a list of potential sites
+        # that have a link attached that could bind to an available other site
+        This list is self._FreeLinkBound. All other information is samea as super 
+        """
+        super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,CLseed,Dom,fibDisc,nThreads);
+        # C++ initialize
+        allRates = [self._kon,self._konSecond,self._koff,self._koff,self._kDoubleOn,self._kDoubleOff];
+        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, CLseed);
         
+    ## =============================== ##
+    ##     PUBLIC METHODS
+    ## =============================== ##
+    def getnBoundEnds(self):
+        return self._cppNet.getNBoundEnds();
+            
+    def nLinksAllSites(self,fiberCol,Dom):
+        """
+        Return the number of links between all possible sites
+        """
+        self._HeadsOfLinks = self._cppNet.getLinkHeadsOrTails(True);
+        self._TailsOfLinks = self._cppNet.getLinkHeadsOrTails(False);
+        self._nDoubleBoundLinks = len(self._HeadsOfLinks);
+        return super().nLinksAllSites(fiberCol,Dom);
+            
+    def updateNetwork(self,fiberCol,Dom,tstep,of=None):
+        """
+        Update the network using Kinetic MC.
+        Inputs: fiberCol = fiberCollection object of the fibers,
+        Dom = Domain object, tstep = the timestep we are updating the network
+        by (a different name than dt)
+        This is an event-driven algorithm. See comments throughout, but
+        the basic idea is to sample times for each event, then update 
+        those times as the state of the network changes. 
+        """
+        # Obtain Chebyshev points and uniform points, and get
+        # the neighbors of the uniform points
+        chebPts = fiberCol.getX();
+        uniPts = fiberCol.getUniformPoints(chebPts);
+        SpatialDatabase = fiberCol.getUniformSpatialData();
+        SpatialDatabase.updateSpatialStructures(uniPts,Dom);
+        
+        # Compute the list of neighbors (constant for this step)
+        nPairs, BindingPairs = self.getPairsThatCanBind(SpatialDatabase)
+        UniquePairs = BindingPairs[0:nPairs,:];
+        PairIndices = np.arange(2*nPairs,dtype=np.int64)
+        BaseCLRates = self.getSecondBindingRates(UniquePairs,uniPts,Dom);
+        TruePairs = PairIndices[BaseCLRates > 0];
+        import time
+        thist = time.time();
+        self._cppNet.updateNetwork(tstep,BindingPairs[TruePairs,:]);
+        
+        print('Time step time %f ' %(time.time()-thist))       
+    
+    def getSecondBindingRates(self,BothEndBindings,uniPts,Dom):
+        nPairs = len(BothEndBindings[:,0]);
+        BothEndBindingRates = np.zeros(2*nPairs);
+        FirstLinkPerSite = np.zeros(self._TotNumSites,dtype=np.int64)-1;
+        NextLinkByLink = np.zeros(2*nPairs,dtype=np.int64)-1;
+        for iPair in range(nPairs):
+            thiskOn = self.calcKonSecondRate(BothEndBindings[iPair,0],BothEndBindings[iPair,1],uniPts,Dom);
+            for bE in [0,1]:       
+                if (thiskOn > 0):
+                    linkNum = iPair+bE*nPairs;
+                    BothEndBindingRates[linkNum]=thiskOn;
+        return BothEndBindingRates;
 
