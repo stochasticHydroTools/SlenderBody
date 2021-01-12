@@ -81,7 +81,7 @@ contains
       
    end subroutine increaseHeapSize
 
-   ! void resetHeap
+   ! void resetHeap()
    subroutine resetHeap() bind(C,name="resetHeap")
       !type (MinHeap), intent(inout) :: heap
 
@@ -93,7 +93,18 @@ contains
       heap%positionInHeap = 0
       
    end subroutine resetHeap
+
+   ! void topOfHeap(int *index, float/double *time)
+   subroutine topOfHeap(elementIndex,time) bind(C,name="topOfHeap")
+      !type (MinHeap), intent(inout) :: heap
+      integer, intent(out) :: elementIndex
+      real (wp), intent(out) :: time
+      
+      elementIndex = heap%priorityQueue(1)%elementIndex
+      time = heap%priorityQueue(1)%time
    
+   end subroutine
+      
    ! void insertInHeap(int index, float/double time)
    subroutine insertInHeap(elementIndex,time) bind(C,name="insertInHeap") ! AD: Made this routine safe to call even if already in heap
       !type (MinHeap), intent(inout) :: heap
