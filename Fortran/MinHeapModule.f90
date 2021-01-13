@@ -70,6 +70,7 @@ contains
       if(.not.allocated(heap%priorityQueue)) stop "Trying to resize un-initialized heap"
       
       new_size=2*size(heap%priorityQueue)
+      write(*,*) "HEAP: Increasing size of heap from ", size(heap%priorityQueue), " to ", new_size
       allocate(priorityQueue_new(new_size), positionInHeap_new(new_size))
       
       priorityQueue_new(1:heap%heapSize)=heap%priorityQueue(1:heap%heapSize)
