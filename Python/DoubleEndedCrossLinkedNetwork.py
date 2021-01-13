@@ -25,7 +25,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     ##    METHODS FOR INITIALIZATION
     ## =============================== ##
-    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,CLseed,Dom,fibDisc,nThreads=1):
+    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,nThreads=1):
         """
         Constructor
         """
@@ -33,13 +33,14 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._TotNumSites = self._NsitesPerf*self._nFib;
         self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # number of free-ended links bound to each site
         self._konSecond = konsecond;
+        self._koffSecond = koffsecond;
         self._nFreeEnds = 0;
         self._nDoubleBoundLinks = 0;
         self._MaxLinks = 2*int(konsecond/koff*kon/koff)*self._TotNumSites
         self._HeadsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
         self._TailsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
-        self._kDoubleOn = 0;
-        self._kDoubleOff = 0;
+        self._kDoubleOn = 2/3; # half the real value because we schedule link binding as separate events
+        self._kDoubleOff = 1;
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -133,7 +134,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             indexstart+=1;
         
         # For CL unbinding
-        RateSecondUnbind = self._koff*self._nDoubleBoundLinks;
+        RateSecondUnbind = 2*self._koffSecond*self._nDoubleBoundLinks;
         TimeSecondUnbind = self.logrand()/RateSecondUnbind;
         # Add to heap
         indexSecondUnbind = indexstart;
@@ -175,7 +176,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             elif (event == indexSecondUnbind or event==indexDoubleUnbind): # CL unbinding
                 linkNum = int(np.random.rand()*self._nDoubleBoundLinks);
                 BoundEnd = self._HeadsOfLinks[linkNum];
-                UnbindingEnd = self._TailsOfLinks[linkNum];
+                if (np.random.rand() < 0.5):
+                    BoundEnd = self._TailsOfLinks[linkNum];
                 # Unbind it (remove from lists)
                 self._HeadsOfLinks[linkNum] = self._HeadsOfLinks[self._nDoubleBoundLinks-1];
                 self._TailsOfLinks[linkNum] = self._TailsOfLinks[self._nDoubleBoundLinks-1];
@@ -232,7 +234,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             
             # Update unbinding events (links)
             if (linkChange):
-                RateSecondUnbind = self._koff*self._nDoubleBoundLinks;
+                RateSecondUnbind = 2*self._koffSecond*self._nDoubleBoundLinks;
                 TimeSecondUnbind = self.logrand()/RateSecondUnbind+systime;
                 queue.heapupdate(indexSecondUnbind,TimeSecondUnbind,tstep)
                 RateDoubleUnbind = self._kDoubleOff*self._nDoubleBoundLinks;
@@ -355,16 +357,16 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
     ## =============================== ##
     ##    METHODS FOR INITIALIZATION
     ## =============================== ##
-    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,CLseed,Dom,fibDisc,nThreads=1):
+    def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,nThreads=1):
         """
         Constructor
         # In addition to iPts and jPts (lists of completed links), there is now a list of potential sites
         # that have a link attached that could bind to an available other site
         This list is self._FreeLinkBound. All other information is samea as super 
         """
-        super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,CLseed,Dom,fibDisc,nThreads);
+        super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,nThreads);
         # C++ initialize
-        allRates = [self._kon,self._konSecond,self._koff,self._koff,self._kDoubleOn,self._kDoubleOff];
+        allRates = [self._kon,self._konSecond,self._koff,self._koffSecond,self._kDoubleOn,self._kDoubleOff];
         self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, CLseed);
            
     ## =============================== ##

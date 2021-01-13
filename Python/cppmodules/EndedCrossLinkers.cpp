@@ -109,7 +109,7 @@ class EndedCrossLinkedNetwork {
         }
         
         // One end of CL unbinding
-        double RateSecondUnbind = _koffSecond*_nDoubleBoundLinks;
+        double RateSecondUnbind = 2*_koffSecond*_nDoubleBoundLinks;
         int indexSecondUnbind = indexFreeUnbinding+_TotSites;
         TimeAwareHeapInsert(indexSecondUnbind,RateSecondUnbind,0,tstep);
         
@@ -140,6 +140,9 @@ class EndedCrossLinkedNetwork {
             } else if (eventindex == indexSecondUnbind || eventindex==indexDoubleUnbind){ // CL unbinding
                 int linkNum = int(unif(rng)*_nDoubleBoundLinks);
                 BoundEnd = _LinkHeads[linkNum];
+                if (unif(rng) < 0.5){
+                    BoundEnd = _LinkTails[linkNum];    
+                }
                 // Unbind it (remove from lists)
                 _LinkHeads[linkNum] = _LinkHeads[_nDoubleBoundLinks-1];
                 _LinkTails[linkNum] = _LinkTails[_nDoubleBoundLinks-1];
@@ -189,7 +192,7 @@ class EndedCrossLinkedNetwork {
             
             // Update unbinding events (links)
             if (linkChange){
-                RateSecondUnbind = _koffSecond*_nDoubleBoundLinks;
+                RateSecondUnbind = 2*_koffSecond*_nDoubleBoundLinks;
                 TimeAwareHeapInsert(indexSecondUnbind,RateSecondUnbind,systime,tstep);
                 RateDoubleUnbind = _kDoubleOff*_nDoubleBoundLinks;
                 TimeAwareHeapInsert(indexDoubleUnbind,RateDoubleUnbind,systime,tstep);
