@@ -85,7 +85,7 @@ contains
    subroutine resetHeap() bind(C,name="resetHeap")
       !type (MinHeap), intent(inout) :: heap
 
-      ! In our speciifc case this is the beginning of the time step
+      ! In our specific case this is the beginning of the time step
 
       heap%priorityQueue(:)%time = huge(1.0_wp) ! Times of events for each element relative to the last time the queue was reset (time origin)
       heap%priorityQueue(:)%elementIndex = 0
@@ -118,6 +118,9 @@ contains
          call  updateHeap(elementIndex,time)
          return
       end if
+
+      ! Donev: Needs to be tested
+      if(heap%heapSize>=size(heap%priorityQueue)) call increaseHeapSize()
 
       heap%heapSize = heap%heapSize+1
       heap%priorityQueue(heap%heapSize)%time = time
