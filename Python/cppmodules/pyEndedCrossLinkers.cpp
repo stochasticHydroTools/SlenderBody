@@ -7,9 +7,7 @@
 #include "EndedCrossLinkers.cpp"
 
 /**
-    Python wrappers for cross linkers
-    This file (prefixed by py) is just a list of interfaces 
-    that call the C++ functions in CrossLinkers.cpp
+    Python wrapper for ended CL class
 **/
 
 // ----------------
@@ -27,18 +25,4 @@ PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
         .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
         .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails);
-        /*
-        .def("setNumChildren", &EndedCrossLinkedNetwork::pysetNumChildren)
-        .def("getFirstGen", &EndedCrossLinkedNetwork::getFirstGen)
-        .def("__repr__",
-        [](const EndedCrossLinkedNetwork &a) {
-            return "<EndedCrossLinkedNetwork named '" + a.getName() + "'>";
-        }
-    );*/
 }
-
-int main(){
- return 0;
-}
-
-

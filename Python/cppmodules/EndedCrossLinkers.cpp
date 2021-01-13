@@ -8,12 +8,20 @@
 #include "types.h"
 
 /**
-This is a set of C++ functions that are being used
-for cross linker related calculations in the C++ code
-This version is for cross linkers with unique ends
+C++ class for a cross-linked network where we track each end separately
+This class is bound to python using pybind11
+See the file pyEndedCrossLinkers.cpp for the bindings. 
+
+There are 3 reactions
+1) Binding of a floating link to one site (rate _kon)
+2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
+3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)
+4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
+5) Binding of both ends of a CL (rate _kDoubleOn)
+6) Unbinding of both ends of a CL (rate _kDoubleOff)
 **/
 
-extern "C"{
+extern "C"{ // functions from fortran MinHeapModule.f90 for the heap that manages the events
 
     void initializeHeap(int size);
     void deleteHeap();
@@ -44,7 +52,7 @@ class EndedCrossLinkedNetwork {
         _kDoubleOn = rates[4];
         _kDoubleOff = rates[5];
         _FreeLinkBound = intvec(TotSites,0);
-        int maxLinks = std::max(2*int(_konSecond/_koffSecond*_kon/_koff*_TotSites),10);
+        int maxLinks = std::max(2*int(_konSecond/_koffSecond*_kon/_koff*_TotSites),10); // guess for max # of links
         _LinkHeads = intvec(maxLinks,-1);
         _LinkTails = intvec(maxLinks,-1);
         initializeHeap(maxLinks+_TotSites+4);
@@ -55,92 +63,78 @@ class EndedCrossLinkedNetwork {
         
      }
      
+     ~EndedCrossLinkedNetwork(){
+        deleteHeap();
+     }
      
      void updateNetwork(double tstep, npInt pyBindingPairs){
         /*
         Update the network using Kinetic MC.
-        Inputs: fiberCol = fiberCollection object of the fibers,
-        Dom = Domain object, tstep = the timestep we are updating the network
-        by (a different name than dt)
-        This is an event-driven algorithm. See comments throughout, but
-        the basic idea is to sample times for each event, then update 
-        those times as the state of the network changes. 
+        Inputs: tstep = time step. pyBindingPairs = 2D numpy array, where the first
+        column is the bound end and the second column is the unbound end, of possible
+        link binding site pairs. 
         */
-        // Convert numpy to stdvector
+        // Convert numpy to C++ vector and reset heap for the beginning of the step
         intvec BindingPairs(pyBindingPairs.size());
         std::memcpy(BindingPairs.data(),pyBindingPairs.data(),pyBindingPairs.size()*sizeof(int));
         int nTruePairs = BindingPairs.size()/2;
-        
+        resetHeap();
         
         // Compute the binding rates of those pairs
-        vec RatesSecondBind(nTruePairs), TimesSecondBind(nTruePairs);
+        vec RatesSecondBind(nTruePairs);
         for (int iPair=0; iPair < nTruePairs; iPair++){
             int BoundEnd = BindingPairs[2*iPair]; // they are stacked so the bound end comes last
             RatesSecondBind[iPair] = _konSecond*_FreeLinkBound[BoundEnd];
-            TimesSecondBind[iPair] = logrand()/RatesSecondBind[iPair];
             //std::cout << "CL pair " << BindingPairs[2*iPair] << " , " << BindingPairs[2*iPair+1] << std::endl;
-            //std::cout << " Time " << TimesSecondBind[iPair] << " and index " << iPair << std::endl;
-            insertInHeap(iPair+1, TimesSecondBind[iPair]);
+            TimeAwareHeapInsert(iPair+1, RatesSecondBind[iPair],0,tstep); // notice we start indexing from 1, this is how fortran is written
         }
-        // Make linked lists
+        // Make linked lists. When a site is updated, we need to rapidly update the list of links 
+        // with rate influenced by that site. The link lists are the first link affected for each site
+        // and then the next link affected for each link. 
         intvec FirstLinkPerSite(_TotSites,-1);
         intvec NextLinkByLink(nTruePairs,-1);
         makePairLinkLists(nTruePairs,BindingPairs,FirstLinkPerSite,NextLinkByLink);
         
         // Single binding to a site
         double RateFreeBind = _kon*_TotSites;
-        double TimeFreeBind = logrand()/RateFreeBind;
         int indexFreeBinding = nTruePairs+1;
-        //std::cout << "Binding time " << TimeFreeBind << " and index " << indexFreeBinding << std::endl;
-        insertInHeap(indexFreeBinding, TimeFreeBind);
+        TimeAwareHeapInsert(indexFreeBinding, RateFreeBind,0,tstep);
         
         // Single unbinding from a site
         vec RatesFreeUnbind(_TotSites);
-        vec TimesFreeUnbind(_TotSites);
         int indexFreeUnbinding = indexFreeBinding+1;
         for (int iSite = 0; iSite < _TotSites; iSite++){
             RatesFreeUnbind[iSite] = _koff*_FreeLinkBound[iSite];
-            TimesFreeUnbind[iSite] = logrand()/RatesFreeUnbind[iSite];
-            insertInHeap(indexFreeUnbinding+iSite, TimesFreeUnbind[iSite]);
-            //std::cout << "Unbind from site " << iSite << " time " << TimesFreeUnbind[iSite] << " and index " << indexFreeUnbinding+iSite << std::endl;
+            TimeAwareHeapInsert(indexFreeUnbinding+iSite, RatesFreeUnbind[iSite],0,tstep);
         }
         
         // One end of CL unbinding
-        double RateSecondUnbind = _koff*_nDoubleBoundLinks;
-        double TimeSecondUnbind = logrand()/RateSecondUnbind;
+        double RateSecondUnbind = _koffSecond*_nDoubleBoundLinks;
         int indexSecondUnbind = indexFreeUnbinding+_TotSites;
-        //std::cout << "One end CL unbind time " << TimeSecondUnbind << " and index " << indexSecondUnbind << std::endl;
-        insertInHeap(indexSecondUnbind,TimeSecondUnbind);
+        TimeAwareHeapInsert(indexSecondUnbind,RateSecondUnbind,0,tstep);
         
         // Events for double binding and unbinding
         double RateDoubleBind = _kDoubleOn*nTruePairs;
-        double TimeDoubleBind = logrand()/RateDoubleBind;
         int indexDoubleBind = indexSecondUnbind+1;
-        insertInHeap(indexDoubleBind,TimeDoubleBind);
-        //std::cout << "Two end CL bind time " << TimeDoubleBind << " and index " << indexDoubleBind << std::endl;
+        TimeAwareHeapInsert(indexDoubleBind,RateDoubleBind,0,tstep);
         
         double RateDoubleUnbind = _kDoubleOff*_nDoubleBoundLinks;
-        double TimeDoubleUnbind = logrand()/RateDoubleUnbind;
         int indexDoubleUnbind = indexSecondUnbind+2;
-        insertInHeap(indexDoubleUnbind,TimeDoubleUnbind);
-        //std::cout << "Two end CL unbind time " << TimeDoubleUnbind << " and index " << indexDoubleUnbind << std::endl;
+        TimeAwareHeapInsert(indexDoubleUnbind,RateDoubleUnbind,0,tstep);
         
         double systime;
         int eventindex, BoundEnd, UnboundEnd, PlusOrMinusSingleBound;
         topOfHeap(eventindex,systime);
-        while (systime < tstep) {
-            //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
+        //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
+        while (eventindex > 0) {
             bool linkChange = false;
             if (eventindex==indexFreeBinding){ // end binding, choose random site and bind an end
-                systime = TimeFreeBind;
                 //std::cout << "Index " << eventindex << ", single binding at time " << systime << std::endl;
                 BoundEnd = int(unif(rng)*_TotSites);
                 PlusOrMinusSingleBound=1;
-                TimeFreeBind = logrand()/RateFreeBind+systime;
-                insertInHeap(indexFreeBinding,TimeFreeBind);
+                TimeAwareHeapInsert(indexFreeBinding,RateFreeBind,systime,tstep);
             } else if (eventindex >= indexFreeUnbinding && eventindex < indexSecondUnbind){ // single end unbind
                 BoundEnd = eventindex-indexFreeUnbinding;
-                systime = TimesFreeUnbind[BoundEnd];
                 //std::cout << "Index " << eventindex << ", single unbinding at time " << systime << std::endl;
                 PlusOrMinusSingleBound=-1;
             } else if (eventindex == indexSecondUnbind || eventindex==indexDoubleUnbind){ // CL unbinding
@@ -153,70 +147,58 @@ class EndedCrossLinkedNetwork {
                 linkChange = true;
                 if (eventindex == indexSecondUnbind){
                     // Add a free end at the other site. Always assume the remaining bound end is at the left
-                    systime = TimeSecondUnbind;
                     //std::cout << "Index " << eventindex << ", CL end unbind at time " << systime << std::endl;
                     PlusOrMinusSingleBound=1;
                 } else{
-                    systime = TimeDoubleUnbind;
                     //std::cout << "Index " << eventindex << ", CL both ends unbind at time " << systime << std::endl;
                     PlusOrMinusSingleBound=0;
                 }
             } else { // CL binding
                 // The index now determines which pair of sites the CL is binding to
                 // In addition, we always assume the bound end is the one at the left 
+                int pairToBind;
                 if (eventindex == indexDoubleBind){
-                    systime = TimeDoubleBind;
                     //std::cout << "Index " << eventindex << ", CL both ends bind at time " << systime << std::endl;
-                    int pair = int(unif(rng)*nTruePairs);
-                    //std::cout << "The chosen pair " << pair << std::endl;
-                    BoundEnd = BindingPairs[2*pair];
-                    UnboundEnd = BindingPairs[2*pair+1]; 
+                    pairToBind = int(unif(rng)*nTruePairs);
                     PlusOrMinusSingleBound=0;
-                    TimeDoubleBind = logrand()/RateDoubleBind+systime;
-                    //std::cout << "About to insert in heap with new time " << TimeDoubleBind << std::endl;
-                    insertInHeap(indexDoubleBind,TimeDoubleBind);
-                    //std::cout << "Done with heap insert " << std::endl;
+                    TimeAwareHeapInsert(indexDoubleBind,RateDoubleBind,systime,tstep);
                 } else{
-                    int linkIndex = eventindex-1;
-                    systime = TimesSecondBind[linkIndex];
+                    pairToBind = eventindex-1;
                     //std::cout << "Index " << eventindex << ", CL link " << linkIndex << " both ends bind at time " << systime << std::endl;
-                    BoundEnd = BindingPairs[2*linkIndex];
-                    UnboundEnd = BindingPairs[2*linkIndex+1];
                     PlusOrMinusSingleBound=-1;
                 }
-                //std::cout << "About to update tails and heads " << std::endl;
+                BoundEnd = BindingPairs[2*pairToBind];
+                UnboundEnd = BindingPairs[2*pairToBind+1];
                 _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
                 _LinkTails[_nDoubleBoundLinks] = UnboundEnd;
                 _nDoubleBoundLinks+=1;
                 linkChange = true;
             }   
-            //std::cout << "Made it to the end " << std::endl;;
             // Recompute subset of rates and times
             _nFreeEnds+= PlusOrMinusSingleBound;
             _FreeLinkBound[BoundEnd]+= PlusOrMinusSingleBound;
             
             // Rates of CL binding change based on number of bound ends
-            updateSecondBindingRate(BoundEnd, RatesSecondBind, TimesSecondBind, FirstLinkPerSite, NextLinkByLink, systime);
-            //std::cout << "Finished second binding update " << std::endl;;
+            updateSecondBindingRate(BoundEnd, RatesSecondBind, FirstLinkPerSite, NextLinkByLink, systime, tstep);
              
             // Update unbinding event at BoundEnd (the end whose state has changed)
             RatesFreeUnbind[BoundEnd] = _koff*_FreeLinkBound[BoundEnd];
-            TimesFreeUnbind[BoundEnd] = logrand()/RatesFreeUnbind[BoundEnd]+systime;
-            insertInHeap(BoundEnd+indexFreeUnbinding,TimesFreeUnbind[BoundEnd]);     
+            //std::cout << "About to insert unbinding single end in heap with index " << BoundEnd+indexFreeUnbinding << 
+            //    " and new time " << TimesFreeUnbind[BoundEnd] << std::endl;
+            TimeAwareHeapInsert(BoundEnd+indexFreeUnbinding,RatesFreeUnbind[BoundEnd],systime,tstep);     
             
             // Update unbinding events (links)
             if (linkChange){
-                RateSecondUnbind = _koff*_nDoubleBoundLinks;
-                TimeSecondUnbind = logrand()/RateSecondUnbind+systime;
-                insertInHeap(indexSecondUnbind,TimeSecondUnbind);
+                RateSecondUnbind = _koffSecond*_nDoubleBoundLinks;
+                TimeAwareHeapInsert(indexSecondUnbind,RateSecondUnbind,systime,tstep);
                 RateDoubleUnbind = _kDoubleOff*_nDoubleBoundLinks;
-                TimeDoubleUnbind = logrand()/RateDoubleUnbind+systime;
-                insertInHeap(indexDoubleUnbind,TimeDoubleUnbind);
+                TimeAwareHeapInsert(indexDoubleUnbind,RateDoubleUnbind,systime,tstep);
             }
             topOfHeap(eventindex,systime);
+            //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
         }
-        //deleteHeap();
     }
+    
     
     npInt getNBoundEnds(){
         // Copy _FreeLinkBound to numpy array
@@ -231,7 +213,7 @@ class EndedCrossLinkedNetwork {
     }
     
     npInt getLinkHeadsOrTails(bool Head){
-        // Copy _FreeLinkBound to numpy array
+        // Copy heads or tails to numpy array
         // return 1-D NumPy array
         // allocate py::array (to pass the result of the C++ function to Python)
         auto pyArray = py::array_t<int>(_nDoubleBoundLinks);
@@ -245,18 +227,7 @@ class EndedCrossLinkedNetwork {
         }
         return pyArray;
     }
-           
-    //void setName(const std::string &name_) { name = name_; }
-    //const std::string &getName() const { return name; }
-    //const double &getFirstGen() const { return numkids[0]; }
-    //void pysetNumChildren(py::array_t<double> pynumkids){
-        // Convert to C++ array
-       // vec kids(pynumkids.size());
-        //std::memcpy(kids.data(),pynumkids.data(),pynumkids.size()*sizeof(double));
-        //setNumChildren(kids);
-    //}     
-    double getkoff(){return _koff;}
-        
+                     
     private:
         int _TotSites, _nFreeEnds, _nDoubleBoundLinks;
         double _kon, _konSecond, _koff, _koffSecond, _kDoubleOn, _kDoubleOff; // rates
@@ -268,15 +239,15 @@ class EndedCrossLinkedNetwork {
             return -log(1.0-unif(rng));
         }
         
-        void updateSecondBindingRate(int BoundEnd, vec &SecondEndRates, vec &SecondEndBindingTimes,
-            const intvec &FirstLink,const intvec &NextLink,double systime){
+        void updateSecondBindingRate(int BoundEnd, vec &SecondEndRates,const intvec &FirstLink,
+            const intvec &NextLink,double systime, double tstep){
+            /*
+            Update the binding rate of every link with left end = BoundEnd
+            */
             int ThisLink = FirstLink[BoundEnd];
             while (ThisLink > -1){
                 SecondEndRates[ThisLink] = _konSecond*_FreeLinkBound[BoundEnd];
-                double eltime = logrand()/SecondEndRates[ThisLink];
-                SecondEndBindingTimes[ThisLink] = eltime + systime;
-                //std::cout << "Inserting " << ThisLink << " as index " <<ThisLink+1 << " with time " << SecondEndBindingTimes[ThisLink] << std::endl;
-                insertInHeap(ThisLink+1, SecondEndBindingTimes[ThisLink]);
+                TimeAwareHeapInsert(ThisLink+1, SecondEndRates[ThisLink],systime,tstep);
                 ThisLink = NextLink[ThisLink];
             }
         }
@@ -303,5 +274,14 @@ class EndedCrossLinkedNetwork {
                 std::cout << "Link " << iLink << " next link " << NextLinkByLink[iLink] << std::endl;
             }    */
         } // end makePairLinkLists
+        
+        void TimeAwareHeapInsert(int index, double rate, double systime,double timestep){
+            deleteFromHeap(index); // delete any previous copy
+            double newtime = systime+logrand()/rate;
+            if (newtime < timestep){
+                //std::cout << "Inserting " << index << " with time " << eventtime << std::endl;
+                insertInHeap(index,newtime);
+            }
+        }
  
 };    

@@ -7,11 +7,19 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
 
     """
     This class is a child of CrossLinkedNetwork which implements a network 
-    with cross links where each end matters seaprately
-    There are 4 rates:
-    Rate of one end to attach (self._kon) 
-    Rate of the other end to attach (self._konSecond)
-    Rate of one end to dettach (self._koff)
+    with cross links where each end matters separately. 
+    
+    There are 3 reactions
+    1) Binding of a floating link to one site (rate _kon)
+    2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
+    3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)
+    4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
+    5) Binding of both ends of a CL (rate _kDoubleOn)
+    6) Unbinding of both ends of a CL (rate _kDoubleOff)
+    
+    This is the pure python version. See below object DoubleEndedCrossLinkedNetworkCPP for 
+    implementation using C++ and fortran. 
+    
     """
     
     ## =============================== ##
@@ -20,23 +28,18 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     def __init__(self,nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,CLseed,Dom,fibDisc,nThreads=1):
         """
         Constructor
-        # In addition to iPts and jPts (lists of completed links), there is now a list of potential sites
-        # that have a link attached that could bind to an available other site
-        This list is self._FreeLinkBound. All other information is samea as super 
         """
         super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,CLseed,Dom,fibDisc,nThreads);
         self._TotNumSites = self._NsitesPerf*self._nFib;
-        self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # says whether or not a link is bound to a site with a free end
+        self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # number of free-ended links bound to each site
         self._konSecond = konsecond;
         self._nFreeEnds = 0;
         self._nDoubleBoundLinks = 0;
         self._MaxLinks = 2*int(konsecond/koff*kon/koff)*self._TotNumSites
-        self._MaxEnds = 2*int(kon/koff)*self._TotNumSites
-        self._MaxEventsOtherThanBinding = 2*self._MaxLinks+self._MaxEnds+1;
         self._HeadsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
         self._TailsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
-        self._kDoubleOn = 16/15;
-        self._kDoubleOff = 1;
+        self._kDoubleOn = 0;
+        self._kDoubleOff = 0;
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -86,9 +89,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         Inputs: fiberCol = fiberCollection object of the fibers,
         Dom = Domain object, tstep = the timestep we are updating the network
         by (a different name than dt)
-        This is an event-driven algorithm. See comments throughout, but
-        the basic idea is to sample times for each event, then update 
-        those times as the state of the network changes. 
+        This is an event-driven algorithm using a heap for fast processing.
         """
         # Obtain Chebyshev points and uniform points, and get
         # the neighbors of the uniform points
@@ -101,12 +102,12 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         nPairs, BindingPairs = self.getPairsThatCanBind(SpatialDatabase)
         UniquePairs = BindingPairs[0:nPairs,:];
         PairIndices = np.arange(2*nPairs,dtype=np.int64)
-        BaseCLRates, FirstLinkPerSite,NextLinkByLink = self.getSecondBindingRates(UniquePairs,uniPts,Dom);
+        BaseCLRates, FirstLinkPerSite,NextLinkByLink = self.getBaseSecondBindingRates(UniquePairs,uniPts,Dom);
         RatesSecondBind, TimesSecondBind = self.calcAllSecondBindingRates(nPairs,BaseCLRates,BindingPairs);
         TruePairs = PairIndices[BaseCLRates > 0];
         nTruePairs = len(TruePairs);
         # Initialize que
-        queue = heap([],self._MaxEventsOtherThanBinding+2*nPairs);
+        queue = heap([],self._TotNumSites+4+2*nPairs);
         # Add double binding to heap
         indexstart = 0;
         for iEv in range(len(TimesSecondBind)):
@@ -264,7 +265,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         
     def getPairsThatCanBind(self,SpatialDatabase):
         """
-        Generate list of events for binding of a doubly-bound link to both sites
+        Generate list of events for binding of a doubly-bound link to both sites. 
+        SpatialDatabase = database of uniform points (sites)
         """
         uniNeighbs = SpatialDatabase.selfNeighborList((1+self._uppercldelta)*self._rl);
         # Filter the list of neighbors to exclude those on the same fiber
@@ -281,7 +283,15 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         BothEndBindings[nPairs:,1] = iPts;
         return nPairs, BothEndBindings;
     
-    def getSecondBindingRates(self,BothEndBindings,uniPts,Dom):
+    def getBaseSecondBindingRates(self,BothEndBindings,uniPts,Dom):
+        """
+        Calculate the base rates of binding for a pair of sites. 
+        Really what this method is doing is checking that the sites
+        are FAR enough apart (we already know they are close enough
+        from neighbor search) to have a link form between them. In the
+        python version, it also computes the link lists for fast searching
+        through the links. 
+        """
         nPairs = len(BothEndBindings[:,0]);
         BothEndBindingRates = np.zeros(2*nPairs);
         FirstLinkPerSite = np.zeros(self._TotNumSites,dtype=np.int64)-1;
@@ -306,6 +316,11 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         return BothEndBindingRates, FirstLinkPerSite,NextLinkByLink;
     
     def calcAllSecondBindingRates(self,nPairs,BaseRates,BothEndBindings):
+        """
+        Update the binding rates for ALL links based on the number of free
+        links bound at the left end of the link. Also computes times of binding
+        for those links
+        """
         BothEndRates = np.zeros(2*nPairs);
         BothEndBindingTimes = np.zeros(2*nPairs)
         for iPair in range(2*nPairs):
@@ -315,6 +330,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         return BothEndRates, BothEndBindingTimes;    
     
     def updateSecondBindingRate(self,BoundEnd,BaseRates,BothEndRates,BothEndBindingTimes,FirstLink,NextLink,systime=0):
+        """
+        Update the binding rates for any link with leftend = BoundEnd. This is done by 
+        going through the linked lists starting at first[BoundEnd]
+        """
         ThisLink = FirstLink[BoundEnd];
         updatedLinks=[];
         while (ThisLink > -1):
@@ -330,12 +349,7 @@ from EndedCrossLinkedNetwork import EndedCrossLinkedNetwork
 class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
 
     """
-    This class is a child of CrossLinkedNetwork which implements a network 
-    with cross links where each end matters seaprately
-    There are 4 rates:
-    Rate of one end to attach (self._kon) 
-    Rate of the other end to attach (self._konSecond)
-    Rate of one end to dettach (self._koff)
+    Version that uses C++ and fortran code
     """
     
     ## =============================== ##
@@ -352,7 +366,7 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
         # C++ initialize
         allRates = [self._kon,self._konSecond,self._koff,self._koff,self._kDoubleOn,self._kDoubleOff];
         self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, CLseed);
-        
+           
     ## =============================== ##
     ##     PUBLIC METHODS
     ## =============================== ##
@@ -389,7 +403,7 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
         nPairs, BindingPairs = self.getPairsThatCanBind(SpatialDatabase)
         UniquePairs = BindingPairs[0:nPairs,:];
         PairIndices = np.arange(2*nPairs,dtype=np.int64)
-        BaseCLRates = self.getSecondBindingRates(UniquePairs,uniPts,Dom);
+        BaseCLRates = self.getBaseSecondBindingRates(UniquePairs,uniPts,Dom);
         TruePairs = PairIndices[BaseCLRates > 0];
         import time
         thist = time.time();
@@ -397,7 +411,13 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
         
         print('Time step time %f ' %(time.time()-thist))       
     
-    def getSecondBindingRates(self,BothEndBindings,uniPts,Dom):
+    def getBaseSecondBindingRates(self,BothEndBindings,uniPts,Dom):
+        """
+        Calculate the base rates of binding for a pair of sites. 
+        Really what this method is doing is checking that the sites
+        are FAR enough apart (we already know they are close enough
+        from neighbor search) to have a link form between them. 
+        """
         nPairs = len(BothEndBindings[:,0]);
         BothEndBindingRates = np.zeros(2*nPairs);
         FirstLinkPerSite = np.zeros(self._TotNumSites,dtype=np.int64)-1;
@@ -409,4 +429,5 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
                     linkNum = iPair+bE*nPairs;
                     BothEndBindingRates[linkNum]=thiskOn;
         return BothEndBindingRates;
+        
 
