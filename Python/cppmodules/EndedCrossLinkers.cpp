@@ -52,7 +52,8 @@ class EndedCrossLinkedNetwork {
         _kDoubleOn = rates[4];
         _kDoubleOff = rates[5];
         _FreeLinkBound = intvec(TotSites,0);
-        int maxLinks = std::max(2*int(_konSecond/_koffSecond*_kon/_koff*_TotSites),10); // guess for max # of links
+        # Donev changed 10 to 100, who cares anyway and fluctuations would be very large if <10
+        int maxLinks = std::max(2*int(_konSecond/_koffSecond*_kon/_koff*_TotSites),100); // guess for max # of links
         _LinkHeads = intvec(maxLinks,-1);
         _LinkTails = intvec(maxLinks,-1);
         initializeHeap(maxLinks+_TotSites+4);
@@ -91,6 +92,7 @@ class EndedCrossLinkedNetwork {
         // Make linked lists. When a site is updated, we need to rapidly update the list of links 
         // with rate influenced by that site. The link lists are the first link affected for each site
         // and then the next link affected for each link. 
+        // Donev: I don't understand why this is necessary, let's discuss
         intvec FirstLinkPerSite(_TotSites,-1);
         intvec NextLinkByLink(nTruePairs,-1);
         makePairLinkLists(nTruePairs,BindingPairs,FirstLinkPerSite,NextLinkByLink);
@@ -279,7 +281,12 @@ class EndedCrossLinkedNetwork {
         } // end makePairLinkLists
         
         void TimeAwareHeapInsert(int index, double rate, double systime,double timestep){
+            // Donev: No need to call deleteFromHeap. insertInHeap is written to check if the element is already in heap
+            // and if so calls insertInHeap
+            // So I propose you move this to the else clause below
+            // I find it a bit strange that deleteFromHeap is never called anywhere else -- don't some links disappear for example and need to be deleted?
             deleteFromHeap(index); // delete any previous copy
+            // Donev: Is rate ever zero?
             double newtime = systime+logrand()/rate;
             if (newtime < timestep){
                 //std::cout << "Inserting " << index << " with time " << eventtime << std::endl;

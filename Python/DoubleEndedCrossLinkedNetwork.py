@@ -9,6 +9,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     This class is a child of CrossLinkedNetwork which implements a network 
     with cross links where each end matters separately. 
     
+    Donev: Suggest adding comment here that this implements one specific model
+    but the one actually used is in DoubleEndedCrossLinkedNetworkCPP and that model 
+    may be updated in the future and supersedes this one
+    
     There are 3 reactions
     1) Binding of a floating link to one site (rate _kon)
     2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
@@ -68,6 +72,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
         uniNeighbs = SpatialDatabase.selfNeighborList((1+self._uppercldelta)*self._rl);
         # Filter the list of neighbors to exclude those on the same fiber
+        # Donev: The rest of this seems to duplicate stuff in getPairsThatCanBind
         iFibs = uniNeighbs[:,0] // self._NsitesPerf;
         jFibs = uniNeighbs[:,1] // self._NsitesPerf;
         delInds = np.arange(len(iFibs));
@@ -94,6 +99,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         """
         # Obtain Chebyshev points and uniform points, and get
         # the neighbors of the uniform points
+        # Donev: This seems to duplicate code in nLinksAllSites
         chebPts = fiberCol.getX();
         uniPts = fiberCol.getUniformPoints(chebPts);
         SpatialDatabase = fiberCol.getUniformSpatialData();
@@ -264,7 +270,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         
     def logrand(self,N=1):
         return -np.log(1-np.random.rand(N));
-        
+    
+    # Donev: This is called by the parent. Not sure what the convention is
+    # about private methods being private or public for the parent class
+    # I know it doesn't matter in python but just as an OOP principle    
     def getPairsThatCanBind(self,SpatialDatabase):
         """
         Generate list of events for binding of a doubly-bound link to both sites. 
@@ -351,7 +360,7 @@ from EndedCrossLinkedNetwork import EndedCrossLinkedNetwork
 class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
 
     """
-    Version that uses C++ and fortran code
+    Version that uses C++ and Fortran code
     """
     
     ## =============================== ##
@@ -362,7 +371,7 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
         Constructor
         # In addition to iPts and jPts (lists of completed links), there is now a list of potential sites
         # that have a link attached that could bind to an available other site
-        This list is self._FreeLinkBound. All other information is samea as super 
+        This list is self._FreeLinkBound. All other information is same as super 
         """
         super().__init__(nFib,N,Nunisites,Lfib,nCL,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,nThreads);
         # C++ initialize
@@ -382,6 +391,11 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
         self._HeadsOfLinks = self._cppNet.getLinkHeadsOrTails(True);
         self._TailsOfLinks = self._cppNet.getLinkHeadsOrTails(False);
         self._nDoubleBoundLinks = len(self._HeadsOfLinks);
+        # Donev: I see that this call also creates a SpatialDatabase of the binding sites
+        # thus duplicating what is done in updateNetwork
+        # Why is this done? Who actuall calls nLinksAllSites and when
+        # Really there should be only one method that creates such spatial databases, so code is NOT
+        # duplicated twice (for example, it can be replaced by calls to GPU code)
         return super().nLinksAllSites(fiberCol,Dom);
             
     def updateNetwork(self,fiberCol,Dom,tstep,of=None):
