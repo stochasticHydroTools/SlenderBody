@@ -39,8 +39,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._MaxLinks = 2*int(konsecond/koff*kon/koff)*self._TotNumSites
         self._HeadsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
         self._TailsOfLinks = np.zeros(self._MaxLinks,dtype=np.int64);
-        self._kDoubleOn = 2/3; # half the real value because we schedule link binding as separate events
-        self._kDoubleOff = 1;
+        self._kDoubleOn = 0; # half the real value because we schedule link binding as separate events
+        self._kDoubleOff = 0;
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -407,11 +407,11 @@ class DoubleEndedCrossLinkedNetworkCPP(DoubleEndedCrossLinkedNetwork):
         PairIndices = np.arange(2*nPairs,dtype=np.int64)
         BaseCLRates = self.getBaseSecondBindingRates(UniquePairs,uniPts,Dom);
         TruePairs = PairIndices[BaseCLRates > 0];
-        import time
-        thist = time.time();
+        #import time
+        #thist = time.time();
         self._cppNet.updateNetwork(tstep,BindingPairs[TruePairs,:]);
         
-        print('Time step time %f ' %(time.time()-thist))       
+        #print('Time step time %f ' %(time.time()-thist))       
     
     def getBaseSecondBindingRates(self,BothEndBindings,uniPts,Dom):
         """
