@@ -108,6 +108,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self._ufary = np.zeros([self._Npts],dtype=np.complex128);
         self._ufarz = np.zeros([self._Npts],dtype=np.complex128);
         print('%.2E far field tolerance' %fartol)
+        warn('Tolerances for Ewald are low to compare to GPU code')
         
     ## =========================================
     ##    PUBLIC METHODS CALLED OUTSIDE CLASS
@@ -134,9 +135,6 @@ class EwaldSplitter(RPYVelocityEvaluator):
         Ewaldnear = self.EwaldNearVel(ptsxyz,forces,SpatialData,nThr); # near field Ewald
         if (verbose>=0):
             print ('Near field Ewald time %f' %(time.time()-t));
-        #Ewaldnear2 = self.EwaldNearVelQuad(ptsxyz,forces,Dom); # near field Ewald quadratic
-        #print('Near field error')
-        #print(np.amax(Ewaldnear-Ewaldnear2))
         return Ewaldfar+Ewaldnear; 
 
     ## =========================================
@@ -292,7 +290,6 @@ class EwaldSplitter(RPYVelocityEvaluator):
 
 
 # Parameters for Raul's code 
-#import uammd
 GPUtol = 1e-6 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
@@ -320,10 +317,10 @@ class GPUEwaldSplitter(EwaldSplitter):
         RPYcpp.initRPYVars(a,mu,Npts,PerDom.getPeriodicLens());
         
         # Raul's code
+        import uammd
         self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
-            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]),shearStrain=0);
+            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]));
         self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
-        warn('GPU code only works for non-strained cells')
         
         # Calculate the truncation distance for Ewald
         print('%.2E GPU tolerance' %GPUtol)
@@ -342,17 +339,18 @@ class GPUEwaldSplitter(EwaldSplitter):
         """
         # First check if Ewald parameter is ok
         self._currentDomain = Dom;
+        pts = self._currentDomain.primecoords(ptsxyz);
         self.checkrcut();
         # Reshape for GPU
-        positions = np.array(np.reshape(ptsxyz,3*self._Npts), np.float32);
+        positions = np.array(np.reshape(pts,3*self._Npts), np.float32);
         forcesR = np.array(np.reshape(forces,3*self._Npts), np.float32);
         # It is really important that the result array has the same floating precision as the compiled uammd, otherwise
         # python will just silently pass by copy and the results will be lost
         MF=np.zeros(3*self._Npts, np.float32);
         t=time.time();
-        self._GPUEwald.Mdot(positions, forcesR, MF)
+        self._GPUEwald.Mdot(positions, forcesR, self._currentDomain.getg(), MF)
         print('Time Raul: %f' %(time.time()-t));
-        return np.reshape(MF,(self._Npts,3))
+        return np.array(np.reshape(MF,(self._Npts,3)),np.float64)
     
     def updateFarFieldArrays(self):
         """
@@ -360,6 +358,6 @@ class GPUEwaldSplitter(EwaldSplitter):
         """
         print('Updating GPU far field arrays')
         self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
-            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]),shearStrain=0);
+            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]));
         self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
         

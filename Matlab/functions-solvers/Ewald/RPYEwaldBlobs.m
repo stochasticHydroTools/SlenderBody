@@ -20,6 +20,7 @@ a=0.0245;
 g=0.5+(Ly-2)*(-0.25);
 
 velfar = EwaldFarVel(pts,forces,mu,Lx,Ly,Lz,xi,a,g);
+velfar2 = EwaldFarVelGaussian2(pts,forces,mu,Lx,Ly,Lz,xi,a,g);
 velNear = EwaldNearSum(Npts,pts,forces,xi,Lx,Ly,Lz,a,mu,g);
 velEwald=velNear+velfar;
 

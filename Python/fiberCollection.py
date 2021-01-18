@@ -6,7 +6,9 @@ import FiberUpdateNumba as NumbaColloc
 import numba as nb
 import scipy.sparse as sp
 import time
-from math import sqrt, exp
+from math import sqrt, exp, pi
+import BatchedNBodyRPY as gpurpy
+
 
 # Definitions
 FattenFib = False;          # make fiber fatter to cap mobility in nonlocal hydrodynamics
@@ -17,7 +19,7 @@ aRPYFac = exp(1.5)/4        # equivalent RPY blob radius a = aRPYFac*epsilon*L;
 dstarCenterLine = 2*aRPYFac;      # dstarCenterLine*eps*L is distance where we set v to centerline v
 dstarInterpolate = 4*aRPYFac;     # dstarInterpolate*eps*L is distance where we start blending centerline and quadrature result
 dstar2panels = 8.8;         #dstar2panels*eps*L is distance below which we need 2 panels for special quad
-verbose = -1;               # debug / timings
+verbose = 1;               # debug / timings
 
 
 class fiberCollection(object):
@@ -264,12 +266,23 @@ class fiberCollection(object):
         self._SpatialDirectQuad.updateSpatialStructures(Xupsampled,Dom);
         fupsampled = self.getPointsForUpsampledQuad(forceDs);
         forcesUp = fupsampled*np.reshape(np.tile(self._fiberDisc.getwDirect(),self._Nfib),(self._Ndirect*self._Nfib,1));
+        if (verbose>=0):
+            print('Upsampling time %f' %(time.time()-thist));
+            thist=time.time();
         RPYVelocityUp = RPYEval.calcBlobTotalVel(Xupsampled,forcesUp,Dom,self._SpatialDirectQuad,self._nThreads);
-        SelfTerms = ManyFibCpp.SubtractAllRPY(Xupsampled,fupsampled,self._fiberDisc.getwDirect());
+        if (verbose>=0):
+            print('Ewald time %f' %(time.time()-thist));
+            thist=time.time();
+        #SelfTerms2 = ManyFibCpp.SubtractAllRPY(Xupsampled,fupsampled,self._fiberDisc.getwDirect());
+        SelfTerms = self.GPUSubtractSelfTerms(self._Ndirect,Xupsampled,forcesUp);
+        #print(np.amax(np.abs(SelfTerms-SelfTerms2)))
+        if (verbose>=0):
+            print('Self time %f' %(time.time()-thist));
+            thist=time.time();
         RPYVelocityUp -= SelfTerms;
         RPYVelocity = self.getValuesfromDirectQuad(RPYVelocityUp);
         if (verbose>=0):
-            print('Total Ewald time %f' %(time.time()-thist));
+            print('Downsampling time %f' %(time.time()-thist));
         
         thist=time.time();
         alltargets=[];
@@ -300,6 +313,22 @@ class fiberCollection(object):
         fD = self._fiberDisc;
         self._velocities = NumbaColloc.calcKAlphas(self._Nfib,self._Npf,Xsarg,fD._MatfromNto2N, fD._UpsampledChebPolys, \
             fD._LeastSquaresDownsampler, fD._Dpinv2N, fD._I,self._alphas);
+    
+    def GPUSubtractSelfTerms(self,N,Xupsampled,fupsampled):
+        hydrodynamicRadius = aRPYFac*self._epsilon*self._Lf;
+        selfMobility= 1.0/(6*pi*self._mu*hydrodynamicRadius);
+        
+        precision = np.float64;
+        fupsampledg = np.array(fupsampled,precision);
+        Xupsampledg = np.array(Xupsampled,precision);
+        
+        #It is really important that the result array has the same floating precision as the compiled module, otherwise
+        # python will just silently pass by copy and the results will be lost
+        MF=np.zeros(self._Nfib*3*N, precision);
+        gpurpy.computeMdot(np.reshape(Xupsampledg,self._Nfib*3*N), np.reshape(fupsampledg,self._Nfib*3*N), MF,
+                       self._Nfib, N,selfMobility, hydrodynamicRadius)
+        return np.reshape(MF,(self._Nfib*N,3));
+        
         
     def updateAllFibers(self,dt,XsforNL,exactinex=1):
         """
@@ -400,26 +429,47 @@ class fiberCollection(object):
         Inputs: chebpts as a (tot#ofpts x 3) array
         Outputs: upsampled points as a (nPtsUpsample*Nfib x 3) array.
         """
+        return fiberCollection.useNumbatoUpsample(chebpts,self._Nfib,self._Npf,self._Ndirect,self._fiberDisc._MatfromNtoDirectN);
         upsampledPoints = np.zeros((self._Nfib*self._Ndirect,3));
         for iFib in range(self._Nfib):
             upinds = range(iFib*self._Ndirect,(iFib+1)*self._Ndirect);
             rowinds = self.getRowInds(iFib);
             upsampledPoints[upinds]=self._fiberDisc.resampleForDirectQuad(chebpts[rowinds]);
+        print(np.amax(np.abs(upsampledPoints-numbavals)))
         return upsampledPoints;
-       
+    
+    @staticmethod
+    @nb.njit(nb.float64[:,:](nb.float64[:,:],nb.int64,nb.int64,nb.int64,nb.float64[:,:]),parallel=True,cache=True) 
+    def useNumbatoUpsample(chebVals,Nfib,N,Nup,upsampMat):
+        upsampledValues = np.zeros((Nfib*Nup,3));
+        for iFib in nb.prange(Nfib):
+            upsampledValues[iFib*Nup:(iFib+1)*Nup]=np.dot(upsampMat,chebVals[iFib*N:(iFib+1)*N]);
+        return upsampledValues; 
+    
     def getValuesfromDirectQuad(self,upsampledVals):
         """
         Obtain values at Chebyshev nodes from upsampled 
         Inputs: upsampled values as a (nPtsUpsample*Nfib x 3) array.
         Outputs: vals at cheb pts as a (tot#ofpts x 3) array
         """
+        return fiberCollection.useNumbatoDownsample(upsampledVals,self._Nfib,self._Npf,self._Ndirect,self._fiberDisc._MatfromDirectNtoN);
         chebValues = np.zeros((self._Nfib*self._Npf,3));
         for iFib in range(self._Nfib):
             upinds = range(iFib*self._Ndirect,(iFib+1)*self._Ndirect);
             rowinds = self.getRowInds(iFib);
             chebValues[rowinds]=self._fiberDisc.downsampleFromDirectQuad(upsampledVals[upinds]);
+        print(np.amax(np.abs(chebValues-numbavals)))
         return chebValues;        
-          
+    
+    @staticmethod
+    @nb.njit(nb.float64[:,:](nb.float64[:,:],nb.int64,nb.int64,nb.int64,nb.float64[:,:]),parallel=True,cache=True) 
+    def useNumbatoDownsample(upsampledVals,Nfib,N,Nup,downsampMat):
+        chebValues = np.zeros((Nfib*N,3));
+        for iFib in nb.prange(Nfib):
+            chebValues[iFib*N:(iFib+1)*N]=np.dot(downsampMat,upsampledVals[iFib*Nup:(iFib+1)*Nup]);
+        return chebValues; 
+        
+        
     def getg(self,t):
         """
         Get the value of the strain g according to what the background flow dictates.

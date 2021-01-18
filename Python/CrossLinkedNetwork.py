@@ -56,8 +56,8 @@ class CrossLinkedNetwork(object):
         # Cutoff distance to form the CLs (temporarily the same as the rest length)
         self._lowercldelta = 0.01;
         # Add fudge factor because of discrete sites
-        ds = self._Lfib/(self._NsitesPerf-1);
-        self._uppercldelta = np.sqrt(((1+self._lowercldelta)*self._rl)**2 + ds**2/4)/self._rl-1;
+        self._ds = self._Lfib/(self._NsitesPerf-1);
+        self._uppercldelta = np.sqrt(((1+self._lowercldelta)*self._rl)**2 + self._ds**2/4)/self._rl-1;
         print('Discrete fudge factor %f ' % self._uppercldelta)
         # Allow links to form if two sites are in distance range (1-_lowercldelta)*l, (1+_uppercldelta)*l
         print('Sigma/L is %f' %(self._sigma/self._Lfib))

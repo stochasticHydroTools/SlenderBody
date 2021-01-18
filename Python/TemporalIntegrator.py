@@ -10,8 +10,8 @@ from warnings import warn
 
 # Definitions 
 itercap = 1000; # cap on GMRES iterations if we converge all the way
-GMREStolerance=1e-6;
-verbose = -1;
+GMREStolerance=1e-4; # larger than GPU tolerance
+verbose = 1;
 
 class TemporalIntegrator(object):
 

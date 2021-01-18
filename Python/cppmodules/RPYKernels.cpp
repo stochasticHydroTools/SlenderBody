@@ -206,9 +206,6 @@ void RPYNKer(vec3 &rvec, const vec3 &force, double xi, vec3 &unear){
 //================================================
 // PLAIN UNSPLIT RPY KERNEL EVALUATION
 //================================================
-// Donev: Suggest breaking long codes up into sections, here it seems you switch from split RPY (PSE method) to plain RPY
-
-// Donev: I think the next line of documentation is wrong -- no chi here since this is just "plain" RPY
 //The RPY kernel can be written as M = Ft(r,a)*I+Gt(r,a)*(I-RR)
 //The next 2 functions are those Ft and Gt functions.
 double FtotRPY(double r){

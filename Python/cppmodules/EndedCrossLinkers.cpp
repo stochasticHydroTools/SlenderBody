@@ -52,7 +52,6 @@ class EndedCrossLinkedNetwork {
         _kDoubleOn = rates[4];
         _kDoubleOff = rates[5];
         _FreeLinkBound = intvec(TotSites,0);
-        # Donev changed 10 to 100, who cares anyway and fluctuations would be very large if <10
         int maxLinks = std::max(2*int(_konSecond/_koffSecond*_kon/_koff*_TotSites),100); // guess for max # of links
         _LinkHeads = intvec(maxLinks,-1);
         _LinkTails = intvec(maxLinks,-1);
@@ -81,22 +80,34 @@ class EndedCrossLinkedNetwork {
         int nTruePairs = BindingPairs.size()/2;
         resetHeap();
         
-        // Compute the binding rates of those pairs
-        vec RatesSecondBind(nTruePairs);
+        // Compute the binding rates of those pairs and sort list of pairs
+        intvec numLinksPerSite(_TotSites,0);
         for (int iPair=0; iPair < nTruePairs; iPair++){
             int BoundEnd = BindingPairs[2*iPair]; // they are stacked so the bound end comes last
-            RatesSecondBind[iPair] = _konSecond*_FreeLinkBound[BoundEnd];
+            numLinksPerSite[BoundEnd]++;
             //std::cout << "CL pair " << BindingPairs[2*iPair] << " , " << BindingPairs[2*iPair+1] << std::endl;
-            TimeAwareHeapInsert(iPair+1, RatesSecondBind[iPair],0,tstep); // notice we start indexing from 1, this is how fortran is written
         }
-        // Make linked lists. When a site is updated, we need to rapidly update the list of links 
-        // with rate influenced by that site. The link lists are the first link affected for each site
-        // and then the next link affected for each link. 
-        // Donev: I don't understand why this is necessary, let's discuss
-        intvec FirstLinkPerSite(_TotSites,-1);
-        intvec NextLinkByLink(nTruePairs,-1);
-        makePairLinkLists(nTruePairs,BindingPairs,FirstLinkPerSite,NextLinkByLink);
-        
+        // Sort the possible links
+        intvec startPair(_TotSites,0);
+        for (int iSite=1; iSite < _TotSites; iSite++){ // cumulative sum
+            startPair[iSite]=startPair[iSite-1]+numLinksPerSite[iSite-1];
+        }
+        intvec SortedLinks(2*nTruePairs,-1);
+        vec RatesSecondBind(nTruePairs); 
+        for (int iPair=0; iPair < nTruePairs; iPair++){
+            int BoundEnd = BindingPairs[2*iPair]; 
+            int index = startPair[BoundEnd];
+            int isOccupied = SortedLinks[2*index];
+            while (isOccupied > -1){
+                index++;
+                isOccupied = SortedLinks[2*index];
+            } // is occupied is -1 at end of loop; can insert there
+            SortedLinks[2*index] = BoundEnd;
+            SortedLinks[2*index+1] = BindingPairs[2*iPair+1]; // unbound end
+            RatesSecondBind[index] = _konSecond*_FreeLinkBound[BoundEnd];
+            TimeAwareHeapInsert(index+1, RatesSecondBind[index],0,tstep); // notice we start indexing from 1, this is how fortran is written
+        }
+
         // Single binding to a site
         double RateFreeBind = _kon*_TotSites;
         int indexFreeBinding = nTruePairs+1;
@@ -172,8 +183,8 @@ class EndedCrossLinkedNetwork {
                     //std::cout << "Index " << eventindex << ", CL link " << linkIndex << " both ends bind at time " << systime << std::endl;
                     PlusOrMinusSingleBound=-1;
                 }
-                BoundEnd = BindingPairs[2*pairToBind];
-                UnboundEnd = BindingPairs[2*pairToBind+1];
+                BoundEnd = SortedLinks[2*pairToBind];
+                UnboundEnd = SortedLinks[2*pairToBind+1];
                 _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
                 _LinkTails[_nDoubleBoundLinks] = UnboundEnd;
                 _nDoubleBoundLinks+=1;
@@ -184,7 +195,7 @@ class EndedCrossLinkedNetwork {
             _FreeLinkBound[BoundEnd]+= PlusOrMinusSingleBound;
             
             // Rates of CL binding change based on number of bound ends
-            updateSecondBindingRate(BoundEnd, RatesSecondBind, FirstLinkPerSite, NextLinkByLink, systime, tstep);
+            updateSecondBindingRate(BoundEnd, RatesSecondBind, startPair[BoundEnd], numLinksPerSite[BoundEnd], systime, tstep);
              
             // Update unbinding event at BoundEnd (the end whose state has changed)
             RatesFreeUnbind[BoundEnd] = _koff*_FreeLinkBound[BoundEnd];
@@ -244,53 +255,27 @@ class EndedCrossLinkedNetwork {
             return -log(1.0-unif(rng));
         }
         
-        void updateSecondBindingRate(int BoundEnd, vec &SecondEndRates,const intvec &FirstLink,
-            const intvec &NextLink,double systime, double tstep){
+        void updateSecondBindingRate(int BoundEnd, vec &SecondEndRates, int startPair, int numLinks,double systime, double tstep){
             /*
             Update the binding rate of every link with left end = BoundEnd
             */
-            int ThisLink = FirstLink[BoundEnd];
-            while (ThisLink > -1){
+            for (int ThisLink = startPair; ThisLink < startPair+numLinks; ThisLink++){
                 SecondEndRates[ThisLink] = _konSecond*_FreeLinkBound[BoundEnd];
                 TimeAwareHeapInsert(ThisLink+1, SecondEndRates[ThisLink],systime,tstep);
-                ThisLink = NextLink[ThisLink];
             }
         }
-        
-        void makePairLinkLists(int nTruePairs,const intvec &BindingPairs, intvec &FirstLinkPerSite, intvec &NextLinkByLink){
-            for (int iPair=0; iPair < nTruePairs; iPair++){
-                int BoundEnd = BindingPairs[2*iPair];     
-                if (FirstLinkPerSite[BoundEnd]==-1){
-                    FirstLinkPerSite[BoundEnd] = iPair;
-                } else {
-                    int prevnewLink;
-                    int newLink = FirstLinkPerSite[BoundEnd]; 
-                    while (newLink > -1){
-                        prevnewLink = newLink;
-                        newLink = NextLinkByLink[newLink];   
-                    } 
-                    NextLinkByLink[prevnewLink] = iPair;
-                } // endif
-            } // end for
-            /*for (int iEnd=0; iEnd < _TotSites; iEnd++){
-                std::cout << "Site " << iEnd << " first link " << FirstLinkPerSite[iEnd] << std::endl;
-            }
-            for (int iLink=0; iLink < nTruePairs; iLink++){
-                std::cout << "Link " << iLink << " next link " << NextLinkByLink[iLink] << std::endl;
-            }    */
-        } // end makePairLinkLists
-        
+
         void TimeAwareHeapInsert(int index, double rate, double systime,double timestep){
-            // Donev: No need to call deleteFromHeap. insertInHeap is written to check if the element is already in heap
-            // and if so calls insertInHeap
-            // So I propose you move this to the else clause below
-            // I find it a bit strange that deleteFromHeap is never called anywhere else -- don't some links disappear for example and need to be deleted?
-            deleteFromHeap(index); // delete any previous copy
-            // Donev: Is rate ever zero?
+            if (rate==0){
+                deleteFromHeap(index); // delete any previous copy
+                return;
+            }
             double newtime = systime+logrand()/rate;
             if (newtime < timestep){
                 //std::cout << "Inserting " << index << " with time " << eventtime << std::endl;
                 insertInHeap(index,newtime);
+            } else {
+                deleteFromHeap(index);
             }
         }
  

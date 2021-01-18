@@ -12,5 +12,10 @@ ManyFiberMethods:
 CrossLinking: 
 	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` pyCrossLinkers.cpp -o CrossLinking.so
 
+EndedCrossLinking:
+	gfortran -shared -O3 ../../Fortran/MinHeapModule.f90 -o /home/ondrejmaxian/lib/libFortranHeap.so -fPIC
+	c++ -O3 -Wall -shared -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` pyEndedCrossLinkers.cpp -o EndedCrossLinkedNetwork.so \
+	    -L/home/ondrejmaxian/lib/ -lFortranHeap
+
 clean:
 	rm *.so
