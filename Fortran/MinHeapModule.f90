@@ -69,12 +69,15 @@ contains
       
       if(.not.allocated(heap%priorityQueue)) stop "Trying to resize un-initialized heap"
       
-      new_size=2*size(heap%priorityQueue)
-      write(*,*) "HEAP: Increasing size of heap from ", size(heap%priorityQueue), " to ", new_size
-      allocate(priorityQueue_new(new_size), positionInHeap_new(new_size))
+      new_size=2*size(heap%positionInHeap)
+      print *, "HEAP: Increasing size of heap from ", size(heap%priorityQueue), " to ", new_size
+      allocate(priorityQueue_new(new_size+1), positionInHeap_new(new_size))
+      priorityQueue_new(:)%time = huge(1.0_wp) ! Times of events for each element relative to the last time the queue was reset (time origin)
+      priorityQueue_new(:)%elementIndex = 0
+      positionInHeap_new = 0
       
       priorityQueue_new(1:heap%heapSize)=heap%priorityQueue(1:heap%heapSize)
-      positionInHeap_new(1:heap%heapSize)=heap%positionInHeap(1:heap%heapSize)
+      positionInHeap_new(1:size(heap%positionInHeap))=heap%positionInHeap(1:size(heap%positionInHeap))
       
       ! Reallocate arrays:
       call move_alloc(priorityQueue_new, heap%priorityQueue)
@@ -115,13 +118,14 @@ contains
       integer :: parent, child, tempElementIndex
       real (wp) :: tempTime
       
+      do while (elementIndex > size(heap%positionInHeap)) 
+        call increaseHeapSize() 
+      end do
+      
       if(heap%positionInHeap(elementIndex)/=0) then ! This is already in the heap
          call  updateHeap(elementIndex,time)
          return
       end if
-
-      ! Donev: Needs to be tested
-      if(heap%heapSize>=size(heap%priorityQueue)) call increaseHeapSize()
 
       heap%heapSize = heap%heapSize+1
       heap%priorityQueue(heap%heapSize)%time = time
@@ -155,6 +159,9 @@ contains
       integer :: tempIndex, parent, self, last
       real (wp) :: tempTime
 
+      if(elementIndex > size(heap%positionInHeap)) then
+        return
+      end if
       if(heap%positionInHeap(elementIndex)==0) return ! Not in queue!
       if (heap%heapSize==0) then
          write (*,*) elementIndex
