@@ -108,7 +108,7 @@ for iO in [9]:
     CLseed = 2;
     np.random.seed(CLseed);
     CLNet = KMCCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,nCL,Kspring,rl,konCL,koffCL,CLseed,Dom,fibDisc,nThreads=4);
-    CLNet.setLinksFromFile('NetworkSteadyStates/F'+str(nFib)+'C'+str(nCL)+'.txt',Dom);
+    CLNet.setLinksFromFile('NetworkSteadyStates/F'+str(nFib)+'C'+str(nCL)+'.txt');
         
     # Initialize the temporal integrator
     TIntegrator = CrankNicolson(allFibers, CLNet);

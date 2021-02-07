@@ -46,6 +46,10 @@ void calcShifted(vec3 &rvec, double g){
     rvec[0]-= Lx*round(rvec[0]/Lx);
 }
 
+void PrimeCoords(vec3 &rvec, double g){
+    rvec[0]-=g*rvec[1];    
+}
+
 vec3 calcShiftedPython(vec3 rvec, double g){
     /**
     Python wrapper for calcShifted. 

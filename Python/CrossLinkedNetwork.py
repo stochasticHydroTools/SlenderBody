@@ -1,7 +1,7 @@
 import numpy as np
 import CrossLinkForces as clinkforcecpp
 from warnings import warn 
-from scipy.sparse import csr_matrix
+from scipy.sparse import csr_matrix, lil_matrix
 from scipy.sparse.csgraph import connected_components, shortest_path
 import time
 
@@ -47,12 +47,12 @@ class CrossLinkedNetwork(object):
         print('Sigma/L is %f' %(self._sigma/self._Lfib))
             
         # Cutoff bounds to form the CLs
-        self._lowercldelta = min(np.sqrt(4e-3/self._kCL)/self._rl,0.25);
+        self._deltaL = min(np.sqrt(4e-3/self._kCL),0.5*self._rl);
         # Add fudge factor because of discrete sites
         self._ds = self._Lfib/(self._NsitesPerf-1);
-        self._uppercldelta = np.sqrt(((1+self._lowercldelta)*self._rl)**2 + self._ds**2/4)/self._rl-1;
-        self._lowercldelta = self._uppercldelta;
-        print('Interval  where CLs are allowed (%f,%f) ' %((1-self._lowercldelta)*self._rl,(1+self._uppercldelta)*self._rl));
+        #if (self._ds > 2*self._deltaL):
+        #    raise ValueError('The number of uniform pts (ds = %f) is too small to resolve \
+        #        the delta binding distance %f' %(self._ds, self._deltaL));
         
         # Uniform binding locations
         self._su = np.linspace(0.0,self._Lfib,self._NsitesPerf,endpoint=True);
@@ -170,27 +170,43 @@ class CrossLinkedNetwork(object):
         #print(np.amax(np.abs(linkStrains)))
         return linkStrains;
     
-    def getUniqueLinks(self):
+    def getSortedLinks(self):
         AllLinks = np.zeros((self._nDoubleBoundLinks,2),dtype=np.int64);
         for iLink in range(self._nDoubleBoundLinks):
             minsite = min(self._HeadsOfLinks[iLink], self._TailsOfLinks[iLink])
             maxsite = max(self._HeadsOfLinks[iLink], self._TailsOfLinks[iLink])
             AllLinks[iLink,0] = minsite;
             AllLinks[iLink,1] = maxsite;
-        return np.unique(AllLinks,axis=0);
+        return AllLinks;
     
-    def AdjacencyMatrixFromUniqueLinks(self):
-        UniqueLinks = self.getUniqueLinks();
-        LinkedFibs = UniqueLinks//self._NsitesPerf;
+    def ConnectionMatrix(self,bundleDist=0):
+        SortedLinks = self.getSortedLinks();
+        LinkedFibs = SortedLinks//self._NsitesPerf;
+        LinkedSites = SortedLinks - LinkedFibs*self._NsitesPerf;
         AdjacencyMatrix = csr_matrix((np.ones(len(LinkedFibs[:,0]),dtype=np.int64),\
-            (LinkedFibs[:,0],LinkedFibs[:,1])),shape=(self._nFib,self._nFib));
-        return AdjacencyMatrix;
-        
-    def FindBundles(self):
-        AdjacencyMatrix = self.AdjacencyMatrixFromUniqueLinks();
-        ConnectedMatrix=csr_matrix((np.ones(AdjacencyMatrix.nnz),AdjacencyMatrix.nonzero()),shape=(self._nFib,self._nFib))
-        BundledFibs = AdjacencyMatrix - ConnectedMatrix; # only the ones that have 2 connections will be 1 now. 
-        nBundles, whichBundlePerFib = connected_components(csgraph=BundledFibs, directed=False, return_labels=True)
+            (LinkedFibs[:,0],LinkedFibs[:,1])),shape=(self._nFib,self._nFib)); 
+        if (bundleDist==0):
+            return AdjacencyMatrix;
+        (HeadFibs, TailFibs) = AdjacencyMatrix.nonzero();
+        BundleConnections = lil_matrix((self._nFib,self._nFib),dtype=np.int64)
+        for iConnection in range(len(HeadFibs)):
+            iFib = HeadFibs[iConnection];
+            jFib = TailFibs[iConnection];
+            linkInds = np.where(np.logical_and(LinkedFibs[:,0]==iFib,LinkedFibs[:,1]==jFib));
+            s_iSites = LinkedSites[linkInds[0],0]*self._ds;
+            s_jSites = LinkedSites[linkInds[0],1]*self._ds;
+            if (max(s_iSites)-min(s_iSites) > bundleDist and \
+                max(s_jSites)-min(s_jSites) > bundleDist):
+                # There are sites connected that are sufficiently well separated
+                BundleConnections[iFib,jFib]=1;
+        return BundleConnections;
+     
+    def FindBundles(self,bunddist):
+        """
+        bunddist = distance the links must be separated by to form a bundle. 
+        """
+        AdjacencyMatrix = self.ConnectionMatrix(bunddist);
+        nBundles, whichBundlePerFib = connected_components(csgraph=AdjacencyMatrix, directed=False, return_labels=True)
         return nBundles, whichBundlePerFib;  
     
     def BundleOrderParameters(self,fibCollection,nBundles,whichBundlePerFib,minPerBundle=2):
@@ -224,7 +240,7 @@ class CrossLinkedNetwork(object):
         For every fiber within nEdges connections of me, what is the orientation
         Returns an nFib array
         """
-        AdjacencyMatrix = self.AdjacencyMatrixFromUniqueLinks();
+        AdjacencyMatrix = self.ConnectionMatrix();
         NeighborOrderParams = np.zeros(self._nFib);
         numCloseBy = np.zeros(self._nFib);
         Distances = shortest_path(AdjacencyMatrix, directed=False, unweighted=True, indices=None)
@@ -244,6 +260,30 @@ class CrossLinkedNetwork(object):
             NeighborOrderParams[iFib] = np.amax(np.abs(EigValues))
         return NeighborOrderParams, numCloseBy-1;
 
+    def SparseMatrixOfConnections(self):
+        PairConnections = lil_matrix((self._TotNumSites,self._TotNumSites),dtype=np.int64)
+        # Figure out which sites have links  
+        for iLink in range(self._nDoubleBoundLinks):
+            head = self._HeadsOfLinks[iLink];
+            tail = self._TailsOfLinks[iLink];
+            row = min(head,tail);
+            col = max(head,tail);
+            PairConnections[row,col]+=1;
+        return PairConnections;
+    
+    def nLinksAllSites(self,PossiblePairs):
+        """
+        Return the number of links between all possible sites
+        """
+        PairConnections = self.SparseMatrixOfConnections();   
+        nLinksPerPair=[];
+        for pair in PossiblePairs:
+            if (pair[1] < pair[0]):
+                raise ValueError('Your pair list has to have (head) < (tail) and no duplicates')
+            nLinksPerPair.append(PairConnections[pair[0],pair[1]]);    
+        return nLinksPerPair;
+               
+
     ## ==============================================
     ##    TOOLS FOR SAVING AND LOADING
     ## ==============================================
@@ -257,19 +297,16 @@ class CrossLinkedNetwork(object):
         self._PrimedShifts = Shifts;
         self._nDoubleBoundLinks = len(iPts);
     
-    def setLinksFromFile(self,FileName,Dom):
+    def setLinksFromFile(self,FileName):
         """
         Set the links from a file name. The file has a list of iPts, 
         jPts (two ends of the links), and shift in zero strain coordinates 
         """
-        raise NotImplementedError('Have not allowed for setting links from file yet')
         AllLinks = np.loadtxt(FileName);
         self._nDoubleBoundLinks = len(AllLinks)-1;
-        self._HeadsOfLinks = list(AllLinks[1:,0].astype(int));
-        self._TailsOfLinks = list(AllLinks[1:,1].astype(int));
-        for iL in range(self._nDoubleBoundLinks):
-            shiftPrime = AllLinks[iL+1,2:]
-            self._PrimedShifts.append(shiftPrime); 
+        self._HeadsOfLinks = AllLinks[1:,0].astype(np.int64);
+        self._TailsOfLinks = AllLinks[1:,1].astype(np.int64);
+        self._PrimedShifts = AllLinks[1:,2:];
                
     def writeLinks(self,of,uniPts):
         """
@@ -295,7 +332,7 @@ class CrossLinkedNetwork(object):
         uniPts = fiberCol.getUniformPoints(chebPts);
         SpatialDatabase = fiberCol.getUniformSpatialData();
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
-        uniNeighbs = SpatialDatabase.selfNeighborList((1+self._uppercldelta)*self._rl);
+        uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL);
         if (verbose > 0):
             print('ckD neighbor search time %f' %(time.time()-thist));
         uniNeighbs = uniNeighbs.astype(np.int64);
@@ -313,14 +350,13 @@ class CrossLinkedNetwork(object):
             jPt = newLinks[iMaybeLink,1];
             rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
             r = np.linalg.norm(rvec);
-            if (r < (1+self._uppercldelta)*self._rl and r > (1-self._lowercldelta)*self._rl):
+            if (r < self._rl+self._deltaL and r > self._rl-self._deltaL):
                 GoodInds.append(iMaybeLink);
                 PrimedShifts[iMaybeLink,:] = Dom.primecoords(uniPts[iPt,:]-uniPts[jPt,:] - rvec);    
         newLinks = newLinks[GoodInds,:];
         PrimedShifts = PrimedShifts[GoodInds,:];
-        thist = time.time();
-        PrimedShifts = np.concatenate((PrimedShifts,-PrimedShifts));
-        newLinks = np.concatenate((newLinks,np.fliplr(newLinks)));
+        #PrimedShifts = np.concatenate((PrimedShifts,-PrimedShifts));
+        #newLinks = np.concatenate((newLinks,np.fliplr(newLinks)));
         return newLinks, PrimedShifts;                        
 
     

@@ -8,6 +8,10 @@ double dot(const vec3 &a, const vec3 &b){
     return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 }
 
+void cross(const vec3 &a, const vec3 &b, vec3 &result){
+    result = {a[1]*b[2]-a[2]*b[1],-a[0]*b[2]+a[2]*b[0],a[0]*b[1]-b[0]*a[1]};
+}
+
 double normalize(vec3 &rvec){
     double r = sqrt(dot(rvec,rvec));
     if (r > 1e-10){

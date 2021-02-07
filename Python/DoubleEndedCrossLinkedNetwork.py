@@ -1,9 +1,9 @@
 from CrossLinkedNetwork import CrossLinkedNetwork
-import scipy.sparse as sp
 import numpy as np
 from CrossLinkingEvent import EventQueue as heap
 from EndedCrossLinkedNetwork import EndedCrossLinkedNetwork
 import time
+from warnings import warn
 
 verbose = -1;
 
@@ -41,7 +41,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         super().__init__(nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,nThreads);
         self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # number of free-ended links bound to each site
         self._kon = kon*self._ds;
-        self._konSecond = konsecond;
+        self._konSecond = konsecond*self._ds;
         self._koff = koff;
         self._koffSecond = koffsecond;
         self._kDoubleOn = 0; # half the real value because we schedule link binding as separate events
@@ -51,7 +51,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._TailsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._PrimedShifts = np.zeros((MaxLinks,3));
         allRates = [self._kon,self._konSecond,self._koff,self._koffSecond,self._kDoubleOn,self._kDoubleOff];
-        CLBounds = [(1-self._lowercldelta)*self._rl, (1+self._uppercldelta)*self._rl ];
+        CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
+        print(CLBounds)
         if (CLseed is None):
             CLseed = int(time.time());
         self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,CLseed);
@@ -62,25 +63,6 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     def getnBoundEnds(self):
         return self._FreeLinkBound;
         
-    def nLinksAllSites(self,fiberCol,Dom,PossiblePairs):
-        """
-        Return the number of links between all possible sites
-        """
-        PairConnections = sp.lil_matrix((self._TotNumSites,self._TotNumSites),dtype=np.int64)
-        # Figure out which sites have links  
-        for iLink in range(self._nDoubleBoundLinks):
-            head = self._HeadsOfLinks[iLink];
-            tail = self._TailsOfLinks[iLink];
-            row = min(head,tail);
-            col = max(head,tail);
-            PairConnections[row,col]+=1;
-               
-        nLinksPerPair=[];
-        for pair in PossiblePairs:
-            if (pair[1] < pair[0]):
-                raise ValueError('Your pair list has to have (head) < (tail) and no duplicates')
-            nLinksPerPair.append(PairConnections[pair[0],pair[1]]);    
-        return nLinksPerPair;
     
     def updateNetwork(self,fiberCol,Dom,tstep,of=None):
         """
@@ -101,7 +83,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         uniPts = fiberCol.getUniformPoints(chebPts);
         SpatialDatabase = fiberCol.getUniformSpatialData();
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
-        uniNeighbs = SpatialDatabase.selfNeighborList((1+self._uppercldelta)*self._rl);
+        uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL);
         uniNeighbs = uniNeighbs.astype(np.int64);
         # Filter the list of neighbors to exclude those on the same fiber
         Fibs = uniNeighbs // self._NsitesPerf;
@@ -116,7 +98,41 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         
         # Keep C++ and Python up to date (for force calculations)
         self.syncPythonAndCpp()
-       
+    
+    def setLinksFromFile(self,FileName,FreelyBound=None):
+        super().setLinksFromFile(FileName);
+        # Update C++ class
+        if (FreelyBound is None):
+            FreelyBound = int(self._kon/self._koff)*np.ones(self._TotNumSites);
+            warn('You did not set the number of free bound links - will all be set to %d' %int(self._kon/self._koff))
+        else:
+            FreelyBound = np.loadtxt(FreelyBound);
+        self._FreeLinkBound = FreelyBound;
+        self._cppNet.setLinks(self._HeadsOfLinks, self._TailsOfLinks, self._PrimedShifts, self._FreeLinkBound) 
+        self.syncPythonAndCpp();
+   
+    def deleteLinksFromFibers(self,fibNums):
+        pyHeads = self._HeadsOfLinks.copy();
+        pyTails = self._TailsOfLinks.copy();
+        pyShifts = self._PrimedShifts.copy();
+        pyFB = self._FreeLinkBound.copy();
+        for iFib in fibNums:
+            print('Deleting all links from fiber %d' %iFib)
+            sites = np.arange(iFib*self._NsitesPerf,(iFib+1)*self._NsitesPerf,dtype=np.int64);
+            pyFB[sites]=0;
+            for site in sites:
+                inds = np.where(np.logical_or(pyHeads==site,pyTails==site))[0];
+                pyHeads = np.delete(pyHeads,inds);
+                pyTails = np.delete(pyTails,inds);
+                pyShifts = np.delete(pyShifts,inds,axis=0);
+            self._cppNet.deleteLinksFromSites(sites);
+        self.syncPythonAndCpp();
+        #print('In C++ / python check for number of links %d' %self._nDoubleBoundLinks)
+        #print(np.amax(np.abs(pyFB-self._FreeLinkBound)))
+        #print(np.amax(np.abs(np.sort(self._HeadsOfLinks)-np.sort(pyHeads))))
+        #print(np.amax(np.abs(np.sort(self._TailsOfLinks)-np.sort(pyTails))))
+        #print(np.amax(np.abs(np.sort(self._PrimedShifts,axis=None)-np.sort(pyShifts,axis=None))))
+
     ## ======================================== ##
     ##    PRIVATE METHODS (INVOLVED IN UPDATE)
     ## ======================================== ##         
@@ -126,3 +142,4 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._nDoubleBoundLinks = len(self._HeadsOfLinks);     
         self._FreeLinkBound = self._cppNet.getNBoundEnds();
         self._PrimedShifts = self._cppNet.getLinkShifts();
+   

@@ -541,8 +541,10 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         Calculate curvature for fiber X (N x 3 vector)
         """
         Xss = np.dot(self._Dmat,np.dot(self._Dmat,X));
-        curvatures = np.sqrt(np.sum(Xss*Xss,axis=1));
-        avgcurvature = 1.0/self._L*sum(self._w*curvatures);
+        curvaturessq = np.sum(Xss*Xss,axis=1);
+        avgcurvature = np.sqrt(1.0/self._L*sum(self._w*curvaturessq));
+        #normalizedcurvature = avgcurvature*self._L/(2*np.pi);
+        # Obtain energy from avg curvature by kappa*L*avgcurvature**2
         return avgcurvature;
 
     def resample(self,Xarg,Nrs,typetarg=chebGridType):

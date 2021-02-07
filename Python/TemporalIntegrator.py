@@ -11,7 +11,7 @@ from warnings import warn
 # Definitions 
 itercap = 1000; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-4; # larger than GPU tolerance
-verbose = 1;
+verbose = -1;
 
 class TemporalIntegrator(object):
 
@@ -88,7 +88,7 @@ class TemporalIntegrator(object):
         Dom.setg(self._allFibers.getg(t));
         self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep,of);
 
-    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,gravden,outfile=None,outfileCL=None,write=1,updateNet=False):
+    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,gravden=0.0,outfile=None,outfileCL=None,write=1,updateNet=False,turnoverFibs=False):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the maximum number of steps numSteps,
@@ -97,8 +97,15 @@ class TemporalIntegrator(object):
         outfile = handle to the output file to write to, outfileCL = handle to outfile to write 
         the CL network links to write=1 to write to it, 0 otherwise.  
         """   
+        # Birth / death fibers
+        thist = time.time() 
+        if (turnoverFibs):
+            bornFibs = self._allFibers.FiberBirthAndDeath(self.getFirstNetworkStep(dt,iT),self._allFibersPrev);
+            self._CLNetwork.deleteLinksFromFibers(bornFibs)
+        if (verbose > 0):
+            print('Time to turnover fibers (first time) %f' %(time.time()-thist))
+            thist = time.time()    
         # Update the network (first time - when we do dynamic CLs)
-        thist = time.time()
         if (updateNet):
             self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt,iT));
         if (verbose > 0):
@@ -112,8 +119,6 @@ class TemporalIntegrator(object):
         # Get relevant arguments for local/nonlocal
         XforNL, XsforNL = self.getXandXsNonLoc(); # for M and K
         self._XforStress = XforNL; # save X for the stress calculation
-        lamStar = self.getLamNonLoc(iT); # lambdas
-        self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
         
         # Forces from gravity and CLs to be treated EXPLICITLY
         forceExt = self._allFibers.uniformForce([0,0,gravden]);
@@ -127,7 +132,19 @@ class TemporalIntegrator(object):
         # Block diagonal solve
         thist = time.time()
         # Solve the block diagonal way
+        if (turnoverFibs): # reinitialize lambda
+            self._allFibers.initializeLambdaForNewFibers(bornFibs,forceExt,tvalSolve,dt,self._impco,self._allFibersPrev)    
         Dom.roundg(); # for nonlocal hydro
+        lamStar = self.getLamNonLoc(iT); # lambdas
+        self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
+        
+        #for iFib in bornFibs:
+        #    rowinds = self._allFibers.getRowInds(iFib);
+        #    stackinds = self._allFibers.getStackInds(iFib);
+        #    print('Differences between Xs^n and Xs^n+1/2,* for new fib %d' %iFib)
+        #    print(np.amax(np.abs(XforNL[rowinds,:]-self._allFibers._ptsCheb[rowinds,:])))
+        #    print(np.amax(np.abs(XsforNL[rowinds,:]-self._allFibers._tanvecs[rowinds,:])))
+        #    print(np.amax(np.abs(lamStar[stackinds]-self._allFibers._lambdas[stackinds])))
         RHS = self._allFibers.formBlockDiagRHS(XforNL,XsforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
         if (verbose > 0):
             print('Time to form RHS %f' %(time.time()-thist))
@@ -166,23 +183,31 @@ class TemporalIntegrator(object):
       
         # Update alpha and lambda and fiber positions
         self._allFibers.updateLambdaAlpha(lamalph,XsforNL);
+        #for iFib in bornFibs:
+        #    stackinds = self._allFibers.getStackInds(iFib);
+        #    print('Change in lambda after solve (should be zero)' %iFib)
+        #    print(np.amax(np.abs(self._allFibers._lambdas[stackinds]-self._allFibersPrev._lambdas[stackinds])))
+        #    print(np.amax(np.abs(lamStar[stackinds]-self._allFibers._lambdas[stackinds])))
         # Converged, update the fiber positions
         maxX = self._allFibers.updateAllFibers(dt,XsforNL,exactinex=1);
         if (verbose > 0):
             print('Update fiber time %f' %(time.time()-thist))
             thist = time.time()
-            
-        # Copy individual fiber objects into large arrays of points, forces
-        self._allFibers.fillPointArrays();
-        if (verbose > 0):
-            print('Fill arrays time %f' %(time.time()-thist))
-            thist = time.time()
-            
+                        
         # Update the network (second time - when we do dynamic CLs)
         if (updateNet):
             self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt,iT,numSteps));
         if (verbose > 0):
             print('Time to update network (second time) %f' %(time.time()-thist))
+            thist = time.time()  
+        #lBorn = len(bornFibs);
+        if (turnoverFibs):
+            bornFibs = self._allFibers.FiberBirthAndDeath(self.getSecondNetworkStep(dt,iT,numSteps),self._allFibersPrev);
+            self._CLNetwork.deleteLinksFromFibers(bornFibs)
+            #lBorn+=len(bornFibs);
+        if (verbose > 0):
+            print('Time to turnover fibers (second time) %f' %(time.time()-thist))
+             
         if (write):
             self._allFibers.writeFiberLocations(outfile);
         return maxX;    

@@ -18,7 +18,7 @@
 
 namespace py = pybind11;
 typedef py::array_t<int, py::array::c_style | py::array::forcecast> npInt; 
-typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub; 
+typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub;
 
       
 void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyDirectWts, npDoub pyUpNodes, npDoub pyUpWeights, npDoub pyVanderMat)
@@ -51,7 +51,7 @@ void py_initNodesandWeights(npDoub pyNormalNodes, npDoub pyDirectWts, npDoub pyU
 } 
 
 // Python wrapper for node and weight initialization          
-void py_initResamplingMatrices(npDoub pyRsUpsamp, npDoub pyRs2Panel, npDoub pyValtoCoef)
+void py_initResamplingMatrices(npDoub pyRsUpsamp, npDoub pyRs2Panel, npDoub pyValtoCoef, npDoub pyCoeftoVal)
 {
   /**
     Python wrapper for initializion of resampling and upsampling matrices in C++
@@ -64,15 +64,16 @@ void py_initResamplingMatrices(npDoub pyRsUpsamp, npDoub pyRs2Panel, npDoub pyVa
   vec upsampMat(pyRsUpsamp.size());
   vec upsamp2PanMat(pyRs2Panel.size());
   vec ValtoCoeffMat(pyValtoCoef.size());
+  vec CtoVMat(pyCoeftoVal.size());
 
   // copy py::array -> std::vector
   std::memcpy(upsampMat.data(),pyRsUpsamp.data(),pyRsUpsamp.size()*sizeof(double));
   std::memcpy(upsamp2PanMat.data(),pyRs2Panel.data(),pyRs2Panel.size()*sizeof(double));
   std::memcpy(ValtoCoeffMat.data(),pyValtoCoef.data(),pyValtoCoef.size()*sizeof(double));
-  
+  std::memcpy(CtoVMat.data(),pyCoeftoVal.data(),pyCoeftoVal.size()*sizeof(double));
 
   // call pure C++ function
-  initResamplingMatrices(upsampMat,upsamp2PanMat, ValtoCoeffMat);
+  initResamplingMatrices(upsampMat,upsamp2PanMat, ValtoCoeffMat,CtoVMat);
 } 
 
 void py_initFinitePartMatrix(npDoub pyFPMatrix, npDoub pyDiffMatrix)
@@ -95,7 +96,7 @@ void py_initFinitePartMatrix(npDoub pyFPMatrix, npDoub pyDiffMatrix)
     initFinitePartMatrix(FinitePartMatrix, DiffMatrix);
 }
 
-py::array py_RPYFiberKernel(npDoub pyPoints, npDoub pyForces)
+py::array py_RPYFiberKernel(npDoub pyTargets, npDoub pyPoints, npDoub pyForces)
 {
   /**
     Python wrapper to evaluate free space RPY kernel over a fiber (necessary to subtract from the Ewald results), since
@@ -106,19 +107,21 @@ py::array py_RPYFiberKernel(npDoub pyPoints, npDoub pyForces)
   **/
   
   // allocate std::vector (to pass to the C++ function)
+  vec Targets(pyTargets.size());
   vec Points(pyPoints.size());
   vec Forces(pyForces.size());
 
   // copy py::array -> std::vector
+  std::memcpy(Targets.data(),pyTargets.data(),pyTargets.size()*sizeof(double));
   std::memcpy(Points.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
   std::memcpy(Forces.data(),pyForces.data(),pyForces.size()*sizeof(double));
 
   // call pure C++ function
-  vec velocities(pyPoints.shape()[0]*3,0.0);
-  RPYFiberKernel(Points,Points,Forces,velocities);
+  vec velocities(pyTargets.shape()[0]*3,0.0);
+  RPYFiberKernel(Targets,Points,Forces,velocities);
 
   ssize_t              ndim    = 2;
-  std::vector<ssize_t> shape   = { pyPoints.shape()[0] , 3 };
+  std::vector<ssize_t> shape   = { pyTargets.shape()[0] , 3 };
   std::vector<ssize_t> strides = { sizeof(double)*3 , sizeof(double) };
 
   // return 2-D NumPy array
@@ -134,7 +137,7 @@ py::array py_RPYFiberKernel(npDoub pyPoints, npDoub pyForces)
 
 // Python wrappers for velocity corrections
 // Python wrapper for velocity corrections     
-py::array py_SubtractAllRPY(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyDirUpsampledWeights)
+py::array py_SubtractAllRPY(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyDirUpsampledWeights, boolvec isActive)
 {
   /**
     Python wrapper to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
@@ -155,7 +158,7 @@ py::array py_SubtractAllRPY(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyDi
 
   // call pure C++ function
   vec velocities(pyChebPoints.shape()[0]*3,0.0);
-  subtractAllRPY(ChebPoints,ForceDensities,DirUpsampledWeights,velocities);
+  subtractAllRPY(ChebPoints,ForceDensities,DirUpsampledWeights,isActive,velocities);
 
   ssize_t              ndim    = 2;
   std::vector<ssize_t> shape   = { pyChebPoints.shape()[0] , 3 };
@@ -173,7 +176,7 @@ py::array py_SubtractAllRPY(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyDi
 } 
      
 py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints, npDoub pyForceDens, 
-     npDoub pyFinitePartVels, double g,  npInt pyNumbyFib, intvec &TargetNums, int nThreads)
+     npDoub pyFinitePartVels, double g,  npInt pyNumbyFib, intvec &TargetNums, boolvec isActive)
 {
   /**
     Python wrapper to correct the velocity from Ewald via special quadrature (or upsampled quadrature)
@@ -207,7 +210,7 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
 
   // call pure C++ function
   vec velocities(pyChebPoints.shape()[0]*3,0.0);
-  CorrectNonLocalVelocity(ChebPoints,UniformPoints,ForceDensities,CenterLineVels, g,NumbyFib,TargetNums, velocities,nThreads);
+  CorrectNonLocalVelocity(ChebPoints,UniformPoints,ForceDensities,CenterLineVels, g,NumbyFib,TargetNums, isActive,velocities);
 
   ssize_t              ndim    = 2;
   std::vector<ssize_t> shape   = { pyChebPoints.shape()[0] , 3 };
@@ -225,7 +228,7 @@ py::array py_CorrectNonLocalVelocity(npDoub pyChebPoints, npDoub pyUniformPoints
 } 
 
 // Python wrapper for finite part velocities   
-py::array py_FinitePartVelocity(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyXs)
+py::array py_FinitePartVelocity(npDoub pyChebPoints, npDoub pyForceDens, npDoub pyXs, boolvec isActive)
 {
   /**
     Python wrapper to compute the finite part velocity on all fibers 
@@ -246,7 +249,7 @@ py::array py_FinitePartVelocity(npDoub pyChebPoints, npDoub pyForceDens, npDoub 
 
   // call pure C++ function
   vec velocities(pyChebPoints.shape()[0]*3,0.0);
-  FinitePartVelocity(ChebPoints,ForceDensities,XsVectors, velocities);
+  FinitePartVelocity(ChebPoints,ForceDensities,XsVectors, isActive, velocities);
   
   // allocate py::array (to pass the result of the C++ function to Python)
   auto pyArray = py::array_t<double>(pyChebPoints.shape()[0]*3);
@@ -256,7 +259,43 @@ py::array py_FinitePartVelocity(npDoub pyChebPoints, npDoub pyForceDens, npDoub 
   std::memcpy(result_ptr,velocities.data(),velocities.size()*sizeof(double));
   
   return pyArray;
-}                            
+}         
+
+py::array py_RodriguesRotations(npDoub pyXn, npDoub pyXsn, npDoub pyXsStar, npDoub pyAllKAlphas,double dt,boolvec isActive)
+{
+  /**
+  **/
+  
+  // allocate std::vector (to pass to the C++ function)
+  vec Xn(pyXn.size());
+  vec Xsn(pyXsn.size());
+  vec XsStar(pyXsStar.size());
+  vec AllKAlphas(pyAllKAlphas.size());
+
+  // copy py::array -> std::vector
+  std::memcpy(Xn.data(),pyXn.data(),pyXn.size()*sizeof(double));
+  std::memcpy(Xsn.data(),pyXsn.data(),pyXsn.size()*sizeof(double));
+  std::memcpy(XsStar.data(),pyXsStar.data(),pyXsStar.size()*sizeof(double));
+  std::memcpy(AllKAlphas.data(),pyAllKAlphas.data(),pyAllKAlphas.size()*sizeof(double));
+
+  // call pure C++ function
+  vec TransformedXsAndX(2*pyXsn.shape()[0]*3,0.0);
+  RodriguesRotations(Xn,Xsn,XsStar,AllKAlphas,dt,isActive,TransformedXsAndX);
+
+  ssize_t              ndim    = 2;
+  std::vector<ssize_t> shape   = { 2*pyXsn.shape()[0] , 3 };
+  std::vector<ssize_t> strides = { sizeof(double)*3 , sizeof(double) };
+
+  // return 2-D NumPy array
+  return py::array(py::buffer_info(
+    TransformedXsAndX.data(),                       /* data as contiguous array  */
+    sizeof(double),                          /* size of one scalar        */
+    py::format_descriptor<double>::format(), /* data type                 */
+    ndim,                                    /* number of dimensions      */
+    shape,                                   /* shape of the matrix       */
+    strides                                  /* strides for each axis     */
+  ));
+}                    
     
 // PYTHON MODULE DECLARATION
 PYBIND11_MODULE(ManyFiberMethods, m) {
@@ -270,4 +309,5 @@ PYBIND11_MODULE(ManyFiberMethods, m) {
     m.def("CorrectNonLocalVelocity", &py_CorrectNonLocalVelocity, "Evaluate corrections to the nonlocal velocity");
     m.def("SubtractAllRPY",&py_SubtractAllRPY, "Subtract direct quadrature on each fiber individually");
     m.def("FinitePartVelocity", &py_FinitePartVelocity, "Compute the finite part density");
+    m.def("RodriguesRoations", &py_RodriguesRotations, "Compute transformed Xs");
 }

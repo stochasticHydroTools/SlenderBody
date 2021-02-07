@@ -4,8 +4,8 @@
 #include <math.h>
 #include <random>
 #include <chrono>
-#include "Domain.cpp"
 #include "Chebyshev.cpp"
+#include "VectorMethods.cpp"
 #include "types.h"
 
 /**
@@ -14,47 +14,11 @@ for cross linker related calculations in the C++ code
 **/
 
 // GLOBAL VARIABLES
-std::uniform_real_distribution<double> unif(0.0, 1.0);
-std::mt19937_64 rng;
-double kon0, koff0, cl_Plusdelta, cl_Minusdelta; // dynamic info
 vec sUniform, sChebyshev, weights;
-int NCheb, Nuni, maxCLs; 
+int NCheb, Nuni, nThreads; 
 double sigma,Kspring,restlen;
 
-// ==========================
-// METHODS FOR INITIALIZATION
-// ==========================
-void seedRandomCLs(int myseed){
-    /**
-    Seed random number generator
-    @param myseed = the seed. 0 for a random seed
-    **/
-    if (myseed==0){
-        // initialize the random number generator with time-dependent seed
-        static uint64_t timeSeed = std::chrono::high_resolution_clock::now().time_since_epoch().count();
-        static std::seed_seq ss{uint32_t(timeSeed & 0xffffffff), uint32_t(timeSeed>>32)};
-        rng.seed(ss);
-    } else {
-        rng.seed(myseed);
-    }
-}
-
-void initDynamicCLVariables(double konin, double koffin, double cl_deltaMinus, double cl_deltaPlus, vec3 Lengths){
-    /**
-    Initialize variables related to dynamic cross linking. 
-    @param konin = base binding rate in 1/s
-    @param koffin = base unbinding rate in 1/s
-    @param cl_deltaMinus,Plus = delta cutoff distance to form a link (1-cl_deltaMinus)*rest len , (1+cl_deltaPlus)*rest len
-    @param Lengths = 3-vector of periodic lengths
-    **/
-    initLengths(Lengths[0],Lengths[1],Lengths[2]);
-    kon0 = konin;
-    koff0 = koffin;
-    cl_Plusdelta = cl_deltaPlus;
-    cl_Minusdelta = cl_deltaMinus;
-}
-
-void initCLForcingVariables(const vec &sU, const vec &sC, const vec &win, double sigin, double Kin, double rl, int nCL){
+void initCLForcingVariables(const vec &sU, const vec &sC, const vec &win, double sigin, double Kin, double rl, int nThreadsIn){
     /**
     Initialize variables related to force density calculations in CLs
     @param sU = uniformly spaced nodes on the fiber on [0,L]
@@ -73,7 +37,7 @@ void initCLForcingVariables(const vec &sU, const vec &sC, const vec &win, double
     sigma = sigin;
     Kspring = Kin;
     restlen = rl;
-    maxCLs = nCL;
+    nThreads = nThreadsIn;
 }
         
 // ================================
@@ -89,7 +53,7 @@ double deltah(double a){
 }
 
 void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, const vec &uniPoints,
-    const vec &chebPoints,vec &CLForces, int nThreads){
+    const vec &chebPoints,vec &CLForces){
     /**
     Compute force densities on the fibers from the list of links. 
     @param iPts = nLinks vector of uniform point numbers where one CL end is
@@ -120,6 +84,8 @@ void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, con
             ds[d] = uniPoints[3*iPtstar+d] -  uniPoints[3*jPtstar+d] - Shifts[3*iL+d];
         }
         double nds = sqrt(dot(ds,ds));
+        //vec3 totForce = {0,0,0};
+        //vec3 totTorq = {0,0,0};
         for (int iPt=0; iPt < NCheb; iPt++){
             for (int jPt=0; jPt < NCheb; jPt++){
                 // Displacement vector
@@ -127,21 +93,33 @@ void calcCLForces(const intvec &iPts, const intvec &jPts, const vec &Shifts, con
                 double deltah2 = deltah(sChebyshev[jPt]-s2star);
                 // Multiplication due to rest length and densities
                 double factor = (1.0-restlen/nds)*deltah1*deltah2*rnorm;
-                vec3 forceij;
+                vec3 forceij;//, force1, force2, X1, X2;
                 for (int d =0; d < 3; d++){
                     forceij[d] = -Kspring*(chebPoints[iFib*3*NCheb+3*iPt+d] -  chebPoints[jFib*3*NCheb+3*jPt+d] - Shifts[3*iL+d])*factor;
                     #pragma omp atomic update
                     CLForces[iFib*3*NCheb+3*iPt+d] += forceij[d]*weights[jPt];
+                    //force1[d] = forceij[d]*weights[jPt];
+                    //X1[d] = chebPoints[iFib*3*NCheb+3*iPt+d];
                     #pragma omp atomic update
                     CLForces[jFib*3*NCheb+3*jPt+d] -= forceij[d]*weights[iPt];
+                    //force2[d] = -forceij[d]*weights[iPt];
+                    //X2[d] = chebPoints[jFib*3*NCheb+3*jPt+d] + Shifts[3*iL+d];
                 }
+                //vec3 torq1 = {X1[1]*force1[2]-X1[2]*force1[1], X1[2]*force1[0]-X1[0]*force1[2],X1[0]*force1[1]-X1[1]*force1[0]};
+                //vec3 torq2 = {X2[1]*force2[2]-X2[2]*force2[1], X2[2]*force2[0]-X2[0]*force2[2],X2[0]*force2[1]-X2[1]*force2[0]};
+                //for (int d =0; d < 3; d++){
+                //    totTorq[d]+=torq1[d]*weights[iPt]+torq2[d]*weights[jPt];
+                //    totForce[d]+=force1[d]*weights[iPt]+force2[d]*weights[jPt];
+                // }
             }
         }
+        //std::cout << "Total force due to link " << iL << "(" << totForce[0] << " , " << totForce[1] << " , " << totForce[2] << std::endl;
+        //std::cout << "Total torque due to link " << iL << "(" << totTorq[0] << " , " << totTorq[1] << " , " << totTorq[2] << std::endl;
     }
 }
 
 void calcCLForces2(const intvec &iFibs, const intvec &jFibs, const vec &iSstars, const vec & jSstars, const vec &Shifts,    
-    const vec &chebPoints, const vec &chebCoefficients, vec &CLForces, double Lfib,int nThreads){
+    const vec &chebPoints, const vec &chebCoefficients, vec &CLForces, double Lfib){
     /**
     Compute force densities on the fibers from the list of links. 
     @param iFibs = nLinks vector of fiber numbers where one CL end is
@@ -204,8 +182,7 @@ void calcCLForces2(const intvec &iFibs, const intvec &jFibs, const vec &iSstars,
     }
 }
 
-vec calcCLStress(const intvec &iPts, const intvec &jPts, const vec &Shifts, const vec &uniPoints, 
-    const vec &chebPoints, int nThreads){
+vec calcCLStress(const intvec &iPts, const intvec &jPts, const vec &Shifts, const vec &uniPoints, const vec &chebPoints){
     /**
     Compute force densities on the fibers from the list of links. 
     @param iPts = nLinks vector of uniform point numbers where one CL end is
@@ -266,134 +243,4 @@ vec calcCLStress(const intvec &iPts, const intvec &jPts, const vec &Shifts, cons
         }
     }
     return stress;
-}
-
-// =====================================
-// METHODS FOR DYNAMIC NETWORK EVOLUTION
-// =====================================
-double calcKoffOne(int iPt,int jPt,const vec &uniPts, double g){
-    /**
-    Calculate the rate of unbinding for a single link. We are assuming
-    in this method a UNIFORM unbinding rate. Later it will be strain dependent. 
-    @param iPt = one end of a link (index of uniform fiber points)
-    @param jPt = other end of the link (index of uniform fiber points)
-    @param uniPts = Nuni*Nfib*3 row stacked vector of uniform fiber points
-    (binding site locations)
-    @param g = strain in the coordinate system
-    @return unbinding rate for this link 
-    **/
-    return koff0;
-}
-
-double calcKonOne(int iPt, int jPt,const vec &uniPts,double g){
-    /**
-    Calculate the rate of binding for a single link. We are assuming
-    in this method a UNIFORM binding rate WITHIN DISTANCE (1-cl_Minusdelta)*restlen, (1+cl_Plusdelta)*restlen.
-    @param iPt = one end of a link (index of uniform fiber points)
-    @param jPt = other end of the link (index of uniform fiber points)
-    @param uniPts = Nuni*Nfib*3 row stacked vector of uniform fiber points
-    (binding site locations)
-    @param g = strain in the coordinate system
-    @return binding rate for this link. Will be 0 if distance between iPt and 
-    jPt is larger than cl_cut, and kon0 otherwise. 
-    **/
-    // Compute displacement vector and nearest image
-    vec3 rvec;
-    for (int d=0; d < 3; d++){
-        rvec[d] = uniPts[3*iPt+d]-uniPts[3*jPt+d];
-    }
-    calcShifted(rvec,g);
-    double r = normalize(rvec);
-    if (r < (1+cl_Plusdelta)*restlen && r > (1-cl_Minusdelta)*restlen){
-        //std::cout << r << std::endl;
-        return kon0;
-    }
-    return 0;
-}
-
-intvec newEventsList(vec &rates, const intvec &iPts, const intvec &jPts, intvec nowBound,
-    intvec added, int nLinks, const vec &uniPts, double g, double tstep) {
-    /**
-    Master method that determines the events that occur in a given timestep. 
-    @param rates = rate of each event happening (units 1/time)
-    @param iPts = one endpoint index for each link (uniform point index)
-    @param jPts = other endpoint index
-    @param nowBound = bound state of each event/link
-    @param added = whether a link exists at each uniform point (only 1 link allowed)
-    @param nLinks = number of bound CLs going into this method
-    @param uniPts = row stacked vector of uniform points on the fibers
-    @param g = strain in the coordinate system
-    @param tstep = timestep
-    @return integer vector of the events that will happen during the timestep. 
-    Each "event" is an index in iPts and jPts that says that pair will bind
-    **/
-    // Initialize times and events
-    vec times(rates.size()); 
-    // Compute times from rates by sampling from an exponential distribution
-    for (int iPair = 0; iPair < rates.size(); iPair++){
-        times[iPair] = -log(1.0-unif(rng))/rates[iPair];
-    }
-    //std::cout << "TEMPORARY: allowing multiple links per site" << std::endl;
-    double systime = 0.0;
-    std::vector <int> events;
-    int nEvents=0;
-    while (systime < tstep){
-                   
-        int nextEvent = std::distance(times.begin(), std::min_element(times.begin(), times.end()));
-        int iPt = iPts[nextEvent];
-        int jPt = jPts[nextEvent];
-        systime = times[nextEvent];
-        if (nLinks == maxCLs){
-            //std::cout << "Old sys time " << systime << std::endl;
-            systime = tstep;
-            for (int iT=0; iT < times.size(); iT++){
-                if (nowBound[iT]==1 && times[iT] < systime){ // time is time to unbind
-                    systime=times[iT];
-                    nextEvent=iT;
-                }
-            }
-            iPt = iPts[nextEvent];
-            jPt = jPts[nextEvent];
-            //std::cout << "New sys time " << systime << std::endl;
-            for (int iT=0; iT < times.size(); iT++){
-                if (times[iT] < systime){ // redraw for events that got skipped 
-                    times[iT] = -log(1.0-unif(rng))/rates[iT]+systime;
-                }
-            }
-        }
-        
-        // Add the event to the list of events if possible
-        if (systime < tstep){
-            // Check if the event can actually happen
-            if (nowBound[nextEvent]==1 || (added[iPt]==0 && added[jPt]==0 && nLinks < maxCLs)){
-            //if (nowBound[nextEvent]==1 || nLinks < maxCLs){
-                nEvents++;
-                //std::cout << "System time " << systime << " and event " << nextEvent << std::endl;
-                // Find if event has already been done, so we need to undo it
-                auto iF = std::find(events.begin(), events.end(), nextEvent); 
-                if (iF != events.end()){ 
-                    // already done, now going back, remove from list
-                    events.erase(iF);
-                } else{
-                    events.push_back(nextEvent);
-                }
-                nowBound[nextEvent] = 1 - nowBound[nextEvent]; // change bound state
-                added[iPt]=1-added[iPt]; // change local copy of added
-                added[jPt]=1-added[jPt];
-                nLinks+=2*nowBound[nextEvent]-1; // -1 if now unbound, 1 if now bound
-                if (nowBound[nextEvent]){ // just became bound, calc rate to unbind
-                    rates[nextEvent] = calcKoffOne(iPt,jPt,uniPts,g);
-                } else {// just became unbound, calculate rate to bind back
-                    rates[nextEvent] = calcKonOne(iPt,jPt,uniPts,g);
-                }
-            }
-            // Redraw random time for that event
-            times[nextEvent] = -log(1.0-unif(rng))/rates[nextEvent]+systime;
-        }
-        if (nEvents == maxCLs){ // save time since all we do now is fill up links at t =0
-            std::cout << "TEMPORARY:  returning as all links filled" << std::endl;
-            return events;
-        }
-    }
-    return events;
 }

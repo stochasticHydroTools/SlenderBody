@@ -69,3 +69,17 @@ void DifferentiateCoefficients(const vec &Coefficients, int numDirs, vec &DCoeff
         DCoefficients[d]*=0.5;
     }
 }
+
+void IntegrateCoefficients(const vec &incoefs, int numDirs, double L, vec &intcoefs){
+    int N = incoefs.size()/numDirs;
+    for (int d = 0; d < numDirs; d++){
+        intcoefs[numDirs+d]=incoefs[d]-0.5*incoefs[2*numDirs+d];
+        for (int j = 2; j < N-1; j++){
+            intcoefs[numDirs*j+d] = 1.0/(2.0*j)*(incoefs[numDirs*(j-1)+d]-incoefs[numDirs*(j+1)+d]);
+        }
+        intcoefs[(N-1)*numDirs+d] = 1.0/(2*(N-1))*incoefs[numDirs*(N-2)+d];
+    }
+    for (int j=0; j < intcoefs.size(); j++){
+        intcoefs[j]*=0.5*L;
+    }
+}

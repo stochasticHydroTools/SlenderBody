@@ -21,8 +21,11 @@ typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub;
 
 PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
     py::class_<EndedCrossLinkedNetwork>(m, "EndedCrossLinkedNetwork")
-        .def(py::init<int, vec, double>())
+        .def(py::init<int, vec, vec3, vec, double>())
         .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
-        .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails);
+        .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails)
+        .def("getLinkShifts", &EndedCrossLinkedNetwork::getLinkShifts)
+        .def("setLinks",&EndedCrossLinkedNetwork::setLinks)
+        .def("deleteLinksFromSites", &EndedCrossLinkedNetwork::deleteLinksFromSites);
 }
