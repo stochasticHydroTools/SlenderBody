@@ -499,7 +499,7 @@ class fiberCollection(object):
         systime = -np.log(1-np.random.rand())/rateDeath;
         #birthordeath = np.argmin(times);
         #systime = times[birthordeath];
-        deadFibs=[];
+        #deadFibs=[];
         bornFibs=[];
         while (systime < tstep):
             FibsToKill = self._isActive.nonzero()[0];
@@ -508,9 +508,9 @@ class fiberCollection(object):
             iFib = FibsToKill[int(np.random.rand()*len(FibsToKill))]; # randomly choose one
             #print('Chosen')
             #print(iFib)
-            self._isActive[iFib]=False;
+            #self._isActive[iFib]=False;
             #print('Killing fiber %d ' %iFib)
-            deadFibs.append(iFib);   
+            #deadFibs.append(iFib);   
             
             # Birth in same place
             # Pick the ones to birth
@@ -520,7 +520,7 @@ class fiberCollection(object):
             #    raise ValueError('Out of space to birth fibs');
             #iFib = AvailableFibs[int(np.random.rand()*nAvail)];
             print('Turning over fiber in position %d ' %iFib);
-            self._isActive[iFib]=True;
+            #self._isActive[iFib]=True;
             bornFibs.append(iFib);
             self._fibList[iFib] = DiscretizedFiber(self._fiberDisc);
             # Initialize straight fiber positions at t=0
@@ -540,7 +540,7 @@ class fiberCollection(object):
                 other._alphas[(2*self._Npf+1)*(iFib-1):(2*self._Npf+1)*iFib] = 0;
                 other._velocities[stackinds] = 0; 
             # Update rate of death and times 
-            rateDeath = self._deathrate*self._Nfib;
+            # rateDeath = self._deathrate*self._Nfib;
             #times =  -np.log(1-np.random.rand(2))/np.array([rateBirth,rateDeath])+systime;
             #birthordeath = np.argmin(times);
             #systime = times[birthordeath];
