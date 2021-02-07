@@ -494,7 +494,7 @@ class fiberCollection(object):
         if (tstep==0):
             return [];
         #rateBirth = self._birthrate;
-        rateDeath = self._deathrate*np.sum(self._isActive);
+        rateDeath = self._deathrate*self._Nfib;
         #times =  -np.log(1-np.random.rand(2))/np.array([rateBirth,rateDeath]);
         systime = -np.log(1-np.random.rand())/rateDeath;
         #birthordeath = np.argmin(times);
@@ -502,16 +502,10 @@ class fiberCollection(object):
         deadFibs=[];
         bornFibs=[];
         while (systime < tstep):
-            #print('Rates')
-            #print(np.array([rateBirth,rateDeath]))
-            #print('Time')
-            #print(systime)
-            #if (birthordeath==1): # DEATH
-            # Pick the ones to kill
             FibsToKill = self._isActive.nonzero()[0];
             #print('Possible kills')
             #print(FibsToKill)
-            iFib = FibsToKill[int(np.random.rand()*len(FibsToKill))]; # assuming almost all fibs are active
+            iFib = FibsToKill[int(np.random.rand()*len(FibsToKill))]; # randomly choose one
             #print('Chosen')
             #print(iFib)
             self._isActive[iFib]=False;
@@ -546,7 +540,7 @@ class fiberCollection(object):
                 other._alphas[(2*self._Npf+1)*(iFib-1):(2*self._Npf+1)*iFib] = 0;
                 other._velocities[stackinds] = 0; 
             # Update rate of death and times 
-            rateDeath = self._deathrate*np.sum(self._isActive);
+            rateDeath = self._deathrate*self._Nfib;
             #times =  -np.log(1-np.random.rand(2))/np.array([rateBirth,rateDeath])+systime;
             #birthordeath = np.argmin(times);
             #systime = times[birthordeath];
