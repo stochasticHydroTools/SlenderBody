@@ -10,8 +10,8 @@ from warnings import warn
 
 # Definitions 
 itercap = 1000; # cap on GMRES iterations if we converge all the way
-GMREStolerance=1e-4; # larger than GPU tolerance
-verbose = -1;
+GMREStolerance=1e-6; # larger than GPU tolerance
+verbose = 1;
 
 class TemporalIntegrator(object):
 
@@ -137,15 +137,9 @@ class TemporalIntegrator(object):
         Dom.roundg(); # for nonlocal hydro
         lamStar = self.getLamNonLoc(iT); # lambdas
         self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
-        
-        #for iFib in bornFibs:
-        #    rowinds = self._allFibers.getRowInds(iFib);
-        #    stackinds = self._allFibers.getStackInds(iFib);
-        #    print('Differences between Xs^n and Xs^n+1/2,* for new fib %d' %iFib)
-        #    print(np.amax(np.abs(XforNL[rowinds,:]-self._allFibers._ptsCheb[rowinds,:])))
-        #    print(np.amax(np.abs(XsforNL[rowinds,:]-self._allFibers._tanvecs[rowinds,:])))
-        #    print(np.amax(np.abs(lamStar[stackinds]-self._allFibers._lambdas[stackinds])))
+
         RHS = self._allFibers.formBlockDiagRHS(XforNL,XsforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
+        
         if (verbose > 0):
             print('Time to form RHS %f' %(time.time()-thist))
             thist = time.time()
@@ -157,6 +151,8 @@ class TemporalIntegrator(object):
         
         # Set answer = block diagonal or proceed with GMRES
         giters = self.getMaxIters(iT)-1; # subtract the first application of mobility/preconditioner
+        # Check the mobilities
+        #Mf = self._allFibers.Mobility(BlockDiagAnswer,self._impco*dt,XforNL,XsforNL,Dom,Ewald)
         if (giters==0):
             # Block diagonal acceptable 
             lamalph = BlockDiagAnswer;
@@ -207,7 +203,7 @@ class TemporalIntegrator(object):
             #lBorn+=len(bornFibs);
         if (verbose > 0):
             print('Time to turnover fibers (second time) %f' %(time.time()-thist))
-             
+                   
         if (write):
             self._allFibers.writeFiberLocations(outfile);
         return maxX;    

@@ -75,8 +75,8 @@ class RPYVelocityEvaluator(object):
 
 
 ## Some parameters specific to Ewald
-nearcut = 1e-4; # cutoff for near field interactions
-fartol = 1e-4; # far field tolerance for FINUFFT
+nearcut = 1e-10; # cutoff for near field interactions
+fartol = 1e-10; # far field tolerance for FINUFFT
 rcuttol = 1e-2; # accuracy of truncation distance for Ewald
 trouble_xi_step = 0.1; # if we have to increase Ewald parameter xi mid-run, how much should we increase by?
 class EwaldSplitter(RPYVelocityEvaluator):

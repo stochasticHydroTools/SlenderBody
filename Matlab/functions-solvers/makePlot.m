@@ -9,14 +9,14 @@ Corder =  jet(nColors);%
 plotfibs=1:nFib;
 plotlinks=[];    
 thk = 1; % line thickness
-CoeffsToValsCheb = cos(acos(2*(s0/Lf)-1).*(0:N-1));
-CoeffstoValsUniform = cos(acos(1).* (0:N-1));
-ChebtoUniform =  CoeffstoValsUniform*(CoeffsToValsCheb)^(-1);
+%CoeffsToValsCheb = cos(acos(2*(s0/Lf)-1).*(0:N-1));
+%CoeffstoValsUniform = cos(acos(1).* (0:N-1));
+%ChebtoUniform =  CoeffstoValsUniform*(CoeffsToValsCheb)^(-1);
 ends=zeros(nFib,3);
 for iFib=plotfibs    
-    if (length(links) > 0)
-        plotlinks = [plotlinks; find(links(:,1)==iFib); find(links(:,3)==iFib)];
-    end
+%     if (length(links) > 0)
+%         plotlinks = [plotlinks; find(links(:,1)==iFib); find(links(:,3)==iFib)];
+%     end
     inds=(iFib-1)*3*N+1:3:iFib*3*N;
     fp=[Xt(inds) Xt(inds+1) Xt(inds+2)];
     if (newlabels(iFib)==-1)
@@ -104,7 +104,7 @@ end
 str=sprintf('$t=$ %1.2f s', t);
 title(str,'Interpreter','latex')
 view(2)
-%view([48.86 14.73])
+%view([25 10])
 % view([60 30])
 xlim([-Ld/2 Ld/2])
 ylim([-Ld/2 Ld/2])

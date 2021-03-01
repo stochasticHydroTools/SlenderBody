@@ -112,6 +112,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self.syncPythonAndCpp();
    
     def deleteLinksFromFibers(self,fibNums):
+        if (len(fibNums)==0):
+            return;
         pyHeads = self._HeadsOfLinks.copy();
         pyTails = self._TailsOfLinks.copy();
         pyShifts = self._PrimedShifts.copy();

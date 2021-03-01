@@ -209,13 +209,14 @@ class CrossLinkedNetwork(object):
         nBundles, whichBundlePerFib = connected_components(csgraph=AdjacencyMatrix, directed=False, return_labels=True)
         return nBundles, whichBundlePerFib;  
     
-    def BundleOrderParameters(self,fibCollection,nBundles,whichBundlePerFib,minPerBundle=2):
+    def BundleOrderParameters(self,fibCollection,nBundles,whichBundlePerFib,minPerBundle=2,flowOn=False):
         """
         Get the order parameter of each bundle
         """
         BundleMatrices = np.zeros((3*nBundles,3));
         NPerBundle = np.zeros(nBundles);
         OrderParams = np.zeros(nBundles);
+        averageBundleTangents = np.zeros((nBundles,3));
         for iFib in range(self._nFib):
             # Find cluster
             clusterindex = whichBundlePerFib[iFib];
@@ -224,11 +225,13 @@ class CrossLinkedNetwork(object):
             Xs = fibCollection._tanvecs[iInds,:];
             for p in range(self._Npf):
                 BundleMatrices[clusterindex*3:clusterindex*3+3,:]+=np.outer(Xs[p,:],Xs[p,:])*self._wCheb[p];
+                averageBundleTangents[clusterindex]+=Xs[p,:]*self._wCheb[p];
         for clusterindex in range(nBundles):
             B = 1/(NPerBundle[clusterindex]*self._Lfib)*BundleMatrices[clusterindex*3:clusterindex*3+3,:];
             EigValues = np.linalg.eigvalsh(B);
             OrderParams[clusterindex] = np.amax(np.abs(EigValues))
-        return OrderParams[NPerBundle >= minPerBundle], NPerBundle[NPerBundle >= minPerBundle];
+            averageBundleTangents[clusterindex]*=1/(NPerBundle[clusterindex]*self._Lfib);           
+        return OrderParams[NPerBundle >= minPerBundle], NPerBundle[NPerBundle >= minPerBundle], averageBundleTangents[NPerBundle >= minPerBundle];
      
     def avgBundleAlignment(self,BundleAlignmentParams,nPerBundle):
         if (np.sum(nPerBundle)==0):
