@@ -32,8 +32,8 @@ int ipivVander [40]; // pivots for Vandermonde (maximum of 40)
 bool useByorck = false; // False means precomputed LU factorization, true means Byorck Pereyra (not stable for larger N)
 
 // LAPACK CALLS
-extern "C" void dgetrf_(int* dim1, int* dim2, double* a, int* lda, int* ipiv, int* info);
-extern "C" void dgetrs_(char *TRANS, int *N, int *NRHS, double *A, int *LDA, int *IPIV, double *B, int *LDB, int *INFO );
+//extern "C" void dgetrf_(int* dim1, int* dim2, double* a, int* lda, int* ipiv, int* info);
+//extern "C" void dgetrs_(char *TRANS, int *N, int *NRHS, double *A, int *LDA, int *IPIV, double *B, int *LDB, int *INFO );
 
 void setRhoCrit(double rhoIn){
     rho_crit = rhoIn;
