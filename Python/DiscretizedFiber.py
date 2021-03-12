@@ -1,5 +1,7 @@
 import numpy as np
 
+# Documentation last updared: 03/12/2021
+
 class DiscretizedFiber(object):
     """
     Object that stores the points and forces for each fiber. 

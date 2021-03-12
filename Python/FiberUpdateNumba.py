@@ -3,8 +3,34 @@ import numpy as np
 
 """
 Functions for many fibers that use numba to speed up the calculations
+Documentation last updated: 03/12/2021
+
+Some of the functions here have a lot of parameters that are the same at
+every time step. I have partially remedied this by moving these functions to 
+C++, where I have a class where I can store these variables as members. For numba,
+the issue is that parallelization is not yet implemented for classes, so I have to
+write regular functions for the parallelization.
 """
-c=True;
+c=True; # DO NOT CACHE WHEN CHANGING THE NUMBER OF NUMBA THREADS!
+
+@nb.njit((nb.float64[:,:],nb.float64[:],nb.float64[:],nb.float64[:],\
+    nb.int64,nb.int64,nb.float64[:]),parallel=True,cache=c)
+def FiberStressNumba(X, fbend,lams,Lens,Nfib,N,w):
+    """
+    Compute the [1,0] stress in the suspension due to the fiber via Batchelor's formula
+    Inputs: lams = constraint forces on the fibers as a totnum*3 1D numpy array, 
+    Lens = 3 array of periodic lengths (to compute volume for the stress)
+    Output: the 3 x 3 stress tensor 
+    """
+    stressLams = 0;
+    stressFB = 0; # from bending 
+    for iPt in nb.prange(N*Nfib):
+        wt = w[iPt%N];
+        stressLams-= X[iPt,1]*lams[3*iPt]*wt;
+        stressFB-= X[iPt,1]*fbend[3*iPt]*wt
+    stressLams/=np.prod(Lens);
+    stressFB/=np.prod(Lens);
+    return stressLams, stressFB;
    
 @nb.njit(nb.float64[:,:](nb.float64[:],nb.float64[:,:],nb.float64[:,:],nb.int64),cache=True)
 def deAliasIntegralNumba(f, UpsampledchebPolys,DpInv,N):
@@ -86,6 +112,11 @@ def calcMNumba(Xs,c, mu, N):
 
 @nb.njit(nb.float64[:](nb.int64,nb.int64,nb.float64[:],nb.float64[:,:]),parallel=True,cache=c)
 def EvalAllBendForces(N,Nfib,Xstacked,FEMatrix):
+    """
+    Evaluate the bending forces on all fibers
+    N = number of Cheb nodes per fiber, Nfib = number of fibers, Xstacked = locations of 
+    points as a 1D stacked vector, FEMatrix = the matrix D_BC^4 that evaluates the bending forces
+    """
     forceDs=np.zeros(N*Nfib*3);
     for iFib in nb.prange(Nfib):
         forceDs[iFib*3*N:(iFib+1)*3*N] = np.dot(FEMatrix,Xstacked[iFib*3*N:(iFib+1)*3*N]);
@@ -97,15 +128,12 @@ def calcLocalVelocities(Xs_nonLoc,forceDsAll,localcs,mu,N,Nfib):
     Compute the local velocities, i.e. M^loc*forceDen for all fibers. 
     Inputs: Xs_nonLoc = list of tangent vectors as a 3*N*nFib 1d array, forceDsAll = 
     list of all force densities as a 3*N*nFib 1d array, localcs = local drag coefficient, 
-    mu = fluid viscosity, N = number of Cheb points per fiber, N = number of fibs 
+    mu = fluid viscosity, N = number of Cheb points per fiber, Nfib = number of fibs 
     """
     LocalOnly = np.zeros(len(Xs_nonLoc));
     for iFib in nb.prange(Nfib):
         Xs = Xs_nonLoc[iFib*3*N:(iFib+1)*3*N];
         forceD = forceDsAll[iFib*3*N:(iFib+1)*3*N];
-        # Compute self velocity from RPY (which will be subtracted), finite part integral
-        # velocity, and purely local velocity (this is needed in the non-local corrections
-        # for very close fibers).
         M = calcMNumba(Xs,localcs,mu,N);
         LocalOnly[iFib*3*N:(iFib+1)*3*N] = np.dot(M,forceD);
     return LocalOnly;
@@ -114,7 +142,9 @@ def calcLocalVelocities(Xs_nonLoc,forceDsAll,localcs,mu,N,Nfib):
 def getUniformPointsNumba(chebpts,Nfib,N,Nuni,UniformFromChebMatrix):
     """
     Obtain uniform points from a set of Chebyshev points. 
-    Inputs: chebpts as a (tot#ofpts x 3) array
+    Inputs: chebpts as a (tot#ofpts x 3) array, Nfib = number of fibers, N = number of 
+    Cheb nodes, Nuni = number of uniform nodes, UniformFromChebMatrix = matrix that 
+    transforms the Chebyshev locations to the uniform ones
     Outputs: uniform points as a (nPtsUniform*Nfib x 3) array.
     """
     uniPoints = np.zeros((Nfib*Nuni,3));
@@ -178,15 +208,15 @@ def linSolveAllFibersForGM(Nfib,N,b,XsVec,XsAll,impcodt, cs, mu, UpsampMat,Upsam
     XVecs,FPMatrix,DiffMat,snodes,doFP):
     """
     Linear solve on all fibers together to obtain alphas and lambdas. 
-    Inputs: Nfib = number of fibers, N = number of points per fibers, ptsCheb = Chebyshev points (as an N*Nfib x 3 array), 
-    b = RHS vector, XsVec = tangent vectors (as an N*Nfib x 3 array), XsAll = tangent vectors, row stacked 
-    (because numba doesn't support reshape), dt = timestep, 
-    impco = implicit coefficient for linear solves, cs = local drag coefficients for each s, mu = fluid viscosity, 
-    Lmat = matrix of coefficients to values (Chebyshev polynomial values) on the N grid, 
-    UpsampMat, DownSampMat = matrices for upsampling and downsampling from N to 2N grid. DpInv = psuedo-inverse of Cheb
-    differentiation matrix, w = Chebyshev weights, D4BC = bending force calculation operator, I = N x 3 identity matrix, 
+    Inputs: Nfib = number of fibers, N = number of points per fibers,
+    b = RHS vector, XsVec = tangent vectors (as an N*Nfib x 3 array), XsVec = Npts x 3 vector of positions,
+    XsAll = tangent vectors, row stacked (because numba doesn't support reshape), impcodt = implicit coefficient*timestep, 
+    cs = local drag coefficients for each s, mu = fluid viscosity, UpsampMat = matrix for upsampling from N to 2N grid. 
+    UpsampledChebPolys = values of Chebyshev polynomials on the 2N grid. WeightedUpsamplingMat = the upsampling matrix 
+    with integration weights (used in computing K^*), LeastSquaresDownsampler = matrix we use for downsampling, 
+    DpInv = psuedo-inverse of Cheb differentiation matrix, D4BC = bending force calculation operator, I = N x 3 identity matrix, 
     wIt = 3 x N matrix  that integrates functions on the grid, XVecs = positions, FPMatrix = matrix for finite part integral, 
-    DiffMat = Cheb differentiatio matrix, snodes = Chebyshev nodes on fiber, doFP = include the finite part integral implicitly
+    DiffMat = Cheb differentiation matrix, snodes = Chebyshev nodes on fiber, doFP = include the finite part integral implicitly
     (1 for yes, 0 for no)
     Outputs: the alphas and lambdas on all the fibers 
     """

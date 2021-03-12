@@ -10,8 +10,9 @@ import time
 from math import sqrt, exp, pi
 import BatchedNBodyRPY as gpurpy
 
+# Documentation last updated 03/12/2021
 
-# Definitions
+# Definitions (for special quadrature)
 upsampneeded = 0.15*1.05;   # upsampneeded*Lfiber = distance where upsampling is needed
 specneeded = 0.06*1.20;     #specneed*Lfiber = distance where special quad is needed
 rho_crit = 1.114;           # critical Bernstein radius for special quad (set for 3 digits using 32 points)
@@ -35,8 +36,9 @@ class fiberCollection(object):
     def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, nThreads=1):
         """
         Constructor for the fiberCollection class. 
-        Inputs: Nfibs = number of fibers, fibDisc = discretization object that each fiber will get
-        a copy of, nonLocal = are we doing nonlocal hydro? (0 = local drag, 1 = full hydrodynamics, 
+        Inputs: Nfibs = number of fibers, turnover time = mean time for each fiber to turnover,
+        fibDisc = discretization object that each fiber will get a copy of, 
+        nonLocal = are we doing nonlocal hydro? (0 = local drag, 1 = full hydrodynamics, 
         2 = hydrodynamics without finite part, 3 = hydrodynamics without special quad, 4 = 
         hydrodynamics without other fibers (only finite part))
         mu = fluid viscosity,omega = frequency of background flow oscillations, 
@@ -59,13 +61,14 @@ class fiberCollection(object):
         if (self._nonLocal==1 and not (self._Ndirect==self._Npf)):
             raise ValueError('Doing correction quad, Ndirect must = N chebyshev');
         
-        # Initialize C++
         DLens = Dom.getPeriodicLens();
         for iD in range(len(DLens)):
             if (DLens[iD] is None):
                 DLens[iD] = 1e99;
+        
+        # Initialize C++ class 
         r = self._epsilon*self._Lf;
-        self._FibColCpp = FiberCollection(mu,DLens,self._epsilon, self._Lf,aRPYFac,self._Nfib,self._Npf,self._Nunifpf,fibDisc._delta,nThreads);
+        self._FibColCpp = FiberCollection(mu,DLens,self._epsilon, self._Lf,aRPYFac,self._Nfib,self._Npf,self._Nunifpf,self._Ndirect,fibDisc._delta,nThreads);
         dstarCL = dstarCenterLine*self._epsilon*self._Lf;
         dstarInt = dstarInterpolate*self._epsilon*self._Lf;
         dstar2 = dstar2panels*self._epsilon*self._Lf
@@ -73,7 +76,8 @@ class fiberCollection(object):
         self._FibColCpp.initNodesandWeights(fibDisc.gets(), fibDisc.getw(),fibDisc.getSpecialQuadNodes(),fibDisc.getUpsampledWeights(),\
             np.vander(fibDisc.getSpecialQuadNodes(),increasing=True).T);
         self._FibColCpp.initResamplingMatrices(fibDisc.getUpsamplingMatrix(), fibDisc.get2PanelUpsamplingMatrix(),\
-                    fibDisc.getValstoCoeffsMatrix(),np.linalg.inv(fibDisc.getValstoCoeffsMatrix()));
+                    fibDisc.getValstoCoeffsMatrix(),np.linalg.inv(fibDisc.getValstoCoeffsMatrix()),self._fiberDisc._MatfromNtoDirectN,\
+                    self._fiberDisc._MatfromDirectNtoN);
         self._FibColCpp.init_FinitePartMatrix(fibDisc.getFPMatrix(), fibDisc.getDiffMat());
         self._FibColCpp.initMatricesForPreconditioner(fibDisc._MatfromNto2N, fibDisc._UpsampledChebPolys.T, fibDisc._LeastSquaresDownsampler,\
             fibDisc._Dpinv2N,fibDisc._WeightedUpsamplingMat, fibDisc._D4BC,fibDisc._leadordercs);
@@ -83,7 +87,8 @@ class fiberCollection(object):
         Initialize the list of fibers. This is done by giving each fiber
         a copy of the discretization object, and then initializing positions
         and tangent vectors.
-        Inputs: list of Discretized fiber objects (typically empty), Domain object
+        Inputs: list of Discretized fiber objects (typically empty), Domain object,
+        file names for the points and tangents vectors if we are initializing from file
         """
         self._fibList = fibListIn;
         self._DomLens = Dom.getLens();
@@ -164,9 +169,11 @@ class fiberCollection(object):
         Inputs: X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
         tangent vectors, t = system time, exForceDen = external force density (treated explicitly), 
         lamstar = lambdas for the nonlocal calculation, Dom = Domain object, RPYEval = RPY velocity
-        evaluator for the nonlocal terms, FPimplicit = whether to do the finite part integral implicitly. 
+        evaluator for the nonlocal terms, FPimplicit = whether to do the finite part integral implicitly,
+        returnForce = whether we need the force (we do if this collection is part of a collection of species and 
+        the hydro for the species collection is still outstanding) 
         The block diagonal RHS is 
-        [M^Local*(F*X^n+f^ext) + M^NonLocal * (F*X^(n+1/2,*)+lambda*+f^ext)+u_0; -w^T * F*X^n]
+        [M^Local*(F*X^n+f^ext) + M^NonLocal * (F*X^(n+1/2,*)+lambda*+f^ext)+u_0; 0]
         """
         fnBend = self.evalBendForceDensity(self._ptsCheb);
         Local = self.calcLocalVelocities(np.reshape(Xs_nonLoc,self._totnum*3),exForceDen+fnBend);
@@ -174,7 +181,6 @@ class fiberCollection(object):
         fNLBend = self.evalBendForceDensity(X_nonLoc);
         totForce = lamstar+exForceDen+fNLBend;
         nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,totForce,Dom,RPYEval,1-FPimplicit);
-        thist =time.time()
         if (FPimplicit==1 and self._nonLocal > 0): # do the finite part separetely if it's to be treated implicitly
             nonLocal+= self._FibColCpp.FinitePartVelocity(X_nonLoc, fnBend, Xs_nonLoc)
             print('Doing FP separate, it''s being treated implicitly')
@@ -186,7 +192,7 @@ class fiberCollection(object):
         """
         New RHS (after block diag solve). This is the residual form of the system that gets 
         passed to GMRES. 
-        Inputs: lamalph = the answer for lambda and alpha from the block diagonal solver, 
+        Inputs: BlockDiagAnswer = the answer for lambda and alpha from the block diagonal solver, 
         X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
         tangent vectors, dtimpco = delta t * implicit coefficient,
         lamstar = lambdas for the nonlocal calculation, Dom = Domain object, RPYEval = RPY velocity
@@ -209,10 +215,11 @@ class fiberCollection(object):
     def Mobility(self,lamalph,impcodt,X_nonLoc,Xs_nonLoc,Dom,RPYEval,returnForce=False):
         """
         Mobility calculation for GMRES
-        Inputs: lamalph = the input lambdas and alphas
+        Inputs: lamalph = the input lambdas and alphas impcodt = delta t * implicit coefficient,
         X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
-        tangent vectors, impcodt = delta t * implicit coefficient,
-        Dom = Domain object, RPYEval = RPY velocity evaluator for the nonlocal terms, 
+        tangent vectors,Dom = Domain object, RPYEval = RPY velocity evaluator for the nonlocal terms, 
+        returnForce = whether we need the force (we do if this collection is part of a collection 
+        of species and  the hydro for the species collection is still outstanding) 
         The calculation is 
         [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +lambda); K*lambda ]
         """
@@ -237,21 +244,18 @@ class fiberCollection(object):
         dt = timestep, implic_coeff = implicit coefficient, X_nonLoc = fiber positions as 
         an Npts x 3 array, doFP = whether to do finite part implicitly. 
         The preconditioner is 
-        [-M^Local K-impco*dt*M^Local*F*K; K^* impco*w^T*F*K]
+        [-M^Local K-impco*dt*M^Local*F*K; K^* 0]
         """
         XsAll = np.reshape(Xs_nonLoc,self._Npf*self._Nfib*3);
         fD = self._fiberDisc;
         b1D = np.reshape(b,len(b));
-        #thist = time.time();
-        #lamalph = NumbaColloc.linSolveAllFibersForGM(self._Nfib,self._Npf,b1D, Xs_nonLoc,XsAll,dt*implic_coeff, \
-        #    fD._leadordercs, self._mu, fD._MatfromNto2N, fD._UpsampledChebPolys, fD._WeightedUpsamplingMat,fD._LeastSquaresDownsampler, fD._Dpinv2N, \
-        #    fD._D4BC,fD._I,fD._wIt,X_nonLoc,fD.getFPMatrix(),fD._Dmat,fD._s,doFP);
-        #print('Numba time %f' %(time.time()-thist));
-        #thist = time.time();
-        lamalph = self._FibColCpp.applyPreconditioner(Xs_nonLoc,b1D,implic_coeff*dt);
-        #print('Cpp time %f' %(time.time()-thist));
-        #print('Difference %f' %(np.amax(np.abs(lamalph-lamalph2))));
-        return lamalph;
+        return self._FibColCpp.applyPreconditioner(Xs_nonLoc,b1D,implic_coeff*dt);
+        
+        # Numba version
+        lamalph = NumbaColloc.linSolveAllFibersForGM(self._Nfib,self._Npf,b1D, Xs_nonLoc,XsAll,dt*implic_coeff, \
+            fD._leadordercs, self._mu, fD._MatfromNto2N, fD._UpsampledChebPolys, fD._WeightedUpsamplingMat,fD._LeastSquaresDownsampler, fD._Dpinv2N, \
+            fD._D4BC,fD._I,fD._wIt,X_nonLoc,fD.getFPMatrix(),fD._Dmat,fD._s,doFP);
+        
         
     def nonLocalVelocity(self,X_nonLoc,Xs_nonLoc,forceDs, Dom, RPYEval,doFinitePart=1):
         """
@@ -260,7 +264,7 @@ class fiberCollection(object):
         forceDs = force densities as an 3*npts 1D numpy array
         Dom = Domain object the computation happens on,  
         RPYEval = EwaldSplitter (RPYVelocityEvaluator) to compute velocities, doFinitePart = whether to 
-        include the finite part integral in the calculation 
+        include the finite part integral in the calculation (no if it's being done implicitly)
         Outputs: nonlocal velocity as a tot#ofpts*3 one-dimensional array.
         """
         # If not doing nonlocal hydro, return nothing
@@ -307,7 +311,8 @@ class fiberCollection(object):
                 print('Upsampled Ewald time %f' %(time.time()-thist));
                 thist=time.time();
             SelfTerms = self.GPUSubtractSelfTerms(self._Ndirect,Xupsampled,forcesUp);
-            #print(np.amax(np.abs(SelfTerms-SelfTerms2)))
+            #SelfTerms2 = self._FibColCpp.SubtractAllRPY(Xupsampled,fupsampled,self._fiberDisc.getwDirect());
+            #print('Difference bw Raul and me %f' %(np.amax(np.abs(SelfTerms-SelfTerms2))))
             if (verbose>=0):
                 print('Self time %f' %(time.time()-thist));
                 thist=time.time();
@@ -319,6 +324,7 @@ class fiberCollection(object):
                 raise ValueError('Velocity is nan - stability issue!') 
             return np.reshape(RPYVelocity,self._totnum*3)+doFinitePart*finitePart;
 
+        # Corrections
         thist=time.time();
         alltargets=[];
         numTbyFib=[];
@@ -378,36 +384,22 @@ class fiberCollection(object):
     def getLambdas(self):
         return self._lambdas; 
     
-    @staticmethod
-    @nb.njit((nb.float64[:,:],nb.float64[:],nb.float64[:],nb.float64[:],\
-        nb.int64,nb.int64,nb.float64[:]),parallel=True,cache=True)
-    def FiberStress(X, fbend,lams,Lens,Nfib,N,w):
-        """
-        Compute the stress in the suspension due to the fiber via Batchelor's formula
-        Inputs: lams = constraint forces on the fibers as a totnum*3 1D numpy array, 
-        Lens = 3 array of periodic lengths (to compute volume for the stress)
-        Output: the 3 x 3 stress tensor 
-        """
-        stressLams = np.zeros((3,3));
-        stressFB = np.zeros((3,3)); # from bending 
-        for iPt in nb.prange(N*Nfib):
-            wt = w[iPt%N];
-            # Ugly but faster than np.outer 
-            stressLams-= np.array([[X[iPt,0]*lams[3*iPt], X[iPt,0]*lams[3*iPt+1], X[iPt,0]*lams[3*iPt+2]],\
-                               [X[iPt,1]*lams[3*iPt], X[iPt,1]*lams[3*iPt+1], X[iPt,1]*lams[3*iPt+2]],\
-                               [X[iPt,2]*lams[3*iPt], X[iPt,2]*lams[3*iPt+1], X[iPt,2]*lams[3*iPt+2]]])*wt;
-            stressFB-= np.array([[X[iPt,0]*fbend[3*iPt], X[iPt,0]*fbend[3*iPt+1], X[iPt,0]*fbend[3*iPt+2]],\
-                               [X[iPt,1]*fbend[3*iPt], X[iPt,1]*fbend[3*iPt+1], X[iPt,1]*fbend[3*iPt+2]],\
-                               [X[iPt,2]*fbend[3*iPt], X[iPt,2]*fbend[3*iPt+1], X[iPt,2]*fbend[3*iPt+2]]])*wt;
-        stressLams/=np.prod(Lens);
-        stressFB/=np.prod(Lens);
-        return stressLams, stressFB;
-           
+    def FiberStress(self,XforNL,Lambdas,Dom):
+        return NumbaColloc.FiberStressNumba(XforNL,self.evalBendForceDensity(XforNL),Lambdas,\
+            1.0*Dom.getLens(),self._Nfib,self._Npf,self._fiberDisc._w);
+              
     def uniformForce(self,strengths):
         """
         A uniform force density on all fibers with strength strength 
         """
         return np.tile(strengths,self._Nfib*self._Npf);
+    
+    def FiberIndexUniformPoints(self):
+        """
+        Nuni x Nfib array, where the first Nuni values are 0, the second 1, etc.
+        The idea is to map uniform sites to fiber numbers
+        """
+        return np.repeat(np.arange(self._Nfib,dtype=np.int64),self._Nunifpf);
     
     def getUniformPoints(self,chebpts):
         """
@@ -424,7 +416,8 @@ class fiberCollection(object):
         Outputs: upsampled points as a (nPtsUpsample*Nfib x 3) array.
         """
         return NumbaColloc.useNumbatoUpsample(chebpts,self._Nfib,self._Npf,self._Ndirect,self._fiberDisc._MatfromNtoDirectN);
-       
+        b= self._FibColCpp.upsampleForDirectQuad(chebpts);
+        
     def getValuesfromDirectQuad(self,upsampledVals):
         """
         Obtain values at Chebyshev nodes from upsampled 
@@ -432,6 +425,7 @@ class fiberCollection(object):
         Outputs: vals at cheb pts as a (tot#ofpts x 3) array
         """
         return NumbaColloc.useNumbatoDownsample(upsampledVals,self._Nfib,self._Npf,self._Ndirect,self._fiberDisc._MatfromDirectNtoN);
+        b = self._FibColCpp.downsampleFromDirectQuad(upsampledVals);
         
     def getg(self,t):
         """
@@ -455,6 +449,10 @@ class fiberCollection(object):
         return aRPYFac;
     
     def averageTangentVectors(self):
+        """
+        nFib array, where each entry is the average 1/L*integral_0^L X_s(s) ds
+        for each fiber
+        """
         avgfibTans = np.zeros((self._Nfib,3));
         wts = np.reshape(self._fiberDisc._w,(self._Npf,1));
         for iFib in range(self._Nfib):
@@ -477,6 +475,10 @@ class fiberCollection(object):
     def initializeLambdaForNewFibers(self,newfibs,exForceDen,t,dt,implic_coeff,other=None):
         """
         Solve local problem to initialize values of lambda on the fibers
+        Inputs: newfibs = list of replaced fiber indicies, 
+        exForceDen = external (gravity/CL) force density on those fibers, 
+        t = system time, dt = time step, implic_coeff = implicit coefficient (usually 1/2), 
+        other = the other (previous time step) fiber collection
         """
         fD = self._fiberDisc;
         for iFib in newfibs:
@@ -499,6 +501,10 @@ class fiberCollection(object):
                 
     
     def FiberBirthAndDeath(self,tstep,other=None):
+        """
+        Turnover filaments. tstep = time step,
+        other = the previous time step fiber collection (for Crank-Nicolson)
+        """
         if (tstep==0):
             return [];
         rateDeath = self._deathrate*self._Nfib;
@@ -550,6 +556,12 @@ class fiberCollection(object):
     ##  "PRIVATE" METHODS NOT ACCESSED OUTSIDE OF THIS CLASS
     ## ====================================================
     def GPUSubtractSelfTerms(self,Ndir,Xupsampled,fupsampled):
+        """
+        Subtract the self RPY integrals on each fiber
+        Inputs: Ndir = number of points for direct quad,
+        Xupsampled = upsampled positions, fupsampled = upsampled forces
+        Return thr direct RPY velocities
+        """
         hydrodynamicRadius = aRPYFac*self._epsilon*self._Lf;
         selfMobility= 1.0/(6*pi*self._mu*hydrodynamicRadius);
         
@@ -571,14 +583,9 @@ class fiberCollection(object):
         forceDsAll = the force densities respectively on the fibers as a 1D array
         Outputs: the velocity M_loc*f on all fibers as a 1D array
         """
-        #thist = time.time()
-        #Num= NumbaColloc.calcLocalVelocities(Xs,forceDsAll,self._fiberDisc._leadordercs,self._mu,self._Npf,self._Nfib);
-        #print('Numba time %f' %(time.time()-thist))
-        #thist = time.time()
         return self._FibColCpp.evalLocalVelocities(Xs,forceDsAll)
-        #print('CPP time %f' %(time.time()-thist))
-        #print(np.abs(np.amax(Cpp-Num)))
-        #return Cpp;
+        # Numba
+        Num= NumbaColloc.calcLocalVelocities(Xs,forceDsAll,self._fiberDisc._leadordercs,self._mu,self._Npf,self._Nfib);
         
     def determineQuadLists(self, XnonLoc, Xuniform, Dom):
         """
@@ -615,7 +622,7 @@ class fiberCollection(object):
     
     def KProductsAllFibers(self,Xsarg,alphas,lambdas):
         """
-        Compute the products K*alpha and K^T*lambda for. 
+        Compute the products K*alpha and K^T*lambda.
         Inputs: Xsarg = tangent vectors as a totnum x 3 array, 
         alphas as a 1D array, lambdas as a 1D array
         Outputs: products Kalpha, K^*lambda
@@ -659,17 +666,9 @@ class fiberCollection(object):
         Inputs: X to evaluate -EX_ssss at, as a (tot#ofpts) x 3 array
         Outputs: the forceDensities -EX_ssss also as a (tot#ofpts) x 3 array
         """
-        #FEMatrix = self._fiberDisc._D4BC;
-        #thist = time.time()
-        #Num= NumbaColloc.EvalAllBendForces(self._Npf,self._Nfib,np.reshape(X_nonLoc,self._Npf*self._Nfib*3),FEMatrix);
-        #print('Numba time %f' %(time.time()-thist))
-        #thist = time.time()
         return self._FibColCpp.evalBendForces(X_nonLoc);
-        #print('CPP time %f' %(time.time()-thist))
-        #print(np.abs(np.amax(Cpp-Num)))
-        #return Num
+        Num= NumbaColloc.EvalAllBendForces(self._Npf,self._Nfib,np.reshape(X_nonLoc,self._Npf*self._Nfib*3),FEMatrix);
         
-     
     def calcCurvatures(self,X):
         """
         Evaluate fiber curvatures on fibers with locations X. 

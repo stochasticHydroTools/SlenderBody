@@ -1,12 +1,14 @@
 import finufftpy as fi
 import numpy as np
 import numba as nb 
-import RPYKernels as RPYcpp
+from RPYKernelEvaluator import RPYKernelEvaluator as RPYcpp
 import time
 from math import pi
 from warnings import warn
 
 verbose = -1;
+
+# Documentation last updated: 03/12/2021
 
 class RPYVelocityEvaluator(object):
     """
@@ -19,7 +21,8 @@ class RPYVelocityEvaluator(object):
     ## ========================================
     def __init__(self,a,mu,Npts):
         """
-        Input variables: a = hydrodynamic radius of the RPY blobs, mu = fluid viscosity
+        Input variables: a = hydrodynamic radius of the RPY blobs, mu = fluid viscosity,
+        Npts = total number of blobs
         """
         self._a = float(a);
         print('Ewald radius %f' %self._a)
@@ -84,6 +87,8 @@ class EwaldSplitter(RPYVelocityEvaluator):
     """
     This class implements Ewald splitting for the calculation of
     the non-local velocity on a TRIPLY PERIODIC DOMAIN
+    
+    It uses FINUFFT for the far field and my own near field codes
     """
     ## ========================================
     ##          METHODS FOR INITIALIZATION
@@ -99,7 +104,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
         self._currentDomain = PerDom;
         
         # Initialize C++ code
-        RPYcpp.initRPYVars(a,mu,Npts,PerDom.getPeriodicLens());
+        self._RPYcpp = RPYcpp(a,mu,Npts,PerDom.getPeriodicLens());
         
         # Calculate the truncation distance for Ewald
         self.calcrcut();
@@ -187,10 +192,9 @@ class EwaldSplitter(RPYVelocityEvaluator):
     def EwaldNearVel(self,ptsxyz,forces,SpatialData,nThreads=1):
         """
         Near field velocity. 
-        Inputs: Npts = the number of blobs, ptsxyz = the list of points 
-        in undeformed, Cartesian coordinates, forces = forces at those points,
-        SpatialData = SpatialDatabase object for fast neighbor computation.
-        nThreads = number of threads 
+        Inputs: ptsxyz = the list of points in undeformed, Cartesian coordinates, 
+        forces = forces at those points,SpatialData = SpatialDatabase object 
+        for fast neighbor computation. nThreads = number of threads 
         Output: the near field velocity
         """
         # Find all pairs (returns an array of the pairs) within rcut
@@ -199,31 +203,10 @@ class EwaldSplitter(RPYVelocityEvaluator):
         # Call the C+ function which takes as input the pairs of points, number of points and gives
         # you the near field
         t=time.time();
-        velNear = RPYcpp.EvaluateRPYNearPairs(neighborList,ptsxyz,forces,self._xi,g,self._rcut,nThreads);
+        velNear = self._RPYcpp.EvaluateRPYNearPairs(neighborList,ptsxyz,forces,self._xi,g,self._rcut,nThreads);
         if (verbose>=0):
             print('Pairwise sum %f' %(time.time()-t))
         return velNear;
-
-    def EwaldNearVelQuad(self,pts,forces,Dom):
-        """
-        Near field velocity. 
-        Inputs: pts = the list of points 
-        in undeformed, Cartesian coordinates, forces = forces at those points.
-        Dom = domain object 
-        This is the dumb quadratic method that does not use the SpatialDatabase
-        class to speed up neighbor search.
-        This is probably overkill since we already have a SpatialDatabase object
-        that does the quadratic loops.
-        """
-        velNear = np.zeros((pts.T).shape);
-        for iPt in range(self_Npts): # loop over points
-            for jPt in range(self._Npts):
-                # Find nearest periodic image (might need to speed this up)
-                rvec = Dom.calcShifted(pts[iPt,:]-pts[jPt,:]);
-                # Only actually do the computation when necessary
-                if (np.linalg.norm(rvec) < self._rcut):
-                    velNear[:,iPt]+=RPYcpp.RPYNearKernel(rvec,forces[jPt,:],self._xi);
-        return velNear.T;
 
     def calcrcut(self):
         """
@@ -231,11 +214,11 @@ class EwaldSplitter(RPYVelocityEvaluator):
         We truncate the near field at the value rcut.
         """
         rcut=0;          # determine rcut
-        Vatcut = np.abs(RPYcpp.RPYNearKernel([rcut,0,0],[1,0,0],self._xi));
+        Vatcut = np.abs(self._RPYcpp.RPYNearKernel([rcut,0,0],[1,0,0],self._xi));
         V0 = min(np.amax(Vatcut),1); # M0 is relative to the value at 0 or 1, whichever is smaller
         while (np.amax(Vatcut)/V0 > nearcut):
             rcut=rcut+rcuttol;
-            Vatcut = np.abs(RPYcpp.RPYNearKernel([rcut,0,0],[1,0,0],self._xi));
+            Vatcut = np.abs(self._RPYcpp.RPYNearKernel([rcut,0,0],[1,0,0],self._xi));
         self._rcut =  rcut;
         print ('Ewald cut %f' %self._rcut)
     
@@ -251,7 +234,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
             Lmin = np.amin(Lper)/self._currentDomain.safetyfactor();
         except:
             raise NotImplementedError('Periodic velocity solver only implemented for triply periodic');
-        vLover2 = np.amax(RPYcpp.RPYNearKernel([Lmin*0.5,0,0],[1,0,0],self._xi));
+        vLover2 = np.amax(self._RPYcpp.RPYNearKernel([Lmin*0.5,0,0],[1,0,0],self._xi));
         if (vLover2 <= nearcut): # no interactions with more than 1 image
             return;
         print ('Need to increase xi or L, there are near interactions w/ more than 1 image');
@@ -259,7 +242,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
             # Modify xi
             self._xi+=trouble_xi_step;
             self.calcrcut();
-            vLover2 = np.amax(RPYcpp.RPYNearKernel([Lmin*0.5,0,0],[1,0,0],self._xi));
+            vLover2 = np.amax(self._RPYcpp.RPYNearKernel([Lmin*0.5,0,0],[1,0,0],self._xi));
             print('The new value of xi is %f' %self._xi)
             print('The new rcut %f' %self._rcut)
         # Update the far field arrays for the new xi
@@ -294,7 +277,8 @@ GPUtol = 1e-6 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
     """
-    This class implements Ewald splitting using UAMMD 
+    This class implements Ewald splitting using Raul's UAMMD code on the GPU. 
+    It is much faster than my code 
     """
     ## ========================================
     ##          METHODS FOR INITIALIZATION
@@ -314,7 +298,7 @@ class GPUEwaldSplitter(EwaldSplitter):
         self._currentDomain = PerDom;
         
         # Initialize C++ code (for checking rcut dynamically)
-        RPYcpp.initRPYVars(a,mu,Npts,PerDom.getPeriodicLens());
+        self._RPYcpp = RPYcpp(a,mu,Npts,PerDom.getPeriodicLens());
         
         # Raul's code
         import uammd

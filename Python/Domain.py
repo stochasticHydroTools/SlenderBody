@@ -1,6 +1,8 @@
 import numpy as np
-import DomainCpp as DomCpp
+from DomainC import DomainC as DomCpp
 from math import sqrt
+
+# Documentation last updated: 03/12/2021
 
 class Domain(object):
     """
@@ -109,7 +111,7 @@ class Domain(object):
         the sheared domain). 
         Inputs: kxUP, kyUP, kzUP = wave numbers on the standard unprimed
         coordinate system (x,y,z). These could be arrays of any form
-        Outputs: kxPrime, kyPrime, kzPrime = wabe numbers on the primed
+        Outputs: kxPrime, kyPrime, kzPrime = wave numbers on the primed
         deformed coordindate system (x',y',z'). Format of output and input 
         are the same.
         Abstract domain: return input wave numbers
@@ -121,7 +123,7 @@ class Domain(object):
     
     def setg(self,ing):
         if (ing > 0):
-            raise ValueError('Cannot set g (strain) in a non periodic domain');
+            raise ValueError('Cannot set g (strain) >0 in a non periodic domain');
         self._g = 0;
         
     def roundg(self):
@@ -145,7 +147,7 @@ class PeriodicShearedDomain(Domain):
     ## ===================================
     def __init__(self,Lx,Ly,Lz):
         super().__init__(Lx,Ly,Lz);
-        DomCpp.initLengths(Lx,Ly,Lz); # initialize C++ variables
+        self._cppDom = DomCpp([Lx,Ly,Lz]); # initialize C++ variables
         self._g = 0; # Deformation factor due to the shear
 
     ## ===================================
@@ -183,7 +185,7 @@ class PeriodicShearedDomain(Domain):
         necessary to estimate the minimum norm)
         """
         # Just call the C++ function (the python was unbelievably slow!)
-        newvec = DomCpp.calcShifted(dvec, self._g);
+        newvec = self._cppDom.calcShifted(dvec, self._g);
         if (False):
             shift = 0*dvec;
             ## Shift in oblique y and z

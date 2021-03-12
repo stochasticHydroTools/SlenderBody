@@ -1,9 +1,11 @@
 % Make the plot for the SBT simulations
 % Plot the fiber first
-clf;
-hold on
 nColors = max(newlabels);
-Corder =  jet(nColors);%
+if exist('nSpecies')
+    Corder = lines(nSpecies);
+else
+    Corder =  hsv(nColors);%
+end
 % Corder = get(gca, 'ColorOrder');
 % Plot the fibers
 plotfibs=1:nFib;
@@ -23,7 +25,11 @@ for iFib=plotfibs
         line=':';
         fibcolor='k';
     else
-        fibcolor = Corder(mod(newlabels(iFib),nColors)+1,:);
+        if (exist('nSpecies'))
+            fibcolor = Corder(iSpecies,:);
+        else
+            Corder(mod(newlabels(iFib),nColors)+1,:);
+        end
         line='-';
     end
 %      fibcolor = Corder(mod(iFib,7)+(mod(iFib,7)==0)*7,:);
@@ -117,5 +123,3 @@ ylabel('$y$','interpreter','latex')
 zlabel('$z$','interpreter','latex')
 pbaspect([1 1 1])
 set(gca,'FontName','times New roman','FontSize',14)
-movieframes(length(movieframes)+1)=getframe(f);
-hold off

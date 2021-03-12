@@ -28,15 +28,15 @@ SpatialkD = ckDSpatial(pts,ShearDom);
 
 # Velocity of the blobs - parallelogram domain
 uParallelogram = Ewald.calcBlobTotalVel(pts,forces,ShearDom,SpatialkD);
-par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, box=uammd.Box(Lx,Ly,Lz),shearStrain=g);
+par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, box=uammd.Box(Lx,Ly,Lz));
 pse = uammd.UAMMD(par,Npts);
 #pse.Mdot assumes interleaved positions and forces, that is x1,y1,z1,x2,y2,z2,...
 shearedpts = pts.copy();
 shearedpts[:,0]-=g*shearedpts[:,1]; # THIS INCLUDES TRANSFER TO SHEARED SPACE!
-positions = np.array(np.reshape(pts,3*Npts), np.float32);
+positions = np.array(np.reshape(shearedpts,3*Npts), np.float32);
 forcesR = np.array(np.reshape(forces,3*Npts), np.float32);
 MF=np.zeros(3*Npts, np.float32);
-pse.Mdot(positions, forcesR, MF)
+pse.Mdot(positions, forcesR, g, MF)
 MF = np.reshape(MF,(Npts,3))
 print('Velocities parallelogram')
 print(uParallelogram)
@@ -51,13 +51,13 @@ Ewald = EwaldSplitter(a,mu,xi,RectDom,2*Npts);
 SpatialkD = ckDSpatial(ptsRect,RectDom);
 uRectangle = Ewald.calcBlobTotalVel(ptsRect,forcesRect,RectDom,SpatialkD);
 # Raul version
-par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, box=uammd.Box(Lx,2*Ly,Lz),shearStrain=0);
+par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, box=uammd.Box(Lx,2*Ly,Lz));
 pse = uammd.UAMMD(par,2*Npts);
 #pse.Mdot assumes interleaved positions and forces, that is x1,y1,z1,x2,y2,z2,...
 positions = np.array(np.reshape(ptsRect,6*Npts), np.float32);
 forcesR = np.array(np.reshape(forcesRect,6*Npts), np.float32);
 MFR=np.zeros(6*Npts, np.float32);
-pse.Mdot(positions, forcesR, MFR)
+pse.Mdot(positions, forcesR, 0, MFR)
 MFR = np.reshape(MFR,(2*Npts,3))
 print('Velocities rectangle')
 print(uRectangle)

@@ -1,6 +1,8 @@
 import numpy as np
 from scipy.spatial import cKDTree
 
+# Documentation last updated: 03/12/2021
+
 class SpatialDatabase(object):
 
     """

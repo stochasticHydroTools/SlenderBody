@@ -1,18 +1,20 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 #include <stdio.h>
 #include <math.h>
 #include <random>
 #include <chrono>
-#include "Domain.cpp"
+#include "DomainC.cpp"
 #include "types.h"
 
 /**
+Documentation last updated: 03/12/2021
 C++ class for a cross-linked network where we track each end separately
 This class is bound to python using pybind11
-See the file pyEndedCrossLinkers.cpp for the bindings. 
+See the end of this file for bindings.
 
-There are 3 reactions
+There are 6 reactions
 1) Binding of a floating link to one site (rate _kon)
 2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
 3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)
@@ -43,7 +45,7 @@ class EndedCrossLinkedNetwork {
     
     public:
        
-    EndedCrossLinkedNetwork(int TotSites, vec rates, vec3 DomLengths, vec CLBounds,double CLseed){
+    EndedCrossLinkedNetwork(int TotSites, vec rates, vec3 DomLengths, vec CLBounds,double CLseed):_Dom(DomLengths){
         _TotSites = TotSites; 
         _kon = rates[0];
         _konSecond = rates[1];
@@ -61,7 +63,6 @@ class EndedCrossLinkedNetwork {
         rng.seed(CLseed);
         unif = std::uniform_real_distribution<double>(0.0,1.0);
         _nDoubleBoundLinks = 0;
-        initLengths(DomLengths[0],DomLengths[1],DomLengths[2]);
         _lowerCLBound = CLBounds[0];
         _upperCLBound = CLBounds[1];
 
@@ -75,11 +76,10 @@ class EndedCrossLinkedNetwork {
      void updateNetwork(double tstep, npInt pyMaybeBindingPairs, npDoub pyuniPts, double g){
         /*
         Update the network using Kinetic MC.
-        Inputs: tstep = time step. pyBindingPairs = 2D numpy array, where the first
+        Inputs: tstep = time step. pyMaybeBindingPairs = 2D numpy array, where the first
         column is the bound end and the second column is the unbound end, of possible
         link binding site pairs. 
-        pyShifts = shifts in periodic sheared coordinates for each link (so that the 
-        link is between fiber i and fiber j + shift. 
+        pyuniPts = 2D numpy array of uniform points. g = strain in coordinate system
         */
         // Convert numpy to C++ vector and reset heap for the beginning of the step
         intvec MaybeBindingPairs(pyMaybeBindingPairs.size());
@@ -304,6 +304,10 @@ class EndedCrossLinkedNetwork {
     }
     
     void setLinks(npInt pyHeads, npInt pyTails, npDoub pyShifts, npInt pyFreelyBoundPerSite){
+        /*
+        Set the link heads, tails, shifts, and freely bound (singly bound) links at each site from
+        python arrays
+        */
         int nLinksIn = pyHeads.size();
         if (nLinksIn  > _maxLinks){
             _maxLinks = 2*nLinksIn;
@@ -324,6 +328,7 @@ class EndedCrossLinkedNetwork {
         double _kon, _konSecond, _koff, _koffSecond, _kDoubleOn, _kDoubleOff; // rates
         double _upperCLBound, _lowerCLBound; // absolute distances
         intvec _FreeLinkBound, _LinkHeads, _LinkTails;
+        DomainC _Dom;
         vec _LinkShiftsPrime;
         std::uniform_real_distribution<double> unif;
         std::mt19937_64 rng;
@@ -334,7 +339,9 @@ class EndedCrossLinkedNetwork {
         
         void updateSecondBindingRate(int BoundEnd, vec &SecondEndRates, int startPair, int numLinks,double systime, double tstep){
             /*
-            Update the binding rate of every link with left end = BoundEnd
+            Update the binding rate of every link with left end = BoundEnd.
+            SecondEndRates = new rates for binding the second end, startPair = first index of sorted pairs of links that 
+            has left end BoundEnd.  
             */
             for (int ThisLink = startPair; ThisLink < startPair+numLinks; ThisLink++){
                 SecondEndRates[ThisLink] = _konSecond*_FreeLinkBound[BoundEnd];
@@ -344,6 +351,9 @@ class EndedCrossLinkedNetwork {
         }
 
         void TimeAwareHeapInsert(int index, double rate, double systime,double timestep){
+            /*
+            Insert in heap if rate is nonzero and the generated time is less than the time step
+            */
             if (rate==0){
                 deleteFromHeap(index); // delete any previous copy
                 return;
@@ -359,6 +369,11 @@ class EndedCrossLinkedNetwork {
         }
         
         int EliminateLinksOutsideRange(const intvec &newLinkSites, const vec &uniPts, double g, vec &PrimedShifts, intvec &ActualPossibleLinks){
+            /*
+            From the list of potential links (newLinkSites) and the uniform points (uniPts), and the strain in the coordinate system, calculate 
+            the actual displacement vector of each link (including the relevant shift from the array PrimedShifits, and add it 
+            to the array ActualPossibleLinks
+            */
             int nPotentialLinks = newLinkSites.size()/2;
             int nLPoss=0;
             for (int iMaybeLink=0; iMaybeLink < nPotentialLinks; iMaybeLink++){
@@ -371,7 +386,7 @@ class EndedCrossLinkedNetwork {
                 //std::cout << "i " << uniPts[3*iPt] << " , " << uniPts[3*iPt+1] << " , " << uniPts[3*iPt+2] << std::endl;
                 //std::cout << "j " << uniPts[3*jPt] << " , " << uniPts[3*jPt+1] << " , " << uniPts[3*jPt+2] << std::endl;
                 //std::cout << "rvec " << rvec[0] << " , " << rvec[1] << " , " << rvec[2] << std::endl;
-                calcShifted(rvec,g);
+                _Dom.calcShifted(rvec,g);
                 //std::cout << "shift rvec " << rvec[0] << " , " << rvec[1] << " , " << rvec[2] << std::endl;
                 double r = sqrt(dot(rvec,rvec));
                 //std::cout << "Actual r " << r << std::endl;
@@ -385,7 +400,7 @@ class EndedCrossLinkedNetwork {
                     for (int d =0; d < 3; d++){
                         PrimeShift[d] = uniPts[3*iPt+d]-uniPts[3*jPt+d]-rvec[d];
                     }
-                    PrimeCoords(PrimeShift,g);
+                    _Dom.PrimeCoords(PrimeShift,g);
                     for (int d =0; d < 3; d++){
                         PrimedShifts[3*nLPoss+d] = PrimeShift[d];
                         PrimedShifts[3*(nLPoss+1)+d] = -PrimeShift[d];
@@ -409,4 +424,16 @@ class EndedCrossLinkedNetwork {
         } 
        
  
-};    
+};   
+
+
+PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
+    py::class_<EndedCrossLinkedNetwork>(m, "EndedCrossLinkedNetwork")
+        .def(py::init<int, vec, vec3, vec, double>())
+        .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
+        .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
+        .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails)
+        .def("getLinkShifts", &EndedCrossLinkedNetwork::getLinkShifts)
+        .def("setLinks",&EndedCrossLinkedNetwork::setLinks)
+        .def("deleteLinksFromSites", &EndedCrossLinkedNetwork::deleteLinksFromSites);
+} 

@@ -1,22 +1,19 @@
-from CrossLinkedNetwork import CrossLinkedNetwork
+from CrossLinkedNetwork import CrossLinkedNetwork, CrossLinkedSpeciesNetwork
 import numpy as np
-from CrossLinkingEvent import EventQueue as heap
 from EndedCrossLinkedNetwork import EndedCrossLinkedNetwork
 import time
 from warnings import warn
 
 verbose = -1;
 
+# Documentation last updated: 03/09/2021
+
 class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
 
     """
     This class is a child of CrossLinkedNetwork which implements a network 
     with cross links where each end matters separately. 
-    
-    This python code implements one specific model,
-    but the one actually used is in DoubleEndedCrossLinkedNetworkCPP and that model 
-    may be updated in the future and supersedes this one. 
-    
+       
     There are 3 reactions
     1) Binding of a floating link to one site (rate _kon)
     2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
@@ -28,6 +25,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     This is combined with the C++ file
     cppmodules/EndedCrossLinkers.cpp which uses the fortran code
     ../Fortran/MinHeapModule.f90
+    
+    There is a brief child class below for fiber species.
     
     """
     
@@ -62,17 +61,22 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     def getnBoundEnds(self):
         return self._FreeLinkBound;
-        
     
-    def updateNetwork(self,fiberCol,Dom,tstep,of=None):
+    def sitesPerFib(self,iFib):
+        """
+        Return the indices of the uniform binding sites that correspond to the 
+        fiber iFib
+        """
+        return np.arange(iFib*self._NsitesPerf,(iFib+1)*self._NsitesPerf,dtype=np.int64);
+       
+    def updateNetwork(self,fiberCol,Dom,tstep):
         """
         Update the network using Kinetic MC.
-        Inputs: fiberCol = fiberCollection object of the fibers,
+        Inputs: fiberCol = fiberCollection object of the fibers (can also be species collection),
         Dom = Domain object, tstep = the timestep we are updating the network
         by (a different name than dt)
-        This is an event-driven algorithm. See comments throughout, but
-        the basic idea is to sample times for each event, then update 
-        those times as the state of the network changes. 
+        On the python side, we get the neighbors and filter them so that fibers cannot link to 
+        themselves. Then we pass that to C++ which updates its own chain. 
         """
         # Obtain Chebyshev points and uniform points, and get
         # the neighbors of the uniform points
@@ -86,7 +90,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL);
         uniNeighbs = uniNeighbs.astype(np.int64);
         # Filter the list of neighbors to exclude those on the same fiber
-        Fibs = uniNeighbs // self._NsitesPerf;
+        Fibs = self.mapSiteToFiber(uniNeighbs);
         delInds = np.arange(len(Fibs[:,0]));
         newLinks = np.delete(uniNeighbs,delInds[Fibs[:,0]==Fibs[:,1]],axis=0);
         if (verbose > 0):
@@ -120,7 +124,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         pyFB = self._FreeLinkBound.copy();
         for iFib in fibNums:
             print('Deleting all links from fiber %d' %iFib)
-            sites = np.arange(iFib*self._NsitesPerf,(iFib+1)*self._NsitesPerf,dtype=np.int64);
+            sites = self.sitesPerFib(iFib)
             pyFB[sites]=0;
             for site in sites:
                 inds = np.where(np.logical_or(pyHeads==site,pyTails==site))[0];
@@ -144,4 +148,36 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._nDoubleBoundLinks = len(self._HeadsOfLinks);     
         self._FreeLinkBound = self._cppNet.getNBoundEnds();
         self._PrimedShifts = self._cppNet.getLinkShifts();
+
+class DoubleEndedCrossLinkedSpeciesNetwork(CrossLinkedSpeciesNetwork,DoubleEndedCrossLinkedNetwork):
+    
+    """
+    CL Network in the case of fiber species. The only thing that changes is the instantiation of the super
+    object (it inherits from CrossLinkedSpecies and not CrossLinkedNetwork), and the mapping that gives you 
+    the index of sites on each fiber
+    """
+
+    def __init__(self,FiberSpeciesCollection,Kspring,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,nThreads=1):
+        super().__init__(FiberSpeciesCollection,Kspring,rl,Dom,nThreads)
+                
+        self._kon = kon*self._ds;
+        self._konSecond = konsecond*self._ds;
+        self._koff = koff;
+        self._koffSecond = koffsecond;
+        self._kDoubleOn = 0; # half the real value because we schedule link binding as separate events
+        self._kDoubleOff = 0;
+        MaxLinks = max(2*int(konsecond/koffsecond*kon/koff*self._TotNumSites),100)
+        self._HeadsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
+        self._TailsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
+        self._PrimedShifts = np.zeros((MaxLinks,3));
+        allRates = [self._kon,self._konSecond,self._koff,self._koffSecond,self._kDoubleOn,self._kDoubleOff];
+        CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
+        
+        print(allRates)
+        if (CLseed is None):
+            CLseed = int(time.time());
+        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,CLseed);
+        
+    def sitesPerFib(self,iFib):
+        return np.where(self._SiteToFiberMap==iFib)[0];
    

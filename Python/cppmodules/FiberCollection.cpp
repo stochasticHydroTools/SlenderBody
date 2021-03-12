@@ -1,5 +1,6 @@
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <pybind11/numpy.h>
 #include <stdio.h>
 #include <math.h>
 #include <omp.h>
@@ -7,18 +8,17 @@
 #include <iterator>
 #include "SpecialQuadratures.cpp"
 #include "utils.h"
-#include "RPYKernels.cpp"
+#include "RPYKernelEvaluator.cpp"
 
 /**
-    ManyFiberMethods.cpp
-    C++ functions to compute the velocity due to many fibers. 
-    This includes: the finite part integral, all integral kernel evaluations, 
-    and the routine to correct the velocity from Ewald splitting. 
-    4 main public methods
+    FiberCollection.cpp
+    C++ class that updates arrays of many fiber positions, etc.
+    5 main public methods
     1) CorrectNonLocalVelocity - correct the velocity from Ewald
     2) FinitePartVelocity - get the velocity due to the finite part integral
     3) SubtractAllRPY - subtract the free space RPY kernel (from the Ewald result)
     4) RodriguesRotations - return the rotated X and Xs
+    5) ApplyPreconditioner 
 **/
 
 namespace py=pybind11;
@@ -33,7 +33,8 @@ class FiberCollection {
     //        METHODS FOR INITIALIZATION
     //===========================================
     FiberCollection(double muin,vec3 Lengths, double epsIn, double Lin, double aRPYFacIn, 
-                       int NFibIn,int NChebIn, int NuniIn, double deltain, int nThreads){
+                       int NFibIn,int NChebIn, int NuniIn, int NForDirectQuad, double deltain, int nThreads):
+        _Dom(Lengths), _RPYEvaluator(aRPYFacIn*epsIn*Lin,muin,NFibIn*NChebIn, Lengths){
         /**
         Initialize variables relating to each fiber
         @param muin = viscosity of fluid
@@ -44,18 +45,20 @@ class FiberCollection {
         @param NFibIn = number of fibers
         @param NChebIn = number of Chebyshev points on each fiber
         @param NuniIn = number of uniform points on each fiber 
+        @param NForDirectQyad =  number of points for upsampled direct quadrature
         @param deltain = fraction of fiber with ellipsoidal tapering
+        @param nThreads = # of OpenMP threads for parallel calculations
         **/
         _aRPYFac = aRPYFacIn;
-        initRPYVars(_aRPYFac*epsIn*Lin, muin, NFibIn*NChebIn, Lengths);
         // Set domain lengths
-        initLengths(Lengths[0],Lengths[1],Lengths[2]);
         _epsilon = epsIn;
+        mu = muin;
         _L = Lin;
         _NUniPerFib = NuniIn;
         _NFib = NFibIn;
         _delta = deltain;
         _nOMPThr = nThreads;
+        _NForEwaldDirect = NForDirectQuad;
         
     }
 
@@ -84,7 +87,7 @@ class FiberCollection {
         @param pyNormalNodes = Chebyshev nodes on the fiber (1D numpy array)
         @param pyNormalWts = Clenshaw-Curtis weights for direct quadrature on the fiber (1D numpy array)
         @param pyUpNodes  = upsampled Chebyshev nodes on the fiber (1D numpy array)
-        @param pyNormalWeights = upsampled Clenshaw-Curtis weights for upsampled direct quadrature on the fiber (1D numpy array)
+        @param pyUpWeights = upsampled Clenshaw-Curtis weights for upsampled direct quadrature on the fiber (1D numpy array)
         @param pyVanderMat = vandermonde matrix (2D numpy array)
         **/
 
@@ -107,13 +110,15 @@ class FiberCollection {
         setVandermonde(SpecialVandermonde, _NUpsample);
     }
 
-    void initResamplingMatrices(npDoub pyRsUpsamp, npDoub pyRs2Panel, npDoub pyValtoCoef, npDoub pyCoeftoVal){
+    void initResamplingMatrices(npDoub pyRsUpsamp, npDoub pyRs2Panel, npDoub pyValtoCoef, npDoub pyCoeftoVal, npDoub pyDirectUpsamp, npDoub pyDirectDownSamp){
         /**
         Initialize resampling matrices 
-        @param pyRsUpsample = upsampling matrix from the N point grid to Nupsample point grid (2D numpy aray)
+        @param pyRsUpsamp = upsampling matrix from the N point grid to Nupsample (special quad, usually 32 points) point grid (2D numpy aray)
         @param pyRs2Panel = upsampling matrix from the N point grid to 2 panels of Nupsample point grid (2D numpy aray)
         @param pyValtoCoef  = matrix that takes values to Chebyshev series coefficients on the N point Chebyshev grid (2D numpy array)
         @param pyCoeftoVal = matrix that takes coefficients of Chebyshev series to values on N point Cheb grid (2D numpy array)
+        @param pyDirectUpsamp = upsampling matrix from the N point grid to Ndirect (upsampled direcy quad, usually >> 16 points) point grid (2D numpy array)
+        @param pyDirectDownsamp = downsampling matrix from the Ndirect point grid to N point grid (2D numpy array)
         **/
 
         // allocate std::vector (to pass to the C++ function)
@@ -121,12 +126,16 @@ class FiberCollection {
         _TwoPanMatrix = vec(pyRs2Panel.size());
         _ValtoCoeffMatrix = vec(pyValtoCoef.size());
         _CoefftoValMatrix = vec(pyCoeftoVal.size());
+        _DirectUpsampMatrix = vec(pyDirectUpsamp.size());
+        _DirectDownSampMatrix = vec(pyDirectDownSamp.size());
 
         // copy py::array -> std::vector
         std::memcpy(_UpsamplingMatrix.data(),pyRsUpsamp.data(),pyRsUpsamp.size()*sizeof(double));
         std::memcpy(_TwoPanMatrix.data(),pyRs2Panel.data(),pyRs2Panel.size()*sizeof(double));
         std::memcpy(_ValtoCoeffMatrix.data(),pyValtoCoef.data(),pyValtoCoef.size()*sizeof(double));
         std::memcpy(_CoefftoValMatrix.data(),pyCoeftoVal.data(),pyCoeftoVal.size()*sizeof(double));
+        std::memcpy(_DirectUpsampMatrix.data(),pyDirectUpsamp.data(),pyDirectUpsamp.size()*sizeof(double));
+        std::memcpy(_DirectDownSampMatrix.data(),pyDirectDownSamp.data(),pyDirectDownSamp.size()*sizeof(double));
     }
 
     void init_FinitePartMatrix(npDoub pyFPMatrix, npDoub pyDiffMatrix){    
@@ -147,6 +156,16 @@ class FiberCollection {
     
     void initMatricesForPreconditioner(npDoub pyUpsampMat, npDoub pyUpsampledchebPolys, npDoub pyLeastSquaresDownsampler, npDoub pyDpInv,
         npDoub pyweightedUpsampler, npDoub pyD4BC, npDoub &pyCs){
+        /*
+        @param pyUpsampMat = upsampling matrix from N to 2N
+        @param pyUpsampledchebPolys = Chebyshev polynomials of degree 0, ..., N-2 sampled on the 2N grid
+        @param pyLeastSquaresDownsampler = matrix that takes 2N grid points to N grid points using least squares (see paper)
+        @param pyDpInv = pseudo-inverse of cheb differentiation matrix on 2N grid
+        @param pyweightedUpsampler = upsampling matrix (with weights) for calculating K^*, 
+        @param pyD4BC = matrix that calculates the bending force
+        @param pyCs = local drag coefficients (1D)
+        All of the matrices are passed as 2D numpy arrays which are then converted to matrices in C (row major) order
+        */
         
         _MatFromNto2N = vec(pyUpsampMat.size());
         _LeastSquaresDownsampler = vec(pyLeastSquaresDownsampler.size());
@@ -206,6 +225,7 @@ class FiberCollection {
         @param ChebFiberPoints = points on all fibers (2D numpy array)
         @param FibForceDensities = fiber force densities on all fibers (2D numpy array)
         @param pyWeights = weights for the direct quadrature to subtract (1D numpy array)
+        @return the self RPY velocity on all fiber points
         **/
         // allocate std::vector (to pass to the C++ function)
         vec ChebPoints(pyChebFiberPoints.size());
@@ -384,7 +404,6 @@ class FiberCollection {
         @param g = strain in coordinate system
         @param pyNumbyFib = Npts (1D) numpy array of Nfib length with the number of targets that require correction for each fiber
         @param TargetNums = python LIST (not array) of the target indices that need correction in sequential order
-        @param nThreads = number of threads to use in parallel processing
         @return correctionUs = Npts * 3 numpy array (2D) of corrections to the Ewald velocity. 
         **/
 
@@ -492,6 +511,13 @@ class FiberCollection {
     }
     
     py::array applyPreconditioner(npDoub pyTangents,npDoub pyb, double impcodt){
+        /*
+        Apply preconditioner to obtain lambda and alpha. 
+        @param pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
+        @param pyb = RHS vector b 
+        @param impcodt = implicit factor * dt (usually dt/2)
+        @return a vector (lambda,alpha) with the values on all fibers in a collection
+        */
 
         // allocate std::vector (to pass to the C++ function)
         vec Tangents(pyTangents.size());
@@ -601,7 +627,60 @@ class FiberCollection {
         return make1DPyArray(Forces);
     }
     
+    py::array upsampleForDirectQuad(npDoub pyData){
+        
+        vec chebData(pyData.size());
+        std::memcpy(chebData.data(),pyData.data(),pyData.size()*sizeof(double));
+        vec upsampled(chebData.size()/_NChebPerFib*_NForEwaldDirect);
+        int N = _NChebPerFib;
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < _NFib; iFib++){
+            for (int id=0; id < 3; id++){
+                vec LocalData(N);
+                vec LocalUpsampledData(_NForEwaldDirect);
+                for (int i=0; i < N; i++){
+                    LocalData[i] = chebData[3*N*iFib+3*i+id];
+                }
+                BlasMatrixProduct(_NForEwaldDirect,N,1,1.0,0.0,_DirectUpsampMatrix,false,LocalData,LocalUpsampledData);
+                for (int i=0; i < _NForEwaldDirect; i++){
+                    upsampled[3*_NForEwaldDirect*iFib+3*i+id] = LocalUpsampledData[i];
+                }
+            }
+        }
+        return makePyDoubleArray(upsampled);
+    }
+    
+    py::array downsampleFromDirectQuad(npDoub pyData){
+        
+        vec usampledData(pyData.size());
+        std::memcpy(usampledData.data(),pyData.data(),pyData.size()*sizeof(double));
+        vec downsampled(usampledData.size()/_NForEwaldDirect*_NChebPerFib);
+        int N = _NForEwaldDirect;
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < _NFib; iFib++){
+            for (int id=0; id < 3; id++){
+                vec LocalData(N);
+                vec LocalDownSampledData(_NChebPerFib);
+                for (int i=0; i < N; i++){
+                    LocalData[i] = usampledData[3*N*iFib+3*i+id];
+                }
+                BlasMatrixProduct(_NChebPerFib,N,1,1.0,0.0,_DirectDownSampMatrix,false,LocalData,LocalDownSampledData);
+                for (int i=0; i < _NChebPerFib; i++){
+                    downsampled[3*_NChebPerFib*iFib+3*i+id] = LocalDownSampledData[i];
+                }
+            }
+        }
+        return makePyDoubleArray(downsampled);
+    }
+    
+    
     py::array evalLocalVelocities(npDoub pyTangents, npDoub pyForceDensities){
+        /*
+        Evaluate the local velocities M_local*f on the fiber.
+        @param pyTangents = tangent vectors
+        @param pyForceDensities = force densites on the fiber
+        @return 1D numpy array of local velocities
+        */
         vec Tangents(pyTangents.size());
         std::memcpy(Tangents.data(),pyTangents.data(),pyTangents.size()*sizeof(double));
         vec ForceDensities(pyForceDensities.size());
@@ -637,17 +716,22 @@ class FiberCollection {
     
     private:
     
-    double _epsilon, _L, _delta, _aRPYFac;
-    int _NFib, _NChebPerFib, _NUniPerFib, _NUpsample, _nOMPThr;
+    double _epsilon, _L, _delta, _aRPYFac, mu;
+    int _NFib, _NChebPerFib, _NUniPerFib, _NUpsample, _nOMPThr, _NForEwaldDirect;
     vec _NormalChebNodes, _UpsampledNodes, _NormalChebWts, _UpsampledChebWts;
     vec _LocalDragCs, _UpsampledChebPolys, _DpInv, _MatFromNto2N, _LeastSquaresDownsampler, _weightedUpsampler, _D4BC;
     double _dstarCL,_dstarInterp, _dstar2panels;
     double _UpsampledQuadDist, _SpecQuadDist;
     vec _FinitePartMatrix, _DiffMatrix;
-    vec _UpsamplingMatrix, _TwoPanMatrix, _ValtoCoeffMatrix,_CoefftoValMatrix;
+    vec _UpsamplingMatrix, _TwoPanMatrix, _ValtoCoeffMatrix,_CoefftoValMatrix, _DirectUpsampMatrix, _DirectDownSampMatrix;
+    DomainC _Dom;
+    RPYKernelEvaluator _RPYEvaluator;
     
     void deAliasIntegral(const vec &f, vec &Integrals2N){
         /*
+        Given function f on an 2N point grid, this method returns
+        Integrals2N = Integral(f*T_k, ds), where the integrals are evaluated with the pseudo-inverse
+        of the Cheb differentiation matrix on the 2N grid, for k = 0, .., N-2.
         */
         int N = _NChebPerFib;
         vec fTimesTUpsampled(2*N*(N-1));
@@ -660,6 +744,12 @@ class FiberCollection {
     }
 
     void calculateJ(const vec &Tangents,vec &J){
+        /*
+        Calculate matrix J involved in kinematic K and K^* calculations
+        Specifically, 
+        J_qk = integral_0^s_q (T_k(s) n_1(s) ds), where k = 0, ..., N-2 and then there
+        are another N-1 columns for the normal vector n_2
+        */
         int N = _NChebPerFib;
         vec XsUpsampled(6*N);
         BlasMatrixProduct(2*N,N,3,1.0,0.0,_MatFromNto2N,false,Tangents,XsUpsampled);
@@ -701,8 +791,7 @@ class FiberCollection {
     void calcMLocal(const vec &Tangents,vec &M){
         /*
         Calculates the local drag matrix M. 
-        Inputs: Xs = fiber tangent vectors as a 3N array, c = N vector of local drag coefficients, 
-        mu = viscosity, N = number of points 
+        Inputs: Xs = fiber tangent vectors as a 3N array
         */
         double viscInv = 1.0/(8.0*M_PI*mu);
         for (int iPt = 0; iPt < _NChebPerFib; iPt++){
@@ -730,21 +819,16 @@ class FiberCollection {
         vec3 rvec;
         vec3 force;
         utarg = {0,0,0};
-        double r, rdotf, F, G, co2;
-        double outFront = 1.0/mu;
         int Nsrc = sourcePts.size()/3;
         for (int iSrc=0; iSrc < Nsrc; iSrc++){
             for (int d=0; d < 3; d++){
                 rvec[d]=targ[d]-sourcePts[3*iSrc+d];
                 force[d] = Forces[3*iSrc+d];
             }
-            r = normalize(rvec);
-            rdotf = dot(rvec,force);
-            F = FtotRPY(r);
-            G = GtotRPY(r);
-            co2 = rdotf*G-rdotf*F;
+            vec3 rpysing = {0,0,0};
+            _RPYEvaluator.RPYTot(rvec, force,rpysing);
             for (int d=0; d<3; d++){
-                utarg[d]+=outFront*(F*force[d]+co2*rvec[d]);
+                utarg[d]+=rpysing[d];
             }
         }
     }
@@ -765,20 +849,15 @@ class FiberCollection {
         vec3 rvec;
         vec3 force;
         utarg = {0,0,0};
-        double r, rdotf, F, G, co2;
-        double outFront = 1.0/mu;
         for (int iSrc=first; iSrc < last; iSrc++){
             for (int d=0; d < 3; d++){
                 rvec[d]=targ[d]-sourcePts[3*iSrc+d];
                 force[d] = ForceDs[3*iSrc+d]*wts[iSrc-first];
             }
-            r = normalize(rvec);
-            rdotf = dot(rvec,force);
-            F = FtotRPY(r);
-            G = GtotRPY(r);
-            co2 = rdotf*G-rdotf*F;
-            for (int d=0; d<3; d++){
-                utarg[d]+=outFront*(F*force[d]+co2*rvec[d]);
+            vec3 rpysing = {0,0,0};
+            _RPYEvaluator.RPYTot(rvec, force,rpysing);
+            for (int d=0; d < 3; d++){
+                utarg[d]+= rpysing[d];
             }
         }
     }
@@ -873,7 +952,7 @@ class FiberCollection {
             for (int d=0; d < 3; d++){
                 rvec[d] = targetPoint[d]-UniformFiberPoints[3*(iFib*_NUniPerFib+iPt)+d];
             }
-            calcShifted(rvec,g); // periodic shift wrt strain 
+            _Dom.calcShifted(rvec,g); // periodic shift wrt strain 
             double nr = sqrt(rvec[0]*rvec[0]+rvec[1]*rvec[1]+rvec[2]*rvec[2]);
             if (nr < _SpecQuadDist*_L){
                 for (int d=0; d < 3; d++){
@@ -1019,6 +1098,7 @@ class FiberCollection {
     }
     
     npDoub make1DPyArray(vec &cppvec){
+        // Return a 1D py array
         // allocate py::array (to pass the result of the C++ function to Python)
         auto pyArray = py::array_t<double>(cppvec.size());
         auto result_buffer = pyArray.request();
@@ -1029,3 +1109,24 @@ class FiberCollection {
     }
 
 };
+
+PYBIND11_MODULE(FiberCollection, m) {
+    py::class_<FiberCollection>(m, "FiberCollection")
+    
+        .def(py::init<double,vec3, double, double, double,int,int, int, int,double, int>())
+        .def("initSpecQuadParams", &FiberCollection::initSpecQuadParams)
+        .def("initNodesandWeights", &FiberCollection::initNodesandWeights)
+        .def("initResamplingMatrices",&FiberCollection::initResamplingMatrices)
+        .def("init_FinitePartMatrix", &FiberCollection::init_FinitePartMatrix)
+        .def("initMatricesForPreconditioner", &FiberCollection::initMatricesForPreconditioner)
+        .def("RPYFiberKernel",&FiberCollection::RPYFiberKernel)
+        .def("SubtractAllRPY",&FiberCollection::SubtractAllRPY)
+        .def("FinitePartVelocity",&FiberCollection::FinitePartVelocity)
+        .def("RodriguesRotations",&FiberCollection::RodriguesRotations)
+        .def("applyPreconditioner",&FiberCollection::applyPreconditioner)
+        .def("CorrectNonLocalVelocity",&FiberCollection::CorrectNonLocalVelocity)
+        .def("evalBendForces",&FiberCollection::evalBendForces)
+        .def("upsampleForDirectQuad",&FiberCollection::upsampleForDirectQuad)
+        .def("downsampleFromDirectQuad",&FiberCollection::downsampleFromDirectQuad)
+        .def("evalLocalVelocities", &FiberCollection::evalLocalVelocities);
+}

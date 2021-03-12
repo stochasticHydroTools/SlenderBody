@@ -5,10 +5,13 @@ import time
 from math import sqrt
 from scipy.linalg import lu_factor, lu_solve
 
+# Documentation last updated: 03/12/2021
+
 # Some definitions that are not specific to any particular discretization
 numBCs = 4; # number of boundary conditions
 # Numbers of uniform/upsampled points
-nptsUpsample = 32; # number of points to upsample to for special quadrature
+nptsUpsample = 32; # number of points to upsample to for special quadrature 
+                   # (distinct from upsampling for direct quadrature)
 
 class FibCollocationDiscretization(object):
 
@@ -28,7 +31,8 @@ class FibCollocationDiscretization(object):
         Constructor. 
         L = fiber length, epsilon = fiber aspect ratio, Eb = bending stiffness, mu = fluid viscosity. 
         N = number of points on discretized fiber.
-        Nupsample = how much to upsample by for direct quad
+        NupsampleForDirect = how much to upsample by for direct quad, nptsUniform = number of uniform 
+        points (for cross-linking / checking distances between fibers)
         """
         self._L = L;
         self._epsilon = epsilon;
@@ -75,9 +79,7 @@ class FibCollocationDiscretization(object):
         Initialize local leading order coefficients for the local drag matrix M. 
         The distance delta is the fraction of the fiber over which the ellipsoidal endpoint
         decay occurs. 
-        Between [0,delta]: set to ellipsoidal decay, c = -log(epsilon^2), 
-        Between [2*delta, L/2]: set to cylindrical constant radius
-        Between [delta,2*delta]: interpolate between cylindrical and ellipsoidal
+        See pg. 9 here: https://arxiv.org/pdf/2007.11728.pdf for formulas
         """
         radii = np.zeros(self._N);
         self._delta = delta;
@@ -156,57 +158,6 @@ class FibCollocationDiscretization(object):
         # Rescale weights (which come back on [-1,1]) by multiplying by L/2.0
         special_wts = seriescos*distance_pows*self._L/2.0;
         return special_wts;
-    
-    def upsampledCoefficients(self,Xarg):
-        """
-        Get the coefficients of an upsampled representation of the fiber.
-        Inputs: Xarg = upsampled fiber representation
-        Outputs: the coefficients and derivative coefficients of the upsampled
-        representation
-        """
-        raise NotImplementedError('upsampledCoefficients needs specific discretization.');
-
-    def evaluatePosition(self,tapprox,coeffs):
-        """
-        Evaluate the series representing the fiber at a value tapprox.
-        Inputs: tapprox = value to evaluate at. This value must be
-        rescaled so that the centerline is parameterized by t in [-1,1],
-        coeffs = coefficients that represent the fiber centerline 
-        (arbitrary number)
-        """
-        raise NotImplementedError('evaluatePosition needs specific discretization.');
-
-    def resample(self,Xarg,Nrs,typetarg):
-        """
-        Resample the fiber at Nrs nodes of type type
-        Inputs: Xarg = a self._N x 3 vector of the fiber points,
-        Nrs = number of points where the resampling is desired. typetarg = type
-        of points
-        Outputs: the resampled locations as an Nrs x 3 vector of points. 
-        """
-        raise NotImplementedError('resample needs specific discretization.');
-
-    def newNodes(self,Nrs,typetarg,numPanels=1):
-        """
-        New nodes
-        Inputs: Nrs = number of new nodes, typetarg = type of new nodes
-        Outputs: new nodes
-        """
-        raise NotImplementedError('newNodes needs specific discretization.');
-
-    def newWeights(self,Nrs,typetarg):
-        """
-        New quadrature weights for a set of Chebyshev nodes
-        Inputs: Nrs = number of new nodes, typetarg = type of new nodes
-        Outputs: new weights wN
-        """
-        raise NotImplementedError('newWeights needs specific discretization.');
-
-    def integrateXs(self,Xsp1):
-        """
-        Method to integrate Xs and get X.
-        """
-        raise NotImplementedError('integrateXs needs specific discretization.');
     
     def getNumUpsample(self):
         return self._nptsUpsample;
@@ -560,8 +511,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         return Xrs;
     
     def get2PanelUpsamplingMatrix(self):
-        return cf.ResamplingMatrix(self._N,self._N,chebGridType,chebGridType,\
-                    nPantarg=2);
+        return cf.ResamplingMatrix(self._N,self._N,chebGridType,chebGridType, nPantarg=2);
 
     def newNodes(self,Nrs,typetarg=chebGridType, numPanels=1):
         """

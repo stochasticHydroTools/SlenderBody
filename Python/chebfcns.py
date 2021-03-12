@@ -7,6 +7,7 @@ import numba as nb
 This file is a list of Chebyshev related functions
 for python that are needed in the slender fiber 
 code
+Documentation last updated: 03/12/2021
 """
 
 def chebPts(N,dom,kind,numPanels=1):

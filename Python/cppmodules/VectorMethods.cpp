@@ -36,7 +36,11 @@ double normalize(vec3 &rvec){
 }
 
 void BlasMatrixProduct(int m, int p, int n,double alpha, double beta,const vec &a, bool transA, const vec &b, vec &c){
-    // C-> alpha*A*B+beta*C
+    /* C-> alpha*A*B+beta*C
+    A = m x p
+    B = p x n 
+    C = m x n
+    */
     int LDA = p;
     int LDB = n;
     int LDC = n;
