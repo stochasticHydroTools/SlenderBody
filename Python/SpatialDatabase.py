@@ -13,7 +13,7 @@ class SpatialDatabase(object):
     rn are written in native python). 
     """
     
-    def __init__(self,pts,Dom):
+    def __init__(self,pts,Dom,nThr=1):
         """
         Constructor. Inputs are the set of points and the Domain 
         which are used to initialize the ptsprime variable
@@ -29,10 +29,10 @@ class SpatialDatabase(object):
         Inputs: pts is an N x 3 array of pints in unprimed coordinates, 
         Dom is the Domain object that we'll be doing the computation on
         """
-        self._ptsprime = Dom.primecoords(pts);
+        self._ptsPrime = Dom.primecoords(pts);
         self._Dom = Dom;
         
-    def selfNeighborList(self,rcut):
+    def selfNeighborList(self,rcut,numperfiber=1):
         """
         Compute a list of neighbors. Compute pairs
         of pts (i,j) that are a distance r w/safety factor apart in 
@@ -44,7 +44,7 @@ class SpatialDatabase(object):
         neighbors = [];
         for iPt in range(self._Npts):
             for jPt in range(iPt+1,self._Npts):
-                rvecprime = self._ptsprime[iPt,:]-self._ptsprime[jPt,:];
+                rvecprime = self._ptsPrime[iPt,:]-self._ptsPrime[jPt,:];
                 # Shift rvec so it's on [-L/2, L/2]^3
                 rvecprime = self._Dom.MinPrimeShiftInPrimeCoords(rvecprime);
                 if (np.linalg.norm(rvecprime) < rwsafety):
@@ -64,7 +64,7 @@ class SpatialDatabase(object):
         for iPt in range(self._Npts):
             iNeighbors=[];
             for jPt in range(other._Npts):
-                rvecprime = self._ptsprime[iPt,:]-other._ptsprime[jPt,:];
+                rvecprime = self._ptsPrime[iPt,:]-other._ptsPrime[jPt,:];
                 # Shift rvec so it's on [-L/2, L/2]^3
                 rvecprime = self._Dom.MinPrimeShiftInPrimeCoords(rvecprime);
                 if (np.linalg.norm(rvecprime) < rwsafety):
@@ -79,11 +79,11 @@ class ckDSpatial(SpatialDatabase):
     neighbors efficiently.
     """
     
-    def __init__(self,pts,Dom):
+    def __init__(self,pts,Dom,nThr=1):
         """
         Constructor. Initialize the kD tree.
         """
-        super().__init__(pts,Dom);
+        super().__init__(pts,Dom,nThr);
         # The super constructor will then call THIS child method to
         # updateSpatialStructures
     
@@ -96,13 +96,14 @@ class ckDSpatial(SpatialDatabase):
         # Mod the points so they are on the right bounds [0,Lx] x [0,Ly] x [0,Lz]
         # (needed for the call to kD tree)
         ptsprime = Dom.ZeroLShiftInPrimeCoords(ptsprime);
+        self._ptsPrime = ptsprime;
         # The domain can be periodic or free space. If periodic, pass
         # that information to the kD tree.
         # Update the KD tree
         self._Dom = Dom;
         self._myKDTree = cKDTree(ptsprime,boxsize=Dom.getPeriodicLens());
 
-    def selfNeighborList(self,rcut):
+    def selfNeighborList(self,rcut,numperfiber=1):
         """
         Get the neighbors within an Eulerian distance rcut (same 
         as rcut*safety factor in the deformed norm) within the
@@ -125,6 +126,126 @@ class ckDSpatial(SpatialDatabase):
         rwsafety=rcut*self._Dom.safetyfactor(); # add the safety factor
         return self._myKDTree.query_ball_tree(other._myKDTree,rwsafety);
 
+class GPUSpatial(SpatialDatabase):
+
+    """
+    Child of SpatialDatabase that uses Raul's GPU code to compute 
+    neighbors efficiently.
+    """
+    
+    def __init__(self,pts,Dom,nThr=1):
+        """
+        Constructor. Initialize the kD tree.
+        """
+        import NeighborSearchGPU
+        super().__init__(pts,Dom,nThr);
+        # The super constructor will then call THIS child method to
+        # updateSpatialStructures
+        self._precision = np.float32;
+        self._gpuNlist = NeighborSearchGPU.NList()
+    
+    def updateSpatialStructures(self,pts,Dom):
+        """
+        Update the kD tree using the set of points pts (an N x 3)
+        array, and Domain object Dom.
+        """
+        ptsprime = Dom.primecoords(pts);
+        # Mod the points so they are on the right bounds [0,Lx] x [0,Ly] x [0,Lz]
+        # (needed for the call to kD tree)
+        ptsprime = Dom.ZeroLShiftInPrimeCoords(ptsprime);
+        # The domain can be periodic or free space. If periodic, pass
+        # that information to the kD tree.
+        # Update ptsprime
+        self._Dom = Dom;
+        self._ptsPrime = ptsprime;
+
+    def selfNeighborList(self,rcut,numperfiber=1):
+        """
+        Get the neighbors within an Eulerian distance rcut (same 
+        as rcut*safety factor in the deformed norm) within the
+        ckD tree pointTree. 
+        Inputs: distance rcut
+        Output: pairs of neighbors as an nPairs x 2 array
+        """
+        rwsafety=rcut*self._Dom.safetyfactor(); # add the safety factor
+        self._gpuNlist.updateList(pos=self._ptsPrime.copy(), Lx=self._Dom._Lx, Ly=self._Dom._Ly, Lz=self._Dom._Lz,
+                 numberParticles=self._Npts,rcut=rwsafety)
+        # Post process list to return 2D array
+        neighbors = np.array(self._gpuNlist.list,dtype=np.int64);
+        neighbors = np.delete(neighbors, np.argwhere(neighbors == -1))
+        AllNeighbors = np.zeros((len(neighbors),2),dtype=np.int64);
+        AllNeighbors[:,0]=np.repeat(np.arange(self._Npts,dtype=np.int64),self._gpuNlist.nneigh);
+        AllNeighbors[:,1]=neighbors;
+        AllNeighbors = np.delete(AllNeighbors, np.argwhere(AllNeighbors[:,0] ==AllNeighbors[:,1]),axis=0)
+        return AllNeighbors;
+
+    def otherNeighborsList(self,other,rcut):
+        """
+        """
+        raise NotImplementedError('Other neighbors not implemented on GPU')
+
+class RaulLinkedList(SpatialDatabase):
+
+    """
+    Multi-threaded CPU version
+    """
+    
+    def __init__(self,pts,Dom,nThr=1):
+        """
+        Constructor. Initialize the kD tree.
+        """
+        import NeighborSearch
+        super().__init__(pts,Dom,nThr);
+        # The super constructor will then call THIS child method to
+        # updateSpatialStructures
+        self._precision = np.float32;
+        self._Nlist = NeighborSearch.NList()
+        self._maxNeighbors = 10;
+        self._nThreads = nThr;
+    
+    def updateSpatialStructures(self,pts,Dom):
+        """
+        Update the kD tree using the set of points pts (an N x 3)
+        array, and Domain object Dom.
+        """
+        ptsprime = Dom.primecoords(pts);
+        # Mod the points so they are on the right bounds [0,Lx] x [0,Ly] x [0,Lz]
+        # (needed for the call to kD tree)
+        ptsprime = Dom.ZeroLShiftInPrimeCoords(ptsprime);
+        # The domain can be periodic or free space. If periodic, pass
+        # that information to the kD tree.
+        # Update ptsprime
+        self._Dom = Dom;
+        self._ptsPrime = ptsprime;
+
+    def selfNeighborList(self,rcut,numperfiber=1):
+        """
+        Get the neighbors within an Eulerian distance rcut (same 
+        as rcut*safety factor in the deformed norm) within the
+        ckD tree pointTree. 
+        Inputs: distance rcut
+        Output: pairs of neighbors as an nPairs x 2 array
+        """
+        rwsafety=rcut*self._Dom.safetyfactor(); # add the safety factor
+        restart = True;
+        while (restart):
+            try:
+                self._Nlist.updateList(pos=self._ptsPrime.copy(), Lx=self._Dom._Lx, Ly=self._Dom._Ly, Lz=self._Dom._Lz,\
+                         numberParticles=self._Npts,rcut=rwsafety,useGPU=False,maxNeighbors=self._maxNeighbors,nThr=self._nThreads,\
+                         NperFiber=numperfiber)
+                restart=False;
+            except:
+                self._maxNeighbors+=10;
+        # Post process list to return 2D array
+        neighbors = self._Nlist.list;
+        AllNeighbors = np.reshape(neighbors,(len(neighbors)//2,2))
+        return AllNeighbors;
+
+    def otherNeighborsList(self,other,rcut):
+        """
+        """
+        raise NotImplementedError('Other neighbors not implemented in Rauls linked list implementation')
+
 class LinkedListSpatial(SpatialDatabase):
 
     """
@@ -132,10 +253,10 @@ class LinkedListSpatial(SpatialDatabase):
     searches. 
     """
     
-    def __init__(self,pts,Dom):
-        super().__init__(pts,Dom);
+    def __init__(self,pts,Dom,nThr):
+        super().__init__(pts,Dom,nThr);
     
-    def selfNeighborList(self,rcut):
+    def selfNeighborList(self,rcut,numperfiber=1):
         """
         Get the neighbors within an Eulerian distance rcut using
         the linked list construction. 
