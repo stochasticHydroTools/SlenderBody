@@ -1,7 +1,5 @@
 #include"uammd.cuh"
 #include"omp.h"
-#include"Interactor/NeighbourList/CellList/CellListBase.cuh"
-#include"Interactor/NeighbourList/CellList/NeighbourContainer.cuh"
 using namespace uammd;
 template<class T> using gpu_container = thrust::device_vector<T>;
 
@@ -113,7 +111,7 @@ Grid createUpdateGrid(Box box, real3 cutOff){
 }
 
 class NListUAMMD{
-  CellListBase d_nl;
+  //CellListBase d_nl;
   NlistCPU h_nl;
   thrust::device_vector<real4> pos;
   thrust::device_vector<real3> tmp;
@@ -142,38 +140,27 @@ public:
     }
   }
   
-  void updateList(py::array_t<real> h_pos, real Lx, real Ly, real Lz, int numberParticles,
+    void updateList(py::array_t<real> h_pos, real Lx, real Ly, real Lz, int numberParticles,
      int NperFiber, real rcut, bool useGPU, int maxNeighbors, int nThr){
-    if(numberParticles < 0 or rcut < 0){
-      std::cerr<<"ERROR: Invalid parameters"<<std::endl;
-      return;
-    }
-    if(useGPU){
-      if(not GPUMode){
-	GPUMode = true;
-	CudaSafeCall(cudaStreamCreate(&st));
-	errorStatus.resize(1);
-      }
-      updateListGPU(h_pos, Lx, Ly, Lz, numberParticles, NperFiber, rcut);
-    }
-    else{
-    
-      linkList.updateList((real3*)h_pos.data(), {Lx, Ly, Lz}, rcut, numberParticles);
-      bool failed;
-      try { 
-        failed = fillCPUListWithLinkList((real3*)h_pos.data(), {Lx, Ly, Lz}, rcut, numberParticles, NperFiber, maxNeighbors, nThr);
-      } catch (const char* msg){
-      } if (failed){
-        throw "Not enough max neighbors!";
-      }
-        
-    }
-    h_nl.list.erase(std::remove(h_nl.list.begin(),h_nl.list.end(),-1),h_nl.list.end());
-    this->nneigh = py::array_t<int>(h_nl.nneigh.size(), h_nl.nneigh.data());
-    this->stride = h_nl.stride;
-    this->list = py::array_t<int>(h_nl.list.size(), h_nl.list.data());
+        if (numberParticles < 0 or rcut < 0){
+           std::cerr<<"ERROR: Invalid parameters"<<std::endl;
+           return;
+        }
+        linkList.updateList((real3*)h_pos.data(), {Lx, Ly, Lz}, rcut, numberParticles);
+        bool failed;
+        try { 
+            failed = fillCPUListWithLinkList((real3*)h_pos.data(), {Lx, Ly, Lz}, rcut, numberParticles, NperFiber, maxNeighbors, nThr);
+        } catch (const char* msg){
+        } 
+        if (failed){
+            throw "Not enough max neighbors!";
+        }
+        h_nl.list.erase(std::remove(h_nl.list.begin(),h_nl.list.end(),-1),h_nl.list.end());
+        this->nneigh = py::array_t<int>(h_nl.nneigh.size(), h_nl.nneigh.data());
+        this->stride = h_nl.stride;
+        this->list = py::array_t<int>(h_nl.list.size(), h_nl.list.data());
 
-  }
+    }
 
     bool fillCPUListWithLinkList(real3* pos, real3 L, real rcut, int N, int NperFiber, int maxNeighbors, int nThr){
     constexpr int numberNeighbourCells = 27;
@@ -217,83 +204,6 @@ public:
     return NotEnoughMaxNeighbors;
   }
 
-  void updateListGPU(py::array_t<real> &h_pos, real Lx, real Ly, real Lz, int numberParticles, int NperFiber, real rcut){
-    this->NperFiber = NperFiber;
-    Box box({Lx, Ly, Lz});
-    this->rcut = rcut;
-    pos.resize(numberParticles);
-    tmp.resize(numberParticles);
-    thrust::copy((real3*)h_pos.data(), (real3*)h_pos.data() + numberParticles, tmp.begin());
-    thrust::transform(thrust::cuda::par.on(st), tmp.begin(), tmp.end(), pos.begin(), ToReal4());
-    auto p_ptr = thrust::raw_pointer_cast(pos.data());
-    Grid grid = createUpdateGrid(box, {rcut, rcut, rcut});
-    d_nl.update(p_ptr, numberParticles, grid, st);
-    downloadList();
-  }
-  
-  void downloadList(){
-    static thrust::device_vector<int> d_list;
-    static thrust::device_vector<int> d_nneigh;
-    auto listDataGPU = d_nl.getCellList();
-    int numberParticles = pos.size();
-    auto box = listDataGPU.grid.box;
-    const real rc2 = rcut*rcut;
-    bool tooManyNeighbours;
-    auto err_ptr = thrust::raw_pointer_cast(errorStatus.data());
-    int maxNeighboursPerParticle = this->stride;
-    auto cit = thrust::make_counting_iterator<int>(0);
-    int Nexclude = this->NperFiber;
-    do{
-      errorStatus[0] = 0;
-      d_list.resize(numberParticles*maxNeighboursPerParticle);
-      d_nneigh.resize(numberParticles);
-      auto d_list_ptr = thrust::raw_pointer_cast(d_list.data());
-      auto d_nneigh_ptr = thrust::raw_pointer_cast(d_nneigh.data());
-      thrust::for_each(thrust::cuda::par.on(0),
-		       cit, cit + numberParticles,
-		       [=] __device__ (int tid){
-			 auto nc = CellList_ns::NeighbourContainer(listDataGPU);
-			 const int ori = nc.getGroupIndexes()[tid];
-			 nc.set(tid);
-			 const real3 pi = make_real3(nc.getSortedPositions()[tid]);
-			 auto it = nc.begin();
-			 int nneigh = 0;
-			 const int fiber_i = ori/Nexclude;
-			 while(it){
-			   auto neighbour = *it++;
-			   const int j = neighbour.getGroupIndex();
-			   const int fiber_j = j/Nexclude;
-			   if(fiber_i != fiber_j){
-			     const real3 pj = make_real3(neighbour.getPos());
-			     const auto rij = box.apply_pbc(pi-pj);
-			     const real r2 = dot(rij, rij);
-			     if(r2 <  rc2){
-			       nneigh++;
-			       if(nneigh >= maxNeighboursPerParticle){
-				 err_ptr[0] = 1;
-				 d_nneigh_ptr[ori] = 0;
-				 return;
-			       }
-			       d_list_ptr[maxNeighboursPerParticle*ori + nneigh - 1] = j;
-			     }
-			   }
-			 }
-			 d_nneigh_ptr[ori] = nneigh;
-		       });
-      tooManyNeighbours = errorStatus[0] != 0;
-      if(tooManyNeighbours){
-	maxNeighboursPerParticle += 4;
-	System::log<System::WARNING>("Increasing max neighbours to %d", maxNeighboursPerParticle);
-      }
-    }while(tooManyNeighbours);
-    this->stride = maxNeighboursPerParticle;
-    h_nl.stride = this->stride;
-    h_nl.nneigh.resize(numberParticles);
-    h_nl.list.resize(h_nl.stride*numberParticles);
-    thrust::copy(d_list.begin(), d_list.end(), h_nl.list.begin());
-    thrust::copy(d_nneigh.begin(), d_nneigh.end(), h_nl.nneigh.begin());
-    CudaCheckError();
-  }
 };
 
 using namespace pybind11::literals;
