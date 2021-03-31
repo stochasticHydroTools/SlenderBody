@@ -40,20 +40,15 @@
 #include<tbb/global_control.h>
 #include<thread>
 #include<vector>
-
+#ifndef __CUDACC__
+#include"vector.h"
+using namespace utils;
+#else
 #include"uammd.cuh"
-#include "utils.h"
-using namespace uammd;
-
-// #ifndef __CUDACC__
-// #include "vector.h"
-// using namespace utils;
-// #else
-// #include"uammd.cuh"
 // #include"Interactor/NeighbourList/CellList/CellListBase.cuh"
 // #include"Interactor/NeighbourList/CellList/NeighbourContainer.cuh"
-// using namespace uammd;
-// #endif
+using namespace uammd;
+#endif
 
 //These helper functions allow to grow an std or concurrent tbb container using the same interface
 template<class GrowableContainer>
@@ -180,7 +175,7 @@ public:
   }
 
   //Updates the neighbour list with the provided parameters
-  void update(const real3* h_pos, real Lx, real Ly, real Lz, int numberParticles, int NperFiber, real rcut, int nThr){
+  void update(const real3* h_pos, real Lx, real Ly, real Lz, int numberParticles, int NperFiber, real rcut, int nThreads){
     //Store current parameters
     this->NperFiber = NperFiber;
     this->L = {Lx, Ly, Lz};
@@ -188,7 +183,11 @@ public:
     this->rcut = rcut;    
     cellList.updateList(h_pos, L, rcut, numberParticles);
     //Create the pair list using the cell list
-    createPairListTraverseCells(h_pos, nThr);
+    //Uncomment these lines to force a certain number of threads
+    using gc = tbb::global_control;
+    std::unique_ptr<gc> control;
+    if(nThreads>0) control = std::make_unique<gc>(gc::max_allowed_parallelism, nThreads);
+    createPairListTraverseCells(h_pos);
   }
 private:
 
@@ -225,9 +224,7 @@ private:
 
   //Resets the neighbour list and constructs it again in parallel from the cell list.
   //Assigns a thread per particle
-  void createPairListTraverseParticles(const real3* pos, const int nThreads){
-    //Uncomment these lines to force a certain number of threads
-    tbb::global_control control(tbb::global_control::max_allowed_parallelism, nThreads);
+  void createPairListTraverseParticles(const real3* pos){
     //This container can be dynamically grown in the parallel environment
     static tbb::concurrent_vector<int> plt;
     //Advise the parallel container on the maximum number of elements
@@ -235,18 +232,20 @@ private:
     //The list is going to be grown in parallel
     plt.resize(0);
     //Launch a worker for each particle
-    tbb::parallel_for(0, numberParticles,
-		      [&](auto i){
-			//For a given particle, traverse its 27 neighbour cells
-			const real3 pi = pos[i];
-			const int3 cell_i = cellList.getCell(pi);
-			//The order of traversal is x,y,z, the same as the order in memory
-			//Doing it this way (instead of three nested loops) saves two loops and increases the chances of unrolling
-			constexpr int numberNeighbourCells = 27;
-			for(int ic = 0; ic<numberNeighbourCells; ic++){
-			  const int jcell = cellList.getNeighbourCellIndex(ic, cell_i);
-			  //Append neighbours in cell "jcell" to the list
-			  processCell(i, pi, pos, jcell, plt);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, numberParticles),
+		      [&](const auto &block){
+			for(size_t i = block.begin(); i!=block.end(); ++i){
+			  //For a given particle, traverse its 27 neighbour cells
+			  const real3 pi = pos[i];
+			  const int3 cell_i = cellList.getCell(pi);
+			  //The order of traversal is x,y,z, the same as the order in memory
+			  //Doing it this way (instead of three nested loops) saves two loops and increases the chances of unrolling
+			  constexpr int numberNeighbourCells = 27;
+			  for(int ic = 0; ic<numberNeighbourCells; ic++){
+			    const int jcell = cellList.getNeighbourCellIndex(ic, cell_i);
+			    //Append neighbours in cell "jcell" to the list
+			    processCell(i, pi, pos, jcell, plt);
+			  }
 			}
 		      }
 		      );
@@ -257,9 +256,7 @@ private:
 
   //Resets the neighbour list and constructs it again in parallel from the cell list.
   //Assigns a thread per cell in the cell list, so that each threads serially processes each particle in a cell
-  void createPairListTraverseCells(const real3* pos, const int nThreads){
-    //Uncomment these lines to force a certain number of threads
-    tbb::global_control control(tbb::global_control::max_allowed_parallelism, nThreads);
+  void createPairListTraverseCells(const real3* pos){
     //This container can be dynamically grown in the parallel environment
     static tbb::concurrent_vector<int> plt;
     //Advise the parallel container on the maximum number of elements
@@ -268,23 +265,25 @@ private:
     plt.resize(0);
     int ncells = cellList.head.size();
     //Launch a worker for each cell
-    tbb::parallel_for(0, ncells,
-		      [&](auto icell){
-			//For a given cell, process all the particles in it
-			int currentLink = cellList.head[icell];
-			while(currentLink){
-			  const int i = currentLink -1;
-			  const real3 pi = pos[i];
-			  const int3 cell_i = cellList.getCell(pi);
-			  constexpr int numberNeighbourCells = 27;
-			  //The order of traversal is x,y,z, the same as the order in memory
-			  //Doing it this way (instead of three nested loops) saves two loops and increases the chances of unrolling
-			  for(int ic = 0; ic<numberNeighbourCells; ic++){
-			    const int jcell = cellList.getNeighbourCellIndex(ic, cell_i);
-			    //Append neighbours in cell "jcell" to the list
-			    processCell(i, pi, pos, jcell, plt);
+    tbb::parallel_for(tbb::blocked_range<size_t>(0, ncells),
+		      [&](const auto &block){
+			for(size_t icell = block.begin(); icell!=block.end(); ++icell){
+			  //For a given cell, process all the particles in it
+			  int currentLink = cellList.head[icell];
+			  while(currentLink){
+			    const int i = currentLink -1;
+			    const real3 pi = pos[i];
+			    const int3 cell_i = cellList.getCell(pi);
+			    constexpr int numberNeighbourCells = 27;
+			    //The order of traversal is x,y,z, the same as the order in memory
+			    //Doing it this way (instead of three nested loops) saves two loops and increases the chances of unrolling
+			    for(int ic = 0; ic<numberNeighbourCells; ic++){
+			      const int jcell = cellList.getNeighbourCellIndex(ic, cell_i);
+			      //Append neighbours in cell "jcell" to the list
+			      processCell(i, pi, pos, jcell, plt);
+			    }
+			    currentLink = cellList.list[currentLink]; 
 			  }
-			  currentLink = cellList.list[currentLink]; 
 			}
 		      }
 		      );
@@ -448,20 +447,23 @@ private:
 using NListGPU = NListCPU;
 // #endif
 
+#ifdef PYTHON_LIBRARY_MODE
 #include<pybind11/pybind11.h> //Basic interfacing utilities
 #include<pybind11/numpy.h>    //Utilities to work with numpy arrays
 namespace py = pybind11;
 
+//This shuts up compiler warnings when compiling as a shared library
+#pragma GCC visibility push(hidden)
 //This class interfaces the CPU and GPU lists with python
 class PyNeighbourList{
   NListGPU gpuList;
   NListCPU cpuList;
   int _nThr;
 public:
-  PyNeighbourList(int nThr){
-    _nThr=nThr;
-  }
   py::array_t<int> pairList;
+  
+  PyNeighbourList(int nThr):_nThr(nThr){}  
+  
   void updateList(py::array_t<real> &h_pos, real Lx, real Ly, real Lz, int numberParticles, int NperFiber, real rcut, bool useGPU){
     if(numberParticles <= 0 or rcut <= 0){
       std::cerr<<"ERROR: Invalid parameters"<<std::endl;
@@ -478,13 +480,16 @@ public:
   }  
 
 };
+#pragma GCC visibility pop
 
 using namespace pybind11::literals;
 PYBIND11_MODULE(NeighborSearch, m) {
   m.doc() = "UAMMD NieghbourList CPU interface";
   //Lets expose the UAMMD class defined above under the name "LJ"
   py::class_<PyNeighbourList>(m, "NList").
-    def(py::init<int>()).
+    def(py::init<int>(),
+	"Initialize the list, optionally a maximum numbe rof threads can be provided. By default all available cores will be used.",
+	"nThreads"_a = -1).
     def("updateList", &PyNeighbourList::updateList, "Update list with the provided positions and parameters",
 	"pos"_a,
 	"Lx"_a = std::numeric_limits<real>::infinity(),
@@ -497,3 +502,4 @@ PYBIND11_MODULE(NeighborSearch, m) {
     def_readonly("pairList", &PyNeighbourList::pairList, "List of neighbour particle pairs");
 }
 
+#endif
