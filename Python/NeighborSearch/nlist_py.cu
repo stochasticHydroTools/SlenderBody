@@ -43,11 +43,16 @@
 #ifndef __CUDACC__
 #include"vector.h"
 using namespace utils;
+#define HOSTDEVICE
 #else
 #include"uammd.cuh"
-// #include"Interactor/NeighbourList/CellList/CellListBase.cuh"
-// #include"Interactor/NeighbourList/CellList/NeighbourContainer.cuh"
+#include"Interactor/NeighbourList/CellList/CellListBase.cuh"
+#include"Interactor/NeighbourList/CellList/NeighbourContainer.cuh"
+#include<thrust/iterator/transform_iterator.h>
+#include<thrust/iterator/discard_iterator.h>
+#include<thrust/copy.h>
 using namespace uammd;
+#define HOSTDEVICE __host__ __device__
 #endif
 
 //These helper functions allow to grow an std or concurrent tbb container using the same interface
@@ -69,7 +74,7 @@ template<class GrowableContainer, class T> inline void append_to_container(Growa
 }
 
 //Apply minimum image convention
-inline real3 apply_mic(real3 pos, real3 boxSize){
+inline HOSTDEVICE real3 apply_mic(real3 pos, real3 boxSize){
   return pos - floorf((pos/boxSize + real(0.5)))*boxSize;
 }
 
@@ -145,7 +150,7 @@ public:
 };
 
 //This rule allows prevent certain pais of particles form becoming neighbours
-inline bool isPairExcluded(int i, int j, int NperFiber){
+inline HOSTDEVICE bool isPairExcluded(int i, int j, int NperFiber){
   if(i>j) return true;
   const int fiber_i = i/NperFiber;
   const int fiber_j = j/NperFiber;
@@ -153,7 +158,7 @@ inline bool isPairExcluded(int i, int j, int NperFiber){
   return false;
 }
 
-inline real areParticlesClose(real3 ri, real3 rj, real3 L, real rcut2){
+inline HOSTDEVICE real areParticlesClose(real3 ri, real3 rj, real3 L, real rcut2){
   const auto rij = apply_mic(ri-rj, L);
   const real r2 = dot(rij, rij);
   return r2<rcut2;
@@ -313,139 +318,163 @@ private:
 
 
 
-// #ifdef GPU_MODE
-// //The operator () of this object returns its input as a real4
-// struct ToReal4{
-//   template<class vectype>
-//   __host__ __device__ real4 operator()(vectype i){
-//     auto pr4 = make_real4(i);
-//     return pr4;
-//   }
-// };
+#ifdef __CUDACC__
+//The operator () of this object returns its input as a real4
+struct ToReal4{
+  template<class vectype>
+  __host__ __device__ real4 operator()(vectype i){
+    auto pr4 = make_real4(i);
+    return pr4;
+  }
+};
 
-// class NListGPU{
-//   template<class T> using gpu_container = thrust::device_vector<T>;
-//   CellListBase d_nl;
-//   gpu_container<real4> pos;
-//   gpu_container<real3> tmp;
-//   gpu_container<int> errorStatus;  
-//   cudaStream_t st;
-//   int stride;
-//   int NperFiber;
-//   real rcut;
-//   Grid createUpdateGrid(Box box, real3 cutOff){
-//     real3 L = box.boxSize;
-//     constexpr real inf = std::numeric_limits<real>::max();
-//     //If the box is non periodic L and cellDim are free parameters
-//     //If the box is infinite then periodicity is irrelevan
-//     constexpr int maximumNumberOfCells = 64;
-//     if(L.x >= inf) L.x = maximumNumberOfCells*cutOff.x;
-//     if(L.y >= inf) L.y = maximumNumberOfCells*cutOff.y;
-//     if(L.z >= inf) L.z = maximumNumberOfCells*cutOff.z;
-//     Box updateBox(L);
-//     updateBox.setPeriodicity(box.isPeriodicX() and L.x < inf, box.isPeriodicY() and L.y<inf, box.isPeriodicZ() and L.z<inf);
-//     Grid a_grid = Grid(updateBox, cutOff);
-//     int3 cellDim = a_grid.cellDim;
-//     if(cellDim.x <= 3) cellDim.x = 1;
-//     if(cellDim.y <= 3) cellDim.y = 1;
-//     if(cellDim.z <= 3) cellDim.z = 1;
-//     a_grid = Grid(updateBox, cellDim);
-//     return a_grid;
-//   }
-// public:
-    
-//   NListGPU(){
-//       this->stride = 4;
-//       CudaSafeCall(cudaStreamCreate(&st));
-//       errorStatus.resize(1);
-//     }
-  
-//   ~NListGPU(){
-//       cudaDeviceSynchronize();
-//       cudaStreamDestroy(st);
-//     }
+//This class provides a neighbour list (as defined in the header comments) using a GPU algorithm.
+//Input positions are copied from the CPU and the resulting pair list is copied back from the GPU to the CPU
+class NListGPU{
+  template<class T> using gpu_container = thrust::device_vector<T>;
+  CellListBase d_nl;
+  gpu_container<real4> pos;
+  gpu_container<real3> tmp;
+  gpu_container<int> errorStatus;
+  gpu_container<int> d_list;
+  gpu_container<int2> d_pairList;
+  cudaStream_t st;
+  int stride;
+  int NperFiber;
+  real rcut;
+  Grid createUpdateGrid(Box box, real3 cutOff){
+    real3 L = box.boxSize;
+    constexpr real inf = std::numeric_limits<real>::max();
+    //If the box is non periodic L and cellDim are free parameters
+    //If the box is infinite then periodicity is irrelevan
+    constexpr int maximumNumberOfCells = 128;
+    if(L.x >= inf) L.x = maximumNumberOfCells*cutOff.x;
+    if(L.y >= inf) L.y = maximumNumberOfCells*cutOff.y;
+    if(L.z >= inf) L.z = maximumNumberOfCells*cutOff.z;
+    Box updateBox(L);
+    updateBox.setPeriodicity(box.isPeriodicX() and L.x < inf, box.isPeriodicY() and L.y<inf, box.isPeriodicZ() and L.z<inf);
+    Grid a_grid = Grid(updateBox, cutOff);
+    int3 cellDim = a_grid.cellDim;
+    if(cellDim.x <= 3) cellDim.x = 1;
+    if(cellDim.y <= 3) cellDim.y = 1;
+    if(cellDim.z <= 3) cellDim.z = 1;
+    a_grid = Grid(updateBox, cellDim);
+    return a_grid;
+  }
+public:
 
-//   void update(real3* h_pos, real Lx, real Ly, real Lz, int numberParticles, int NperFiber, real rcut){
-//     this->NperFiber = NperFiber;
-//     Box box({Lx, Ly, Lz});
-//     this->rcut = rcut;
-//     pos.resize(numberParticles);
-//     tmp.resize(numberParticles);
-//     thrust::copy((real3*)h_pos.data(), (real3*)h_pos.data() + numberParticles, tmp.begin());
-//     thrust::transform(thrust::cuda::par.on(st), tmp.begin(), tmp.end(), pos.begin(), ToReal4());
-//     auto p_ptr = thrust::raw_pointer_cast(pos.data());
-//     Grid grid = createUpdateGrid(box, {rcut, rcut, rcut});
-//     d_nl.update(p_ptr, numberParticles, grid, st);
-//     downloadList();
-//   }
+  std::vector<int> pairList;
   
-//   void downloadList(){
-//     static thrust::device_vector<int> d_list;
-//     static thrust::device_vector<int> d_nneigh;
-//     auto listDataGPU = d_nl.getCellList();
-//     int numberParticles = pos.size();
-//     auto box = listDataGPU.grid.box;
-//     const real rc2 = rcut*rcut;
-//     bool tooManyNeighbours;
-//     auto err_ptr = thrust::raw_pointer_cast(errorStatus.data());
-//     int maxNeighboursPerParticle = this->stride;
-//     auto cit = thrust::make_counting_iterator<int>(0);
-//     int Nexclude = this->NperFiber;
-//     do{
-//       errorStatus[0] = 0;
-//       d_list.resize(numberParticles*maxNeighboursPerParticle);
-//       d_nneigh.resize(numberParticles);
-//       auto d_list_ptr = thrust::raw_pointer_cast(d_list.data());
-//       auto d_nneigh_ptr = thrust::raw_pointer_cast(d_nneigh.data());
-//       thrust::for_each(thrust::cuda::par.on(0),
-// 		       cit, cit + numberParticles,
-// 		       [=] __device__ (int tid){
-// 			 auto nc = CellList_ns::NeighbourContainer(listDataGPU);
-// 			 const int ori = nc.getGroupIndexes()[tid];
-// 			 nc.set(tid);
-// 			 const real3 pi = make_real3(nc.getSortedPositions()[tid]);
-// 			 auto it = nc.begin();
-// 			 int nneigh = 0;
-// 			 const int fiber_i = ori/Nexclude;
-// 			 while(it){
-// 			   auto neighbour = *it++;
-// 			   const int j = neighbour.getGroupIndex();
-// 			   const int fiber_j = j/Nexclude;
-// 			   if(fiber_i != fiber_j){
-// 			     const real3 pj = make_real3(neighbour.getPos());
-// 			     const auto rij = box.apply_pbc(pi-pj);
-// 			     const real r2 = dot(rij, rij);
-// 			     if(r2 <  rc2){
-// 			       nneigh++;
-// 			       if(nneigh >= maxNeighboursPerParticle){
-// 				 err_ptr[0] = 1;
-// 				 d_nneigh_ptr[ori] = 0;
-// 				 return;
-// 			       }
-// 			       d_list_ptr[maxNeighboursPerParticle*ori + nneigh - 1] = j;
-// 			     }
-// 			   }
-// 			 }
-// 			 d_nneigh_ptr[ori] = nneigh;
-// 		       });
-//       tooManyNeighbours = errorStatus[0] != 0;
-//       if(tooManyNeighbours){
-// 	maxNeighboursPerParticle += 4;
-// 	System::log<System::WARNING>("Increasing max neighbours to %d", maxNeighboursPerParticle);
-//       }
-//     }while(tooManyNeighbours);
-//     this->stride = maxNeighboursPerParticle;
-//     h_nl.stride = this->stride;
-//     h_nl.nneigh.resize(numberParticles);
-//     h_nl.list.resize(h_nl.stride*numberParticles);
-//     thrust::copy(d_list.begin(), d_list.end(), h_nl.list.begin());
-//     thrust::copy(d_nneigh.begin(), d_nneigh.end(), h_nl.nneigh.begin());
-//     CudaCheckError();
-//   }
-// };
-// #else
+  NListGPU(){
+      this->stride = 4;
+      CudaSafeCall(cudaStreamCreate(&st));
+      errorStatus.resize(1);
+    }
+
+  ~NListGPU(){
+      cudaDeviceSynchronize();
+      cudaStreamDestroy(st);
+    }
+
+  void update(const real3* h_pos, real Lx, real Ly, real Lz, int numberParticles, int NperFiber, real rcut, int nThreads){
+    this->NperFiber = NperFiber;
+    Box box({Lx, Ly, Lz});
+    this->rcut = rcut;
+    //Upload positions to GPU
+    pos.resize(numberParticles);
+    tmp.resize(numberParticles);
+    thrust::copy(h_pos, h_pos + numberParticles, tmp.begin());
+    thrust::transform(thrust::cuda::par.on(st), tmp.begin(), tmp.end(), pos.begin(), ToReal4());
+    auto p_ptr = thrust::raw_pointer_cast(pos.data());
+    Grid grid = createUpdateGrid(box, {rcut, rcut, rcut});
+    d_nl.update(p_ptr, numberParticles, grid, st); //Update GPU list
+    downloadList(); //Trnasform to CPU list format
+  }
+
+
+  struct List2Pair{
+    int* list;
+    int stride;
+    List2Pair(int* l, int s):list(l),stride(s){}
+    //Transform an index in the list to a i,j pair of neigbours
+    __device__ int2 operator()(int i){
+      return make_int2(i/stride,list[i]);
+    }
+  };
+
+  //Constructs a neighbour list with the desired format and downloads it to pairList
+  void downloadList(){
+    bool tooManyNeighbours;
+    do{//Build the neighbour list in the GPU from the GPU cell list, increase its size if required
+      int errorCode = reconstructNlist();
+      tooManyNeighbours = errorCode != 0;
+      if(tooManyNeighbours){
+	this->stride += 4;
+	System::log<System::WARNING>("Increasing max neighbours to %d", this->stride);
+      }
+    }while(tooManyNeighbours);
+    //Compact the strided list and transform it into a list of neighbour pairs
+    d_pairList.resize(d_list.size());
+    auto cit = thrust::make_counting_iterator<int>(0);
+    int* d_list_ptr = thrust::raw_pointer_cast(d_list.data());    
+    auto pair_tr = thrust::make_transform_iterator(cit, List2Pair(d_list_ptr, stride));
+    auto Npairs_it = thrust::copy_if(thrust::cuda::par,
+				     pair_tr, pair_tr + d_list.size(),
+				     d_pairList.begin(),
+				     []__device__(int2 p){return p.y!=-1;});//Remove -1 elements in the list
+    pairList.resize(2*thrust::distance(d_pairList.begin(), Npairs_it));
+    thrust::copy(d_pairList.begin(), Npairs_it, (int2*)pairList.data());
+    CudaCheckError();
+  }
+
+  //Build the neighbour list in the GPU from the GPU cell list
+  int reconstructNlist(){
+    errorStatus[0] = 0; //Will be set to 1 if there are too many neighbours per particle
+    auto listDataGPU = d_nl.getCellList();
+    auto cit = thrust::make_counting_iterator<int>(0);
+    const int Nexclude = this->NperFiber;    
+    auto err_ptr = thrust::raw_pointer_cast(errorStatus.data());
+    const int numberParticles = pos.size();
+    auto box = listDataGPU.grid.box;
+    const real rc2 = rcut*rcut;
+    const int maxNeighboursPerParticle = this->stride;
+    d_list.resize(numberParticles*maxNeighboursPerParticle);
+    //Fill list with -1
+    thrust::fill(thrust::cuda::par.on(st), d_list.begin(), d_list.end(), -1);
+    auto d_list_ptr = thrust::raw_pointer_cast(d_list.data());
+    auto nc = CellList_ns::NeighbourContainer(listDataGPU);
+    //Traverse the cell list for each particle, filling the neighbour list
+    thrust::for_each(thrust::cuda::par.on(st),
+		     cit, cit + numberParticles,
+		     [=] __device__ (int tid) mutable{	
+		       const int ori = nc.getGroupIndexes()[tid];
+		       nc.set(tid);
+		       const real3 pi = make_real3(nc.getSortedPositions()[tid]);
+		       auto it = nc.begin();
+		       int nneigh = 0;
+		       while(it){
+			 auto neighbour = *it++;
+			 const int j = neighbour.getGroupIndex();
+			 if( not isPairExcluded(ori, j, Nexclude)){
+			   const real3 pj = make_real3(neighbour.getPos());
+			   if(areParticlesClose(pi, pj, box.boxSize, rc2)){
+			     nneigh++;
+			     if(nneigh >= maxNeighboursPerParticle){
+			       err_ptr[0] = 1;
+			       return;
+			     }
+			     d_list_ptr[maxNeighboursPerParticle*ori + nneigh - 1] = j;
+			   }
+			 }
+		       }
+		     });
+    CudaCheckError();
+  return errorStatus[0];
+  }
+};
+#else
 using NListGPU = NListCPU;
-// #endif
+#endif
 
 #ifdef PYTHON_LIBRARY_MODE
 #include<pybind11/pybind11.h> //Basic interfacing utilities
