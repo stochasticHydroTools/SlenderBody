@@ -126,7 +126,7 @@ class ckDSpatial(SpatialDatabase):
         rwsafety=rcut*self._Dom.safetyfactor(); # add the safety factor
         return self._myKDTree.query_ball_tree(other._myKDTree,rwsafety);
 
-class RaulLinkedList(SpatialDatabase):
+class CellLinkedList(SpatialDatabase):
 
     """
     Multi-threaded CPU version
