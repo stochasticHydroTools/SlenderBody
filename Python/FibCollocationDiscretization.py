@@ -26,7 +26,7 @@ class FibCollocationDiscretization(object):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16):
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16,rigid=False):
         """
         Constructor. 
         L = fiber length, epsilon = fiber aspect ratio, Eb = bending stiffness, mu = fluid viscosity. 
@@ -42,6 +42,9 @@ class FibCollocationDiscretization(object):
         self._nptsUpsample = nptsUpsample;
         self._nptsUniform = nptsUniform;
         self._nptsDirect = NupsampleForDirect;
+        self._nPolys = self._N-1;
+        if (rigid):
+            self._nPolys = 1;
 
     def initIs(self):
         """
@@ -64,9 +67,9 @@ class FibCollocationDiscretization(object):
         Initialize the matrix for the finite part integral. 
         Uses the adjoint method of Anna Karin Tornberg. 
         """
-        if (self._N > 40):
-            raise ValueError('The finite part integral is not well conditioned with > 40 pts,\
-                                loss of accuracy expected');
+        #if (self._N > 40):
+        #    raise ValueError('The finite part integral is not well conditioned with > 40 pts,\
+        #                        loss of accuracy expected');
         k = np.arange(self._N);
         s_dim1scaled = -1+2*self._s/self._L
         s_scaled = np.reshape(s_dim1scaled,(self._N,1)); # Rescale everything to [-1,1];
@@ -93,6 +96,73 @@ class FibCollocationDiscretization(object):
             sNew[self._s > self._L/2] = self._L-np.flip(sNew[self._s < self._L/2]);
         self._leadordercs = np.log(4.0*sNew*(self._L-sNew)/(self._epsilon*self._L)**2);
         self._matlist = [None]*self._N; # allocate memory for sparse matrix
+    
+    def initRigidFiberMobilityMatrixConstants(self,wFinitePart=False):
+        if (wFinitePart):
+            if (self._epsilon==0.01):
+                alpha = 0.3841;
+                beta = 0.2230;
+                gamma = 3.4263;
+            elif (self._epsilon==0.008):
+                alpha = 0.4020;
+                beta = 0.2413;
+                gamma = 3.6412;
+            elif (self._epsilon==0.006):
+                alpha = 0.4251;
+                beta = 0.2646;
+                gamma = 3.9179;
+            elif (self._epsilon==0.005):
+                alpha = 0.4396;
+                beta = 0.2793;
+                gamma = 4.0931;
+            elif (self._epsilon==0.004):
+                alpha = 0.4575;
+                beta = 0.2973;
+                gamma = 4.3073;
+            elif (self._epsilon==0.002):
+                alpha = 0.5129;
+                beta = 0.3530;
+                gamma = 4.9721;
+            elif (self._epsilon==0.001):
+                alpha = 0.5682
+                beta = 0.4085;
+                gamma = 5.6361;
+            else:
+                raise ValueError('Coefficients not tabulated for N for this epsilon')
+        else:
+            if (self._epsilon==0.01):
+                alpha = 0.3848;
+                beta = 0.2249;
+                gamma = 4.3910;
+            elif (self._epsilon==0.008):
+                alpha = 0.4026;
+                beta = 0.2428;
+                gamma = 4.6047;
+            elif (self._epsilon==0.006):
+                alpha = 0.4255;
+                beta = 0.2658;
+                gamma = 4.8802;
+            elif (self._epsilon==0.005):
+                alpha = 0.4401;
+                beta = 0.2804;
+                gamma = 5.0547;
+            elif (self._epsilon==0.004):
+                alpha = 0.4579;
+                beta = 0.2983;
+                gamma = 5.2683;
+            elif (self._epsilon==0.002):
+                alpha = 0.5132;
+                beta = 0.3537;
+                gamma = 5.9316;
+            elif (self._epsilon==0.001):
+                alpha = 0.5684
+                beta = 0.4090;
+                gamma = 6.5946;
+            else:
+                raise ValueError('Coefficients not tabulated for N for this epsilon')
+        self._alpha = alpha;
+        self._beta = beta;
+        self._gamma =gamma;
 
     ## ====================================================
     ##  METHODS FOR RESAMPLING AND ACCESS BY OTHER CLASSES
@@ -188,7 +258,7 @@ class FibCollocationDiscretization(object):
     
     def getepsilonL(self):
         return self._epsilon, self._L;
-    
+       
     def getValstoCoeffsMatrix(self):
         """
         Return the N x N matrix that gives the coefficients of 
@@ -206,6 +276,18 @@ class FibCollocationDiscretization(object):
         Outpts: bending forces fE
         """
         return np.dot(self._D4BC,X);
+    
+    def computeNhalf(self,Xs):
+        """
+        Compute N^(1/2), where N is the grand 6 x 6 mobility matrix
+        Input: Xs as a 3 vector
+        Return N^(1/2) as a 6 x 6 matrix
+        """
+        Nhalf = np.zeros((6,6));
+        Nhalf[0:3,0:3]=1/np.sqrt(self._mu*self._L)*(np.sqrt(self._alpha)*np.identity(3)\
+            +(-np.sqrt(self._alpha)+np.sqrt(self._alpha+self._beta))*np.outer(Xs,Xs));
+        Nhalf[3:,3:]=np.sqrt(self._gamma/(self._mu*self._L**3))*(np.identity(3)-np.outer(Xs,Xs));
+        return Nhalf;
 
     ## ====================================================
     ##  METHODS FOR FIBER EVOLUTION (PUBLIC)
@@ -236,8 +318,8 @@ class FibCollocationDiscretization(object):
         RHS = np.dot(C,fE+exF)+np.dot(C,np.linalg.solve(M,nLvel));
         S = np.dot(C,np.linalg.solve(M,B));
         alphaU,res,rank,s = np.linalg.lstsq(S,RHS,-1);
-        vel = np.dot(K,alphaU[0:2*self._N-2])+\
-            np.dot(self._I,alphaU[2*self._N-2:2*self._N+1]);
+        vel = np.dot(K,alphaU[0:2*self._nPolys])+\
+            np.dot(self._I,alphaU[2*self._nPolys:2*self._nPolys+3]);
         lambdas = np.linalg.solve(M,vel-nLvel)-fE-exF- \
                 impco*dt*np.dot(self._D4BC,vel);
         return alphaU, vel, lambdas;
@@ -250,8 +332,8 @@ class FibCollocationDiscretization(object):
         Outputs: products K*alpha and K^* *lambda.
         """
         K, Kt = self.calcKs(Xsarg);
-        Kalph = np.dot(K,alphaU[0:2*self._N-2])+\
-            np.dot(self._I,alphaU[2*self._N-2:2*self._N+1]);
+        Kalph = np.dot(K,alphaU[0:2*self._nPolys])+\
+            np.dot(self._I,alphaU[2*self._nPolys:2*self._nPolys+3]);
         Kstlam = np.dot(np.concatenate((Kt,self._wIt)),lambdas);
         return Kalph,Kstlam;
     
@@ -261,6 +343,9 @@ class FibCollocationDiscretization(object):
         locations Xin
         """
         return np.dot(self._wIt, np.dot(self._D4BC,Xin));
+    
+    def getnPolys(self):
+        return self._nPolys;
     
     ## ====================================================
     ##  METHODS FOR NON-LOCAL VELOCITY EVALUATION (PUBLIC)
@@ -301,13 +386,13 @@ class FibCollocationDiscretization(object):
         n2x = -np.cos(theta)*np.sin(phi);
         n2y = -np.sin(theta)*np.sin(phi);
         n2z = np.cos(phi);
-        J = np.zeros((6*self._N,2*self._N-2));
-        J[0::3,0:self._N-1]= self.deAliasIntegral(n1x);
-        J[1::3,0:self._N-1]= self.deAliasIntegral(n1y);
-        J[2::3,0:self._N-1]= self.deAliasIntegral(n1z);
-        J[0::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2x);
-        J[1::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2y);
-        J[2::3,self._N-1:2*self._N-2]= self.deAliasIntegral(n2z);
+        J = np.zeros((6*self._N,2*self._nPolys));
+        J[0::3,0:self._nPolys]= self.deAliasIntegral(n1x);
+        J[1::3,0:self._nPolys]= self.deAliasIntegral(n1y);
+        J[2::3,0:self._nPolys]= self.deAliasIntegral(n1z);
+        J[0::3,self._nPolys:2*self._nPolys]= self.deAliasIntegral(n2x);
+        J[1::3,self._nPolys:2*self._nPolys]= self.deAliasIntegral(n2y);
+        J[2::3,self._nPolys:2*self._nPolys]= self.deAliasIntegral(n2z);
         K = np.dot(self._stackMatfrom2NtoN,J);
         UTWU = np.dot(self._stackMatfromNto2N.T,np.dot(np.diag(np.repeat(self._w2N,3)),self._stackMatfromNto2N));
         K = np.linalg.solve(UTWU,np.dot(self._stackMatfromNto2N.T,np.dot(np.diag(np.repeat(self._w2N,3)),J)));
@@ -323,7 +408,7 @@ class FibCollocationDiscretization(object):
         """
         # Upsample the multiplication of f with Chebyshev polys for anti-aliasing
         UpSampMulti = np.reshape(f,(2*self._N,1)) \
-            *np.dot(self._MatfromNto2N,self._Lmat[:,:self._N-1]);
+            *np.dot(self._MatfromNto2N,self._Lmat[:,:self._nPolys]);
         # Integrals on the original grid (integrate on upsampled grid and downsample)
         OGIntegrals = np.dot(self._Dpinv2N,UpSampMulti);
         return OGIntegrals;
@@ -370,8 +455,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16):
-        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform);
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,rigid=False):
+        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid);
 		# Chebyshev grid and weights
         self._s = cf.chebPts(self._N,[0,self._L],chebGridType);
         self._w = cf.chebWts(self._N,[0,self._L],chebGridType);
@@ -425,7 +510,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         UTWU = np.dot(self._stackMatfromNto2N.T,np.dot(W2N,self._stackMatfromNto2N));
         self._LeastSquaresDownsampler = np.linalg.solve(UTWU,np.dot(self._stackMatfromNto2N.T,W2N))
         self._WeightedUpsamplingMat= np.dot(W2N,self._stackMatfromNto2N);
-        self._UpsampledChebPolys = np.dot(self._MatfromNto2N,self._Lmat[:,:self._N-1]).T;
+        self._UpsampledChebPolys = np.dot(self._MatfromNto2N,self._Lmat[:,:self._nPolys]).T;
 
     def initSpecialQuadMatrices(self):
         """

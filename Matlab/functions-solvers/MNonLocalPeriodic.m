@@ -6,14 +6,14 @@
 % f, X , and Xs are n*nFib x 3 arrays. D is the differentiation matrix.
 % xi = Ewald parameter, L = periodic domain length, g = strain on the
 % domain (how slanted it is). 
-function nLvel = MNonLocalPeriodic(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu,xi,Lx,Ly,Lz,g)
+function nLvel = MNonLocalPeriodic(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu,xi,Lx,Ly,Lz,g,delta)
     global doSpecialQuad doFP;
     % First compute the self velocity for each fiber
     localvel=zeros(N*nFib,3);
     FPintvel = zeros(N*nFib,3);
     for iFib=1:nFib
         inds=(iFib-1)*N+1:iFib*N;
-        [Local,Oone] = calcSelf(N,s0,Lf,epsilon,X(inds,:),Xs(inds,:),f(:,inds),D);
+        [Local,Oone] = calcSelf(N,s0,Lf,epsilon,X(inds,:),Xs(inds,:),f(:,inds),D,delta);
         localvel(inds,:)= 1/(8*pi*mu)*Local;
         FPintvel(inds,:) = 1/(8*pi*mu)*Oone;
     end

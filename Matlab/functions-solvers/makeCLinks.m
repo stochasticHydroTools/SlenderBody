@@ -34,9 +34,9 @@ function links = makeCLinks(links,X,nFib,N,rl,Lf,nCL,Ld,g,dt)
         added(jPt)=1;
     end
     % Option to load link information from python 
-    pylinks = load('FreeF25C25.txt');
-    iPts = pylinks(2:end,1)+1;
-    jPts = pylinks(2:end,2)+1;
+%     pylinks = load('FreeF25C25.txt');
+%     iPts = pylinks(2:end,1)+1;
+%     jPts = pylinks(2:end,2)+1;
     for i = 1:length(iPts) % loop over POINTS
 %         for j = 1:length(jPts)
            iPt = iPts(i);

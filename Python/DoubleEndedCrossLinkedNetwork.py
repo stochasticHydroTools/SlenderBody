@@ -33,7 +33,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     ##    METHODS FOR INITIALIZATION
     ## =============================== ##
-    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,nThreads=1):
+    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,kT=0,nThreads=1):
         """
         Constructor
         """
@@ -54,7 +54,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         print(CLBounds)
         if (CLseed is None):
             CLseed = int(time.time());
-        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,CLseed);
+        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,kT,self._rl, self._kCL,CLseed);
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -87,7 +87,11 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         uniPts = fiberCol.getUniformPoints(chebPts);
         SpatialDatabase = fiberCol.getUniformSpatialData();
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
-        uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL);
+        # This will return a different order every time -> lose reproducibility
+        try:
+            uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL,self._NsitesPerf);
+        except: # If N sites per f is not defined, it will just do 1 site per fiber and then the code below will process
+            uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL,1);
         uniNeighbs = uniNeighbs.astype(np.int64);
         # Filter the list of neighbors to exclude those on the same fiber
         Fibs = self.mapSiteToFiber(uniNeighbs);
@@ -102,6 +106,17 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         
         # Keep C++ and Python up to date (for force calculations)
         self.syncPythonAndCpp()
+    
+    def setLinks(self,iPts,jPts,Shifts,FreelyBound=None):
+        warn('Set links in EndedCLNet not tested')
+        super().setLinks(iPts,jPts,Shifts);
+        # Update C++ class
+        if (FreelyBound is None):
+            FreelyBound = int(self._kon/self._koff)*np.ones(self._TotNumSites);
+            warn('You did not set the number of free bound links - will all be set to %d' %int(self._kon/self._koff))
+        self._FreeLinkBound = FreelyBound;
+        self._cppNet.setLinks(self._HeadsOfLinks, self._TailsOfLinks, self._PrimedShifts, self._FreeLinkBound) 
+        self.syncPythonAndCpp();    
     
     def setLinksFromFile(self,FileName,FreelyBound=None):
         super().setLinksFromFile(FileName);
@@ -157,8 +172,8 @@ class DoubleEndedCrossLinkedSpeciesNetwork(CrossLinkedSpeciesNetwork,DoubleEnded
     the index of sites on each fiber
     """
 
-    def __init__(self,FiberSpeciesCollection,Kspring,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,nThreads=1):
-        super().__init__(FiberSpeciesCollection,Kspring,rl,Dom,nThreads)
+    def __init__(self,FiberSpeciesCollection,Kspring,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,kT=0,nThreads=1):
+        super().__init__(FiberSpeciesCollection,Kspring,rl,Dom,kT,nThreads)
                 
         self._kon = kon*self._ds;
         self._konSecond = konsecond*self._ds;
@@ -176,7 +191,7 @@ class DoubleEndedCrossLinkedSpeciesNetwork(CrossLinkedSpeciesNetwork,DoubleEnded
         print(allRates)
         if (CLseed is None):
             CLseed = int(time.time());
-        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,CLseed);
+        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,kT,self._rl, self._kCL, CLseed);
         
     def sitesPerFib(self,iFib):
         return np.where(self._SiteToFiberMap==iFib)[0];

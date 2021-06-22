@@ -38,19 +38,19 @@ N=32            # number of points per fiber
 Lf=2            # length of each fiber
 nonLocal=1      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
 Ld=2.4          # length of the periodic domain
-xi=3            # Ewald parameter
+xi=6            # Ewald parameter
 mu=1            # fluid viscosity
 eps=1e-3        # slenderness ratio
 Eb=1e-2         # fiber bending stiffness
-dt=0.00125          # timestep
+dt=0.01          # timestep
 omega=0         # frequency of oscillations
 gam0=1          # base rate of strain
-tf=2.4          # final time
+tf=1          # final time
 gravity = 0.0   # gravity on the fibers
 giters = 1;
 
-Ns = [16];
-dts = [0.1];
+Ns = [32];
+dts = [0.01];
 for N in Ns:
     gits = [1];
     if (N==16):
@@ -61,10 +61,10 @@ for N in Ns:
             Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
             # Initialize fiber discretization
-            fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,NupsampleForDirect=N);
+            fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,NupsampleForDirect=N,rigid=True);
 
             # Initialize the master list of fibers
-            allFibers = fiberCollection(nFib,fibDisc,nonLocal,mu,omega,gam0,Dom);
+            allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom);
             fibList = makeThreeSheared(Lf,N,fibDisc);
             allFibers.initFibList(fibList,Dom);
             allFibers.fillPointArrays();

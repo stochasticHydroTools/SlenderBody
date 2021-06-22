@@ -57,7 +57,7 @@ class DomainC {
         @param g = strain in coordinate system
         @return the new displacement
         **/
-        std::cout << "Calling calc shifted in new cpp class for python" << std::endl;
+        //std::cout << "Calling calc shifted in new cpp class for python" << std::endl;
         calcShifted(rvec,g);
         return rvec;
     }

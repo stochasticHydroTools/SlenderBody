@@ -33,7 +33,7 @@ class FiberCollection {
     //        METHODS FOR INITIALIZATION
     //===========================================
     FiberCollection(double muin,vec3 Lengths, double epsIn, double Lin, double aRPYFacIn, 
-                       int NFibIn,int NChebIn, int NuniIn, int NForDirectQuad, double deltain, int nThreads):
+                       int NFibIn,int NChebIn, int NuniIn, int NForDirectQuad, double deltain, int nPolys,int nThreads):
         _Dom(Lengths), _RPYEvaluator(aRPYFacIn*epsIn*Lin,muin,NFibIn*NChebIn, Lengths){
         /**
         Initialize variables relating to each fiber
@@ -59,7 +59,7 @@ class FiberCollection {
         _delta = deltain;
         _nOMPThr = nThreads;
         _NForEwaldDirect = NForDirectQuad;
-        
+        _NChebPolys = nPolys;   
     }
 
     void initSpecQuadParams(double rcritIn, double dsCLin, double dInterpIn, 
@@ -527,47 +527,48 @@ class FiberCollection {
                 
         int N = _NChebPerFib;
         int nFib = _NFib;
-        vec LambasAndAlphas(_NFib*(5*N+1));
+        int nP = _NChebPolys;
+        vec LambasAndAlphas(_NFib*(3*N+2*nP+3));
         #pragma omp parallel for num_threads(_nOMPThr)
         for (int iFib = 0; iFib < nFib; iFib++){
 	    //std::cout << "Doing fiber " << iFib << " on thread " << omp_get_thread_num() << std::endl;
             vec LocalTangents(3*N);
             vec bFirst(3*N), MinvbFirst(3*N);
-            vec bSecond(2*N+1);
+            vec bSecond(2*nP+3);
             for (int i=0; i < 3*N; i++){
                 LocalTangents[i] = Tangents[3*N*iFib+i];
                 bFirst[i] = b[3*N*iFib+i];
                 MinvbFirst[i] = b[3*N*iFib+i];
             }
-            for (int j = 0; j < 2*N+1; j++){
-                bSecond[j] = b[3*N*nFib+iFib*(2*N+1)+j];
+            for (int j = 0; j < 2*nP+3; j++){
+                bSecond[j] = b[3*N*nFib+iFib*(2*nP+3)+j];
             }
             
-            vec J(6*N*(2*N-2));
+            vec J(6*N*2*nP);
             calculateJ(LocalTangents,J);
-            vec K(3*N*2*(N-1));
-            BlasMatrixProduct(3*N,6*N,2*(N-1),1.0,0.0,_LeastSquaresDownsampler,false,J,K);
-            vec Kt(2*(N-1)*3*N);
-            BlasMatrixProduct(2*(N-1),6*N,3*N,1.0,0.0,J,true,_weightedUpsampler,Kt); // J^T * weightedUpsampler
-            vec KWithI(3*N*(2*N+1));
-            vec KTWithI(3*N*(2*N+1));
+            vec K(3*N*2*nP);
+            BlasMatrixProduct(3*N,6*N,2*nP,1.0,0.0,_LeastSquaresDownsampler,false,J,K);
+            vec Kt(2*nP*3*N);
+            BlasMatrixProduct(2*nP,6*N,3*N,1.0,0.0,J,true,_weightedUpsampler,Kt); // J^T * weightedUpsampler
+            vec KWithI(3*N*(2*nP+3));
+            vec KTWithI(3*N*(2*nP+3));
             std::memcpy(KTWithI.data(),Kt.data(),Kt.size()*sizeof(double));
             for (int i=0; i < 3*N; i++){
                 // Add to the columns of K
-                for (int j=0; j < 2*(N-1); j++){
-                    KWithI[i*(2*N+1)+j]=K[i*2*(N-1)+j];
+                for (int j=0; j < 2*nP; j++){
+                    KWithI[i*(2*nP+3)+j]=K[i*2*nP+j];
                 }
-                KWithI[i*(2*N+1)+2*(N-1)+(i%3)] = 1;
-                KTWithI[3*N*(2*(N-1)+(i%3))+i] = _NormalChebWts[i/3];
+                KWithI[i*(2*nP+3)+2*nP+(i%3)] = 1;
+                KTWithI[3*N*(2*nP+(i%3))+i] = _NormalChebWts[i/3];
             }
             
             // Schur complement block B
             vec M(3*N*3*N);
             calcMLocal(LocalTangents,M);
-            vec D4BCK(3*N*(2*N+1));
-            BlasMatrixProduct(3*N,3*N,2*N+1,1.0,0.0,_D4BC,false,KWithI,D4BCK);
-            vec B(3*N*(2*N+1));
-            BlasMatrixProduct(3*N,3*N,2*N+1,-impcodt,1.0,M,false,D4BCK,KWithI);
+            vec D4BCK(3*N*(2*nP+3));
+            BlasMatrixProduct(3*N,3*N,2*nP+3,1.0,0.0,_D4BC,false,KWithI,D4BCK);
+            vec B(3*N*(2*nP+3));
+            BlasMatrixProduct(3*N,3*N,2*nP+3,-impcodt,1.0,M,false,D4BCK,KWithI);
             std::memcpy(B.data(),KWithI.data(),KWithI.size()*sizeof(double));
             
             // Factor M
@@ -577,17 +578,17 @@ class FiberCollection {
             // Solve M^-1*bFirst
             LAPACKE_dgetrs(LAPACK_ROW_MAJOR, 'N',sysDim, 1, &*M.begin(), sysDim, ipiv, &*MinvbFirst.begin(), 1);
             // Overwrite b2 -> Schur RHS
-            BlasMatrixProduct(2*N+1,3*N,1,1.0,1.0,KTWithI,false,MinvbFirst,bSecond);
+            BlasMatrixProduct(2*nP+3,3*N,1,1.0,1.0,KTWithI,false,MinvbFirst,bSecond);
             
             // Overwrite KWithI -> M^(-1)*B
-            LAPACKE_dgetrs(LAPACK_ROW_MAJOR, 'N',sysDim, 2*N+1, &*M.begin(), sysDim, ipiv, &*KWithI.begin(), 2*N+1);
-            vec SchurComplement((2*N+1)*(2*N+1));
-            BlasMatrixProduct(2*N+1, 3*N, 2*N+1,1.0,0.0,KTWithI,false,KWithI,SchurComplement); // Kt*(M^-1*K)
-            int ipiv2 [2*N+1];
-            LAPACKE_dgesv(LAPACK_ROW_MAJOR, 2*N+1,1,&*SchurComplement.begin(), 2*N+1, ipiv2, &*bSecond.begin(), 1);
+            LAPACKE_dgetrs(LAPACK_ROW_MAJOR, 'N',sysDim, 2*nP+3, &*M.begin(), sysDim, ipiv, &*KWithI.begin(), 2*nP+3);
+            vec SchurComplement((2*nP+3)*(2*nP+3));
+            BlasMatrixProduct(2*nP+3, 3*N, 2*nP+3,1.0,0.0,KTWithI,false,KWithI,SchurComplement); // Kt*(M^-1*K)
+            int ipiv2 [2*nP+3];
+            LAPACKE_dgesv(LAPACK_ROW_MAJOR, 2*nP+3,1,&*SchurComplement.begin(), 2*nP+3, ipiv2, &*bSecond.begin(), 1);
             // Back solve to get lambda
             vec Kalpha(3*N);
-            BlasMatrixProduct(3*N,2*N+1,1,1.0,0.0,B,false, bSecond, Kalpha);
+            BlasMatrixProduct(3*N,2*nP+3,1,1.0,0.0,B,false, bSecond, Kalpha);
             for (int i=0; i < 3*N; i++){
                 Kalpha[i]-=bFirst[i];
             }
@@ -596,8 +597,8 @@ class FiberCollection {
             for (int i=0; i < 3*N; i++){
                 LambasAndAlphas[3*N*iFib+i] = Kalpha[i];
             }
-            for (int j = 0; j < 2*N+1; j++){
-                LambasAndAlphas[3*N*nFib+iFib*(2*N+1)+j] = bSecond[j];
+            for (int j = 0; j < 2*nP+3; j++){
+                LambasAndAlphas[3*N*nFib+iFib*(2*nP+3)+j] = bSecond[j];
             }
         }
         
@@ -717,7 +718,7 @@ class FiberCollection {
     private:
     
     double _epsilon, _L, _delta, _aRPYFac, mu;
-    int _NFib, _NChebPerFib, _NUniPerFib, _NUpsample, _nOMPThr, _NForEwaldDirect;
+    int _NFib, _NChebPerFib, _NUniPerFib, _NUpsample, _nOMPThr, _NForEwaldDirect, _NChebPolys;
     vec _NormalChebNodes, _UpsampledNodes, _NormalChebWts, _UpsampledChebWts;
     vec _LocalDragCs, _UpsampledChebPolys, _DpInv, _MatFromNto2N, _LeastSquaresDownsampler, _weightedUpsampler, _D4BC;
     double _dstarCL,_dstarInterp, _dstar2panels;
@@ -734,23 +735,25 @@ class FiberCollection {
         of the Cheb differentiation matrix on the 2N grid, for k = 0, .., N-2.
         */
         int N = _NChebPerFib;
-        vec fTimesTUpsampled(2*N*(N-1));
+        int nP = _NChebPolys;
+        vec fTimesTUpsampled(2*N*nP);
         for (int iPt=0; iPt < 2*N; iPt++){
-            for (int iPoly=0; iPoly < N-1; iPoly++){
-                fTimesTUpsampled[iPt*(N-1)+iPoly]=f[iPt]*_UpsampledChebPolys[iPt*(N-1)+iPoly];
+            for (int iPoly=0; iPoly < nP; iPoly++){
+                fTimesTUpsampled[iPt*nP+iPoly]=f[iPt]*_UpsampledChebPolys[iPt*nP+iPoly];
             }
         }
-        BlasMatrixProduct(2*N, 2*N, N-1, 1.0, 0.0, _DpInv, false, fTimesTUpsampled, Integrals2N);
+        BlasMatrixProduct(2*N, 2*N, nP, 1.0, 0.0, _DpInv, false, fTimesTUpsampled, Integrals2N);
     }
 
     void calculateJ(const vec &Tangents,vec &J){
         /*
         Calculate matrix J involved in kinematic K and K^* calculations
         Specifically, 
-        J_qk = integral_0^s_q (T_k(s) n_1(s) ds), where k = 0, ..., N-2 and then there
-        are another N-1 columns for the normal vector n_2
+        J_qk = integral_0^s_q (T_k(s) n_1(s) ds), where k = 0, ..., nP-1 and then there
+        are another nP columns for the normal vector n_2
         */
         int N = _NChebPerFib;
+        int nP = _NChebPolys;
         vec XsUpsampled(6*N);
         BlasMatrixProduct(2*N,N,3,1.0,0.0,_MatFromNto2N,false,Tangents,XsUpsampled);
         vec n1x(2*N), n1y(2*N), n2x(2*N), n2y(2*N), n2z(2*N); // n1z(N) is zero
@@ -770,20 +773,20 @@ class FiberCollection {
             n2z[iPt] = cos(phi);
         }
         // Compute matrix J
-        vec n1xTk(2*N*(N-1)), n1yTk(2*N*(N-1)), n2xTk(2*N*(N-1)), n2yTk(2*N*(N-1)), n2zTk(2*N*(N-1));
-        deAliasIntegral(n1x, n1xTk); // 2N x N-1 matrix
+        vec n1xTk(2*N*nP), n1yTk(2*N*nP), n2xTk(2*N*nP), n2yTk(2*N*nP), n2zTk(2*N*nP);
+        deAliasIntegral(n1x, n1xTk); // 2N x nP matrix
         deAliasIntegral(n1y, n1yTk); 
         deAliasIntegral(n2x, n2xTk);
         deAliasIntegral(n2y, n2yTk);
         deAliasIntegral(n2z, n2zTk);
-        int nCols = 2*N-2;
+        int nCols = 2*nP;
         for (int iPt=0; iPt < 2*N; iPt++){
-            for (int iPoly=0; iPoly < N-1; iPoly++){
-                J[(3*iPt)*nCols+iPoly] = n1xTk[iPt*(N-1)+iPoly];
-                J[(3*iPt+1)*nCols+iPoly] = n1yTk[iPt*(N-1)+iPoly]; 
-                J[(3*iPt)*nCols+iPoly+(N-1)] = n2xTk[iPt*(N-1)+iPoly];
-                J[(3*iPt+1)*nCols+iPoly+(N-1)]= n2yTk[iPt*(N-1)+iPoly]; 
-                J[(3*iPt+2)*nCols+iPoly+(N-1)] = n2zTk[iPt*(N-1)+iPoly];  
+            for (int iPoly=0; iPoly < nP; iPoly++){
+                J[(3*iPt)*nCols+iPoly] = n1xTk[iPt*nP+iPoly];
+                J[(3*iPt+1)*nCols+iPoly] = n1yTk[iPt*nP+iPoly]; 
+                J[(3*iPt)*nCols+iPoly+nP] = n2xTk[iPt*nP+iPoly];
+                J[(3*iPt+1)*nCols+iPoly+nP]= n2yTk[iPt*nP+iPoly]; 
+                J[(3*iPt+2)*nCols+iPoly+nP] = n2zTk[iPt*nP+iPoly];  
             }
         }
     }
@@ -1113,7 +1116,7 @@ class FiberCollection {
 PYBIND11_MODULE(FiberCollection, m) {
     py::class_<FiberCollection>(m, "FiberCollection")
     
-        .def(py::init<double,vec3, double, double, double,int,int, int, int,double, int>())
+        .def(py::init<double,vec3, double, double, double,int,int, int, int,double, int,int>())
         .def("initSpecQuadParams", &FiberCollection::initSpecQuadParams)
         .def("initNodesandWeights", &FiberCollection::initNodesandWeights)
         .def("initResamplingMatrices",&FiberCollection::initResamplingMatrices)

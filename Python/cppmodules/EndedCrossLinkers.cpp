@@ -45,7 +45,8 @@ class EndedCrossLinkedNetwork {
     
     public:
        
-    EndedCrossLinkedNetwork(int TotSites, vec rates, vec3 DomLengths, vec CLBounds,double CLseed):_Dom(DomLengths){
+    EndedCrossLinkedNetwork(int TotSites, vec rates, vec3 DomLengths, vec CLBounds,double kT, 
+        double restlen, double KStiffness,double CLseed):_Dom(DomLengths){
         _TotSites = TotSites; 
         _kon = rates[0];
         _konSecond = rates[1];
@@ -65,6 +66,9 @@ class EndedCrossLinkedNetwork {
         _nDoubleBoundLinks = 0;
         _lowerCLBound = CLBounds[0];
         _upperCLBound = CLBounds[1];
+        _kT = kT;
+        _restlen = restlen;
+        _KStiffness = KStiffness;
 
      }
      
@@ -91,7 +95,8 @@ class EndedCrossLinkedNetwork {
         int nPotentialLinks = MaybeBindingPairs.size()/2;
         vec PrimedShifts(6*nPotentialLinks,0);
         intvec BindingPairs(4*nPotentialLinks,-1);
-        int nTruePairs = EliminateLinksOutsideRange(MaybeBindingPairs, uniPts, g, PrimedShifts, BindingPairs);
+        vec distances(nPotentialLinks,0.0);
+        int nTruePairs = EliminateLinksOutsideRange(MaybeBindingPairs, uniPts, g, PrimedShifts, BindingPairs,distances);
         //std::cout << "Number of true possible pairs " << nTruePairs/2 << std::endl;
         resetHeap();
 
@@ -108,7 +113,7 @@ class EndedCrossLinkedNetwork {
             startPair[iSite]=startPair[iSite-1]+numLinksPerSite[iSite-1];
         }
         intvec SortedLinks(2*nTruePairs,-1);
-        vec RatesSecondBind(nTruePairs), SortedShifts(3*nTruePairs,0);; 
+        vec BaseSortedRates(nTruePairs), SortedShifts(3*nTruePairs,0);
         for (int iPair=0; iPair < nTruePairs; iPair++){
             int BoundEnd = BindingPairs[2*iPair]; 
             int index = startPair[BoundEnd];
@@ -122,8 +127,13 @@ class EndedCrossLinkedNetwork {
             for (int d=0; d < 3; d++){
                 SortedShifts[3*index+d] = PrimedShifts[3*iPair+d];
             }
-            RatesSecondBind[index] = _konSecond*_FreeLinkBound[BoundEnd];
-            TimeAwareHeapInsert(index+1, RatesSecondBind[index],0,tstep); // notice we start indexing from 1, this is how fortran is written
+            if (_kT == 0.0){
+                BaseSortedRates[index] = _konSecond*1.0; // add distance dependent factor
+            } else {
+                double Energy = 0.5*_KStiffness*(distances[iPair]-_restlen)*(distances[iPair]-_restlen);
+                BaseSortedRates[index] = _konSecond*exp(-Energy/_kT);
+            }
+            TimeAwareHeapInsert(index+1, BaseSortedRates[index]*_FreeLinkBound[BoundEnd],0,tstep);// notice we start indexing from 1, this is how fortran is written
         }
         
         // Single binding to a site
@@ -219,7 +229,7 @@ class EndedCrossLinkedNetwork {
             _FreeLinkBound[BoundEnd]+= PlusOrMinusSingleBound;
             
             // Rates of CL binding change based on number of bound ends
-            updateSecondBindingRate(BoundEnd, RatesSecondBind, startPair[BoundEnd], numLinksPerSite[BoundEnd], systime, tstep);
+            updateSecondBindingRate(BoundEnd, BaseSortedRates, startPair[BoundEnd], numLinksPerSite[BoundEnd], systime, tstep);
              
             // Update unbinding event at BoundEnd (the end whose state has changed)
             RatesFreeUnbind[BoundEnd] = _koff*_FreeLinkBound[BoundEnd];
@@ -325,7 +335,8 @@ class EndedCrossLinkedNetwork {
                      
     private:
         int _TotSites, _nDoubleBoundLinks, _maxLinks;
-        double _kon, _konSecond, _koff, _koffSecond, _kDoubleOn, _kDoubleOff; // rates
+        double _kon, _konSecond, _koff, _koffSecond, _kDoubleOn, _kDoubleOff;// rates
+        double _kT, _restlen, _KStiffness; // for distance-dependent binding
         double _upperCLBound, _lowerCLBound; // absolute distances
         intvec _FreeLinkBound, _LinkHeads, _LinkTails;
         DomainC _Dom;
@@ -337,16 +348,15 @@ class EndedCrossLinkedNetwork {
             return -log(1.0-unif(rng));
         }
         
-        void updateSecondBindingRate(int BoundEnd, vec &SecondEndRates, int startPair, int numLinks,double systime, double tstep){
+        void updateSecondBindingRate(int BoundEnd, vec &BaseSortedRates, int startPair, int numLinks,double systime, double tstep){
             /*
             Update the binding rate of every link with left end = BoundEnd.
             SecondEndRates = new rates for binding the second end, startPair = first index of sorted pairs of links that 
             has left end BoundEnd.  
             */
             for (int ThisLink = startPair; ThisLink < startPair+numLinks; ThisLink++){
-                SecondEndRates[ThisLink] = _konSecond*_FreeLinkBound[BoundEnd];
                 //std::cout << "About to insert CL second bind in heap with index " << ThisLink+1 << std::endl;
-                TimeAwareHeapInsert(ThisLink+1, SecondEndRates[ThisLink],systime,tstep);
+                TimeAwareHeapInsert(ThisLink+1, BaseSortedRates[ThisLink]*_FreeLinkBound[BoundEnd],systime,tstep);
             }
         }
 
@@ -368,7 +378,7 @@ class EndedCrossLinkedNetwork {
             }
         }
         
-        int EliminateLinksOutsideRange(const intvec &newLinkSites, const vec &uniPts, double g, vec &PrimedShifts, intvec &ActualPossibleLinks){
+        int EliminateLinksOutsideRange(const intvec &newLinkSites, const vec &uniPts, double g, vec &PrimedShifts, intvec &ActualPossibleLinks, vec &distances){
             /*
             From the list of potential links (newLinkSites) and the uniform points (uniPts), and the strain in the coordinate system, calculate 
             the actual displacement vector of each link (including the relevant shift from the array PrimedShifits, and add it 
@@ -392,6 +402,8 @@ class EndedCrossLinkedNetwork {
                 //std::cout << "Actual r " << r << std::endl;
                 //std::cout << "Upper and lower bound " << _upperCLBound << " , " << _lowerCLBound << std::endl;
                 if (r < _upperCLBound && r > _lowerCLBound){
+                    distances[nLPoss]=r;
+                    distances[nLPoss+1]=r;
                     ActualPossibleLinks[2*nLPoss]=iPt;
                     ActualPossibleLinks[2*nLPoss+1]=jPt;
                     ActualPossibleLinks[2*nLPoss+2]=jPt;
@@ -410,6 +422,7 @@ class EndedCrossLinkedNetwork {
             } 
             PrimedShifts.resize(3*nLPoss);
             ActualPossibleLinks.resize(2*nLPoss);
+            distances.resize(nLPoss);
             return nLPoss;
         }
        
@@ -429,7 +442,7 @@ class EndedCrossLinkedNetwork {
 
 PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
     py::class_<EndedCrossLinkedNetwork>(m, "EndedCrossLinkedNetwork")
-        .def(py::init<int, vec, vec3, vec, double>())
+        .def(py::init<int, vec, vec3, vec, double, double, double, double>())
         .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
         .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails)

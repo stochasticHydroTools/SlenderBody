@@ -33,6 +33,10 @@ function [Xnp1,Xsp1] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU,solver)
     Xnp1 = Lmat*Xhat;
     % Make the velocity at s = the first s equal to the original solver
     Xnp1=Xnp1-Xnp1(1,:)+(Xt(1:3)'+dt*ut2(1:3)');
+%     [s,~,b]=chebpts(N,[0 Lf],1);
+%     MPEval = barymat(Lf/2,s,b);
+%     Xnp1=Xnp1-Xnp1(1,:)+(Xt(1:3)'+dt*MPEval*reshape(ut2,3,N)');
+    % Evaluate velocity at midpoint (TEMP)
     Xnp1=reshape(Xnp1',3*N,1);
     Xsp1=reshape(Xsp1',3*N,1);
 end

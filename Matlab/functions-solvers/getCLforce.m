@@ -13,7 +13,7 @@ function Clf = getCLforce(links,X,N,s,w,L, K, rl,g,Ld)
     Nu =16;
     hu = L/(Nu-1);
     th=flipud(((2*(0:N-1)+1)*pi/(2*N))');
-    Lmat = (cos((0:N-1).*th));
+    Lmatn = (cos((0:N-1).*th));
     for iL=1:nLink
         fib1 = links(iL,1);
         s1star = links(iL,2);
@@ -24,19 +24,19 @@ function Clf = getCLforce(links,X,N,s,w,L, K, rl,g,Ld)
         inds1 = (fib1-1)*N+1:fib1*N;
         inds2 = (fib2-1)*N+1:fib2*N;
         X1=X(inds1,:);
-        th1 = acos(2*s1star/L-1)';
+        th1 = acos(2*s1star/L(fib1)-1)';
         U1 = (cos((0:N-1).*th1));
-        X1star = U1*(Lmat \ X1);
+        X1star = U1*(Lmatn \ X1);
         X2=X(inds2,:)-[shift(1)+g*shift(2) shift(2) shift(3)]*Ld;
-        th2 = acos(2*s2star/L-1)';
+        th2 = acos(2*s2star/L(fib2)-1)';
         U2 = (cos((0:N-1).*th2));
-        X2star = U2*(Lmat \ X2);
-        renorm = w*deltah(s-s1star,N,L)*w*deltah(s-s2star,N,L);
+        X2star = U2*(Lmatn \ X2);
+        renorm = w{fib1}*deltah(s{fib1}-s1star,N,L(fib1))*w{fib2}*deltah(s{fib2}-s2star,N,L(fib2));
         for iPt=1:N
             ds = X1(iPt,:)-X2;
             ig = ds*(1-rl/norm(X1star-X2star));
-            ig = ig.*deltah(s-s2star,N,L);
-            f1(iPt,:)=-K*w*ig*deltah(s(iPt)-s1star,N,L);
+            ig = ig.*deltah(s{fib2}-s2star,N,L(fib2));
+            f1(iPt,:)=-K*w{fib2}*ig*deltah(s{fib1}(iPt)-s1star,N,L(fib1));
         end
         % Renormalize f1
         f1=f1./renorm;
@@ -45,8 +45,8 @@ function Clf = getCLforce(links,X,N,s,w,L, K, rl,g,Ld)
         for iPt=1:N
             ds = X2(iPt,:)-X1;
             ig = ds*(1-rl/norm(X1star-X2star));
-            ig = ig.*deltah(s-s1star,N,L);
-            f2(iPt,:)=-K*w*ig*deltah(s(iPt)-s2star,N,L);
+            ig = ig.*deltah(s{fib1}-s1star,N,L(fib1));
+            f2(iPt,:)=-K*w{fib1}*ig*deltah(s{fib2}(iPt)-s2star,N,L(fib2));
         end
         % Renormalize
         f2=f2./renorm;

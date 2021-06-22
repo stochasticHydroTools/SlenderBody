@@ -74,7 +74,9 @@ class CrossLinkedNetwork(object):
         number of points on a fiber N and length of the fiber L
         """
         sigma = 0.1*L;
-        if (N >=32):
+        if (N >=50):
+            sigma = 0.005*L; # just to check point forces with more rigid fibers
+        elif (N >=32):
             sigma = 0.05*L;
         elif (N>=24):
             sigma = 0.075*L
@@ -137,7 +139,7 @@ class CrossLinkedNetwork(object):
         # C++ function call 
         stress = self._CForceEvaluator.calcCLStress(self._HeadsOfLinks[:self._nDoubleBoundLinks],\
             self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPts,chebPts);
-        print('CPP stress %f' %stress)
+        #print('CPP stress %f' %stress)
         stress/=np.prod(Dom.getLens());
         return stress;
     
@@ -177,9 +179,23 @@ class CrossLinkedNetwork(object):
         shifts = Dom.unprimecoords(self._PrimedShifts);
         for iLink in range(self._nDoubleBoundLinks):
             ds = uniPoints[self._HeadsOfLinks[iLink],:]-uniPoints[self._TailsOfLinks[iLink],:]-shifts[iLink,:];
-            linkStrains[iLink]=(np.linalg.norm(ds)-self._rl)/self._rl;
+            linkStrains[iLink]=(np.linalg.norm(ds)-self._rl);#/self._rl;
         #print(np.amax(np.abs(linkStrains)))
         return linkStrains;
+    
+    def SpringCOM(self,uniPoints,Dom):
+        """
+        Method to compute the strain in each link
+        Inputs: uniPoints = uniform points on the fibers to which the 
+        links are bound, Dom = domain object for periodic shifts 
+        Return: an array of nLinks sisze that has the signed strain ||link length|| - rl
+        for each link 
+        """
+        linkCOMs = np.zeros((self._nDoubleBoundLinks,3));
+        shifts = Dom.unprimecoords(self._PrimedShifts);
+        for iLink in range(self._nDoubleBoundLinks):
+            linkCOMs[iLink,:]=(uniPoints[self._HeadsOfLinks[iLink],:]+(uniPoints[self._TailsOfLinks[iLink],:]+shifts[iLink,:]))/2;
+        return linkCOMs;
     
     def getSortedLinks(self):
         """
@@ -326,7 +342,6 @@ class CrossLinkedNetwork(object):
         """
         Set the links from input vectors of iPts, jPts, and Shifts  
         """
-        raise NotImplementedError('Have not allowed for setting links yet')
         self._HeadsOfLinks = iPts;
         self._TailsOfLinks = jPts;
         self._PrimedShifts = Shifts;
@@ -368,7 +383,7 @@ class CrossLinkedNetwork(object):
         uniPts = fiberCol.getUniformPoints(chebPts);
         SpatialDatabase = fiberCol.getUniformSpatialData();
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
-        uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL);
+        uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL,self._NsitesPerf);
         if (verbose > 0):
             print('ckD neighbor search time %f' %(time.time()-thist));
         uniNeighbs = uniNeighbs.astype(np.int64);
@@ -380,12 +395,14 @@ class CrossLinkedNetwork(object):
         nPotentialLinks = len(newLinks[:,0]);
         PrimedShifts = np.zeros((nPotentialLinks,3));
         GoodInds = [];
+        distances = np.zeros(nPotentialLinks)
         # Post process list to exclude pairs that are too close (or too far b/c of sheared transformation)
         for iMaybeLink in range(nPotentialLinks):
             iPt = newLinks[iMaybeLink,0];
             jPt = newLinks[iMaybeLink,1];
             rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
             r = np.linalg.norm(rvec);
+            distances[iMaybeLink]=r;
             if (r < self._rl+self._deltaL and r > self._rl-self._deltaL):
                 GoodInds.append(iMaybeLink);
                 PrimedShifts[iMaybeLink,:] = Dom.primecoords(uniPts[iPt,:]-uniPts[jPt,:] - rvec);    
@@ -393,7 +410,7 @@ class CrossLinkedNetwork(object):
         PrimedShifts = PrimedShifts[GoodInds,:];
         #PrimedShifts = np.concatenate((PrimedShifts,-PrimedShifts));
         #newLinks = np.concatenate((newLinks,np.fliplr(newLinks)));
-        return newLinks, PrimedShifts;                        
+        return newLinks, PrimedShifts, distances[GoodInds];                        
 
 class CrossLinkedSpeciesNetwork(CrossLinkedNetwork):
 

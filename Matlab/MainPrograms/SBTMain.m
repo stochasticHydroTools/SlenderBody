@@ -5,16 +5,18 @@ for count=0:stopcount-1
     t=count*dt;
     if (mod(count,saveEvery)==0)
         if (makeMovie) 
+            clf;
             makePlot; 
+            movieframes(length(movieframes)+1)=getframe(f);
         end
-        Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
-        forces=[forces; reshape(lambdas,3,N*nFib)'];
+%         Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
+%         forces=[forces; reshape(lambdas,3,N*nFib)'];
     end
     % Evolve system
     % Background flow, strain, external force
     [U0,g] = EvalU0(gam0,omega,t+dt/2,1.5*Xt-0.5*Xtm1,flowtype);
     fCL = reshape(getCLforce(links,reshape(1.5*Xt-0.5*Xtm1,3,N*nFib)',N,s0,w0,Lf, Kspring,rl,g,Ld)',3*N*nFib,1);
-    gravF = reshape(([0 0 grav/Lf].*ones(N*nFib,3))',3*N*nFib,1);
+    gravF = reshape(([0 0 grav/Lf(1)].*ones(N*nFib,3))',3*N*nFib,1);
     maxIters = 100;
     lamguess = lambdas;
     if (t > 1.6*dt)
@@ -22,7 +24,7 @@ for count=0:stopcount-1
         lamguess = 2*lambdas-lambdalast;
     end
     lambdalast=lambdas;
-    [Xnp1,lambdas,fE,Xsp1]=CNSolve(nFib,N,deltaLocal,Lmat,I,wIt,FE,Xt,Xtm1,...
+    [Xnp1,lambdas,fE,Xsp1]=BESolve(nFib,N,deltaLocal,Lmat,I,wIt,FE,Xt,Xtm1,...
         Xst,Xstm1,U0,dt,s0,w0,Lf,eps,Ds,mu,xi,Ld,nonLocal,lamguess,maxIters,fCL+gravF,g);
     Xtm1=Xt;
     Xstm1=Xst;
@@ -38,6 +40,7 @@ for count=0:stopcount-1
 %     else
 %         links=updateMovingLinks(links,reshape(Xt,3,N*nFib)',reshape(Xst,3,N*nFib)',N,s0,w0,Lf, Kspring, rl,g,Ld,dt);
 %     end
+    links(2)=min(Lf(1)/2+t,Lf(1));
 end
 Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
 forces=[forces; reshape(lambdas,3,N*nFib)'];

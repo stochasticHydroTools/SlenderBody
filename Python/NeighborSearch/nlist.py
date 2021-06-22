@@ -1,5 +1,5 @@
 #import NeighborSearch
-from SpatialDatabase import ckDSpatial, RaulLinkedList
+from SpatialDatabase import ckDSpatial, CellLinkedList
 from Domain import PeriodicShearedDomain
 from scipy.spatial import cKDTree
 import numpy as np
@@ -47,7 +47,7 @@ Neighbs2=np.savetxt('N2.txt',AllNeighbors2)
 
 # Check with linked list class
 Dom = PeriodicShearedDomain(lx,ly,lz);
-SpatialChk = RaulLinkedList(positions,Dom,nThr=nThr);
+SpatialChk = CellLinkedList(positions,Dom,nThr=nThr);
 thist = time.time()
 SpatialChk.updateSpatialStructures(positions,Dom);
 AllNeighbors2 = SpatialChk.selfNeighborList(rcut)

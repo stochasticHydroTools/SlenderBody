@@ -1,5 +1,5 @@
 import numpy as np
-from SpatialDatabase import SpatialDatabase, ckDSpatial
+from SpatialDatabase import SpatialDatabase, ckDSpatial, RaulLinkedList
 import copy
 
 verbose = -1;
@@ -25,7 +25,7 @@ class FiberSpeciesCollection(object):
         fiberCollection objects that contains all the information about each species. 
         Dom = Domain object, nonLocal = what kind of nonlocal hydrodynamics to do, 
         (0 = local drag, 1 = nonlocal with special quadrature (not implemented yet for
-        species collections), 2 = not implemented, 3 = upsampled nonlocal,
+        species collections), 2 = nonlocal without finite part, 3 = upsampled nonlocal,
         4 = local + finite part only)
         """
         self._nSpecies = nSpecies;
@@ -43,10 +43,11 @@ class FiberSpeciesCollection(object):
             raise NotImplementedError('Special quadrature not supported for different fiber lengths, \
                 set nonLocal = 3 to do upsampling instead')
         if (nonLocal == 2):
-            raise NotImplementedError('nonLocal = 2 not implemented for FiberSpeciesCollection')
+            raise NotImplementedError('This will do nonlocal without finite part, but with upsampling, \
+                which will not match implementation for single fiberCollection (uses special quad)')
         for iSpecies in range(nSpecies):
             fibCol = fiberCollectionList[iSpecies];
-            if (self._nonLocal > 0 and self._nonLocal < 4):
+            if (self._nonLocal ==3 or self._nonLocal==2):
                 fibCol._nonLocal = 4; # it will do the finite part only
                 print('Multiple species - nonlocal calculations will be done in the FiberSpeciesCollection class')
                 print('Will overwrite the nonlocal variable in each individual fiberCollection to do local drag + FP only')
@@ -98,9 +99,31 @@ class FiberSpeciesCollection(object):
             self._allUpsampledWts[firstDir:lastDir] = np.reshape(np.tile(fibCol._fiberDisc.getwDirect(),fibCol._Nfib),(fibCol._Ndirect*fibCol._Nfib,1));
             self._sCheb[first:last] = np.tile(fibCol._fiberDisc.gets(),fibCol._Nfib)
             self._wtsCheb[first:last] = np.tile(fibCol._fiberDisc.getw(),fibCol._Nfib)
-        self._SpatialDirectQuad = ckDSpatial(np.zeros((self._totnumDirect,3)),Dom);
+        self._SpatialDirectQuad = RaulLinkedList(np.zeros((self._totnumDirect,3)),Dom);
         self._totnumUniform = self._UniformPointStartBySpecies[self._nSpecies];
-        self._SpatialUni = ckDSpatial(np.zeros((self._totnumUniform,3)),Dom);
+        self._SpatialUni = RaulLinkedList(np.zeros((self._totnumUniform,3)),Dom);
+    
+    def initFibers(self,Dom,pointsfileName=None,tanvecfileName=None):
+        fibLists = [None]*self._nSpecies;
+        for iSpecies in range(self._nSpecies):
+            fibLists[iSpecies] = [None]*self._NFibersBySpecies[iSpecies]
+        if (pointsfileName is None and tanvecfileName is None):
+            for iSpecies in range(self._nSpecies):
+                fibCol = self._fiberCollectionsBySpecies[iSpecies];
+                fibCol.initFibList(fibLists[iSpecies],Dom);
+                fibCol.fillPointArrays();
+        elif (pointsfileName is not None and tanvecfileName is not None):
+            AllX = np.loadtxt(pointsfileName);
+            AllXs = np.loadtxt(tanvecfileName);
+            for iSpecies in range(self._nSpecies):
+                fibCol = self._fiberCollectionsBySpecies[iSpecies];
+                first = self._RowStartBySpecies[iSpecies];
+                last = self._RowStartBySpecies[iSpecies+1]; 
+                fibCol.initFibList(fibLists[iSpecies],Dom,AllX[first:last,:],AllXs[first:last,:]);
+                fibCol.fillPointArrays();
+        else:
+            raise ValueError('Must specify both X and Xs file or neither')
+        self.updateLargeListsFromEachSpecies();
     
     def updateLargeListsFromEachSpecies(self):
         """
@@ -116,6 +139,15 @@ class FiberSpeciesCollection(object):
             self._ptsCheb[first:last,:] = fibCol._ptsCheb;
             self._tanvecs[first:last,:] = fibCol._tanvecs;
             self._lambdas[3*first:3*last] = fibCol._lambdas;  
+    
+    def __deepcopy__(self, memo):
+        cls = self.__class__
+        result = cls.__new__(cls)
+        memo[id(self)] = result
+        for k, v in self.__dict__.items():
+            if not (k=='_SpatialCheb' or k=='_SpatialDirectQuad' or k=='_SpatialUni'):
+                setattr(result, k, copy.deepcopy(v, memo))
+        return result
                 
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY
@@ -141,7 +173,7 @@ class FiberSpeciesCollection(object):
                 t,exForceDen[3*first:3*last],lamstar[3*first:3*last], Dom, RPYEval,returnForce=True)
             AllSpeciesRHS[3*first:3*last] = This_RHS[:3*(last-first)];
         # Still need to account for the inter-fiber hydro here
-        if (self._nonLocal == 3):
+        if (self._nonLocal == 2 or self._nonLocal==3):
             AllSpeciesRHS[:3*self._totnum]+=self.interFiberVelocity(X_nonLoc,Xs_nonLoc,AllForceDs, Dom, RPYEval)
         return AllSpeciesRHS;
     
@@ -174,7 +206,7 @@ class FiberSpeciesCollection(object):
                 dtimpco,lamstar[3*first:3*last], Dom, RPYEval,returnForce=True);
             AllSpeciesNewRHS[3*first:3*last] = This_RHS[:3*(last-first)];
         # Still need to account for the inter-fiber hydro here
-        if (self._nonLocal == 3):
+        if (self._nonLocal == 2 or self._nonLocal==3):
             AllSpeciesNewRHS[:numLams]+=self.interFiberVelocity(X_nonLoc,Xs_nonLoc,AllForceDs, Dom, RPYEval)
         return AllSpeciesNewRHS;
     
@@ -204,7 +236,7 @@ class FiberSpeciesCollection(object):
             Mf[3*first:3*last]=this_Mf[:3*(last-first)];
             Mf[numLams+alphafirst:numLams+alphalast] = this_Mf[3*(last-first):];
         # Still need to account for the inter-fiber hydro here
-        if (self._nonLocal == 3):
+        if (self._nonLocal == 2 or self._nonLocal==3):
             Mf[:numLams]-=self.interFiberVelocity(X_nonLoc,Xs_nonLoc,AllForceDs, Dom, RPYEval) # mobility has - sign!
         return Mf;
        

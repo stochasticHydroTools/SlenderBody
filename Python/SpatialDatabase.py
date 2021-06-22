@@ -141,7 +141,7 @@ class CellLinkedList(SpatialDatabase):
         # The super constructor will then call THIS child method to
         # updateSpatialStructures
         self._precision = np.float32;
-        self._Nlist = NeighborSearch.NList(nThr)
+        self._Nlist = NeighborSearch.NList(nThr) # WARNING: parallel version returns different order of list every time -> loss of reproducibility
     
     def updateSpatialStructures(self,pts,Dom):
         """

@@ -1,4 +1,4 @@
-function [K,Kt]=getKMats3D(Xts,chebyshevmat,w0,N,Kttype)
+function [K,Kt]=getKMats3D(Xts,chebyshevmat,w0,N,Kttype,rigid)
     [s,~,b]=chebpts(N,[0 sum(w0)],1);
     [su,wu,bu]=chebpts(2*N,[0 sum(w0)],1);
     Rup = barymat(su,s,b);
@@ -25,13 +25,19 @@ function [K,Kt]=getKMats3D(Xts,chebyshevmat,w0,N,Kttype)
 %     IndefInts22 = IndefInts22-IndefInts22(1,:);
 %     IndefInts23 = IndefInts23-IndefInts23(1,:);
 %     
-    J = zeros(6*N,2*N-2);
-    J(1:3:6*N,1:N-1)=IndefInts11;
-    J(2:3:6*N,1:N-1)=IndefInts12;
-    J(3:3:6*N,1:N-1)=IndefInts13;
-    J(1:3:6*N,N:2*(N-1))=IndefInts21;
-    J(2:3:6*N,N:2*(N-1))=IndefInts22;
-    J(3:3:6*N,N:2*(N-1))=IndefInts23;
+    if (rigid)
+        nPolys = 1;
+    else
+        nPolys = N-1;
+    end
+    %disp('K set up for rigid body motion!')
+    J = zeros(6*N,2*nPolys);
+    J(1:3:6*N,1:nPolys)=IndefInts11(:,1:nPolys);
+    J(2:3:6*N,1:nPolys)=IndefInts12(:,1:nPolys);
+    J(3:3:6*N,1:nPolys)=IndefInts13(:,1:nPolys);
+    J(1:3:6*N,nPolys+1:2*nPolys)=IndefInts21(:,1:nPolys);
+    J(2:3:6*N,nPolys+1:2*nPolys)=IndefInts22(:,1:nPolys);
+    J(3:3:6*N,nPolys+1:2*nPolys)=IndefInts23(:,1:nPolys);
     
     W = diag(reshape([wu; wu; wu],6*N,1));
     U=zeros(6*N,3*N);
