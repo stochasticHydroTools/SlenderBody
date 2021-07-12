@@ -1,7 +1,7 @@
 # Examples 
 This folder contains the main python files to run the examples
 in the papers: [1] "An integral-based spectral method for inextensible slender fibers 
-in Stokes flow." [Arxiv link](https://arxiv.org/abs/2007.11728) and [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" (bioarxiv link)[bioRxiv.org:2021.07.07.451453]
+in Stokes flow." [Arxiv link](https://arxiv.org/abs/2007.11728) and [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" [bioarxiv link](bioRxiv.org:2021.07.07.451453)
 
 # Tests from [1]:
 1) ThreeShearedFibs.py corresponds to the 3 fibers being sheared in Section 5.1.2.
