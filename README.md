@@ -1,10 +1,12 @@
 # SlenderBody
 Slender-body hydrodynamics
 
-This repository contains the Python/C++ codes for
-"An integral-based spectral method for inextensible slender fibers in
-Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev. 
-See [arxiv](https://arxiv.org/abs/2007.11728) for text
+This repository contains the Python/C++ codes for the publications:
+* [1] "An integral-based spectral method for inextensible slender fibers in
+Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev, Jan. 2021.
+See [arxiv](https://arxiv.org/abs/2007.11728) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published
+version
+* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, submitted to PLOS Comp. Bio., June 2021. See (bioarxiv)[bioRxiv.org:2021.07.07.451453] for text
 
 Organization is as follows:
 * Python: directory with python codes
@@ -20,6 +22,7 @@ Organization is as follows:
 * LaPack (for C++ functions)
 * [PyBind11](https://github.com/pybind/pybind11) (to link python and C++)
 * [numba](https://github.com/numba/numba) (to accelerate and parallelize native python)
+* [UAMMD](https://github.com/RaulPPelaez/UAMMD) (for Ewald splitting on the GPU)
 
 For nearly singular SBT integrals, we use a modified version of the quadrature scheme of Ludvig af Klinteberg and 
 Alex Barnett. Their original code is [here](https://github.com/ludvigak/linequad); we have made some modifications 
@@ -38,7 +41,7 @@ to properly modify them
 ```
 python3 ThreeShearedFibs.py
 ```
-will run the example in Section 5.1.2 of the paper. 
+will run the example in Section 5.1.2 of [1] 
 
 # Parallelization
 There are three portions of our code that are parallelized. We first note that the number of OpenMP threads
