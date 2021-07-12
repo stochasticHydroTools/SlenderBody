@@ -103,6 +103,9 @@ for omHz in omegasToDo:
     of = prepareOutFile('DynamicRheo/Locs'+outFile);
     allFibers.writeFiberLocations(of);
     saveCurvaturesAndStrains(allFibers,CLNet,outFile,wora='w')
+    ofCL = prepareOutFile('DynamicRheo/Step'+str(0)+'Links'+outFile);
+    CLNet.writeLinks(ofCL)
+    ofCL.close()
 
     # Run to steady state (no flow)
     stopcount = int(tf/dt+1e-10);
@@ -122,7 +125,7 @@ for omHz in omegasToDo:
     numLinksByFib[0,:] = CLNet.numLinksOnEachFiber();
 
     numBundlesSep =  np.zeros(numSaves,dtype=np.int64)
-    numBundlesSep[0], labels[0,:] = CLNet.FindBundles(Lf/4);
+    numBundlesSep[0], labels[0,:] = CLNet.FindBundles(bunddist);
     AllOrders_Sep, NPerBundleAll_Sep,AllaverageBundleTangents = CLNet.BundleOrderParameters(allFibers,numBundlesSep[0], labels[0,:],minPerBundle=2)
     numBundlesSep[0] = len(AllOrders_Sep);
     avgBundleAlignment_Sep = np.zeros(numSaves)
@@ -163,9 +166,12 @@ for omHz in omegasToDo:
             saveCurvaturesAndStrains(allFibers,CLNet,outFile);
             saveIndex = (iT+1)//saveEvery;
             numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
+            ofCL = prepareOutFile('DynamicRheo/Step'+str(saveIndex)+'Links'+outFile);
+            CLNet.writeLinks(ofCL)
+            ofCL.close()
                    
             # Bundles where connections are 2 links separated by 2*restlen
-            numBundlesSep[saveIndex], labels[saveIndex,:] = CLNet.FindBundles(Lf/4);
+            numBundlesSep[saveIndex], labels[saveIndex,:] = CLNet.FindBundles(bunddist);
             print('Number bundles (1 per bundle possible) %d' %numBundlesSep[saveIndex])
             Orders, NPerBundle, avgTangents = CLNet.BundleOrderParameters(allFibers,numBundlesSep[saveIndex], labels[saveIndex,:],minPerBundle=2)
             numBundlesSep[saveIndex] = len(Orders);
@@ -180,7 +186,7 @@ for omHz in omegasToDo:
             NumFibsConnected[saveIndex,:] = numCloseBy;
             AllLocalAlignment[saveIndex,:] = LocalAlignment;
             AvgTangentVectors[nFib*saveIndex:nFib*(saveIndex+1),:] = allFibers.averageTangentVectors()
-            
+      
     np.savetxt('DynamicRheo/nLinksPerFib'+outFile,numLinksByFib);  
     np.savetxt('DynamicRheo/NumFibsConnectedPerFib'+outFile,NumFibsConnected);
     np.savetxt('DynamicRheo/LocalAlignmentPerFib'+outFile,AllLocalAlignment);
