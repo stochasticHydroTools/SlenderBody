@@ -6,7 +6,7 @@ This repository contains the Python/C++ codes for the publications:
 Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev, Jan. 2021.
 See [arxiv](https://arxiv.org/abs/2007.11728) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published
 version
-* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, submitted to PLOS Comp. Bio., June 2021. See (bioarxiv)[bioRxiv.org:2021.07.07.451453] for text
+* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, submitted to PLOS Comp. Bio., June 2021. See [bioarxiv](bioRxiv.org:2021.07.07.451453) for text
 
 Organization is as follows:
 * Python: directory with python codes
