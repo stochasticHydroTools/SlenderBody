@@ -1,8 +1,9 @@
 # Examples 
 This folder contains the main python files to run the examples
-in the paper "An integral-based spectral method for inextensible slender fibers 
-in Stokes flow." [Arxiv link](https://arxiv.org/abs/2007.11728)
+in the papers: [1] "An integral-based spectral method for inextensible slender fibers 
+in Stokes flow." [Arxiv link](https://arxiv.org/abs/2007.11728) and [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" (bioarxiv link)[bioRxiv.org:2021.07.07.451453]
 
+# Tests from [1]:
 1) ThreeShearedFibs.py corresponds to the 3 fibers being sheared in Section 5.1.2.
 2) CheckStability.py gives the stability test of Section 5.2 (for a specific domain length Ld)
 3) FixedCrossLinkedNetwork.py runs a cross linked network to steady state (t=2000), as we do in
@@ -28,3 +29,21 @@ in the code that begins on [line 86 of StrainingCrossLinkedNetwork.py](https://g
 
 We also include an input file to [initialize the cross-linked network object.](https://github.com/stochasticHydroTools/SlenderBody/blob/4cf402e21404ad8b9589af1de5b652adfbb1f72e/Python/Examples/StrainingCrossLinkedNetwork.py#L101)
 This file, NetworkSteadyStates/F700C8400.txt, has a list of connections and periodic shifts at g=0 for the 8400 links. 
+
+# Tests from [2]:
+The results in [2] can be broadly grouped into three categories
+* Steady state networks with no shear. These tests can be run by executing the file FixedDynamicLinkNetwork.py, which takes an integer command line argument with a random seed. For example, "FixedDynamicLinkNetwork.py 1" runs the network evolution with the parameters listed in 'FixedNetworkInputFile.txt.' By specifying the OutputFileName, the simulation will output statistics prefaced by this name, and a set of dynamic steady state locations, fiber tangent vectors, and links that can be used to initialize the next set of two simulations. 
+* Stress relaxation tests, where a shear is applied for one quarter of a period and then the network relaxes. These tests can be run by executing  "MeasureG0.py," which takes three command line arguments: the seed, frequency of strain, and maximum strain. So for instance, "MeasureG0.py 1 2 0.1" would shear the cell to a 10\% strain with frequency 2 Hz, using a random seed of 1. The parameters are set in the file "StrainInputFile.txt." The name inFile (on line 38 of the input file) should match the OutputFileName of the steady state network generated above. 
+* Measuring elastic and viscous moduli. Here we use the file "StrainDynamicNetwork.py," with the same three command line arguments and input file as for the stress relaxation tests. 
+
+The simulations will output files prefixed with the user-specified outFile string (specified on line 37 of StrainInputFile.txt). The statistics are output every ``savedt'' seconds, where the interval savedt is specified on line 35 of the input file. Outputs include: 
+* numLinksByFib = number of links attached to each fiber, 
+* NumFibsConnectedPerFib = number of fibers connected to each fiber by at least one link
+* LocalAlignmentPerFib = the alignment parameter for the group of fibers connected by at least one link to each fiber
+* NumberOfBundles = raw number of bundles in the system
+* BundleOrderParams = the order parameter for each of the bundles
+* NFibsPerBundle = number of fibers in each bundle
+* FinalLabels = tags for the fibers for each time step. These tags give which bundle each fiber belongs to and are used for visualization
+* AvgBundleTangents = the average tangent vector in each bundle 
+* AvgTangentVectors = the average tangent vectors for all fibers
+* LamStress, ElStress, CLStress = the stress in the suspension due to the inextensibility forces, elastic (bending) forces, and CL forces
