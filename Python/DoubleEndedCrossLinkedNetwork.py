@@ -33,7 +33,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     ##    METHODS FOR INITIALIZATION
     ## =============================== ##
-    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,kT=0,nThreads=1):
+    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,kT=0,nThreads=1,bindingSiteWidth=0):
         """
         Constructor
         """
@@ -50,11 +50,18 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._TailsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._PrimedShifts = np.zeros((MaxLinks,3));
         allRates = [self._kon,self._konSecond,self._koff,self._koffSecond,self._kDoubleOn,self._kDoubleOff];
+        if (kT > 0):
+            self._deltaL = min(2*np.sqrt(kT/self._kCL),self._rl); # Strain-dependent rate, modify self._deltaL to be 2 or 1/2 rest length
         CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
         print(CLBounds)
         if (CLseed is None):
             CLseed = int(time.time());
-        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,kT,self._rl, self._kCL,CLseed);
+        if (bindingSiteWidth==0):
+            maxPerSite = 2**10;
+        else:
+            maxPerSite = int(np.ceil(self._ds/bindingSiteWidth)); # 20 nm binding site
+        print('Max per site %d' %maxPerSite)
+        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, maxPerSite,allRates, self._DLens,CLBounds,kT,self._rl, self._kCL,CLseed);
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -173,7 +180,7 @@ class DoubleEndedCrossLinkedSpeciesNetwork(CrossLinkedSpeciesNetwork,DoubleEnded
     """
 
     def __init__(self,FiberSpeciesCollection,Kspring,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,kT=0,nThreads=1):
-        super().__init__(FiberSpeciesCollection,Kspring,rl,Dom,kT,nThreads)
+        super().__init__(FiberSpeciesCollection,Kspring,rl,Dom,nThreads)
                 
         self._kon = kon*self._ds;
         self._konSecond = konsecond*self._ds;
@@ -186,6 +193,8 @@ class DoubleEndedCrossLinkedSpeciesNetwork(CrossLinkedSpeciesNetwork,DoubleEnded
         self._TailsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._PrimedShifts = np.zeros((MaxLinks,3));
         allRates = [self._kon,self._konSecond,self._koff,self._koffSecond,self._kDoubleOn,self._kDoubleOff];
+        if (kT > 0): # modify self._deltaL to be 2 or 1/2 rest length
+            self._deltaL = min(2*np.sqrt(kT/self._kCL),self._rl); # Strain-dependent rate
         CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
         
         print(allRates)

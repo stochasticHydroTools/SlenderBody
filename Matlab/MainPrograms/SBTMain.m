@@ -9,8 +9,17 @@ for count=0:stopcount-1
             makePlot; 
             movieframes(length(movieframes)+1)=getframe(f);
         end
-%         Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
+        Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
 %         forces=[forces; reshape(lambdas,3,N*nFib)'];
+%         X1 = reshape(Xt,3,N)';
+%         X2 = reshape(Xt,3,N)';
+%         X2mp = w{2}*X2;
+%         X1all = X1(1,:)+[0:0.001:1]'*X1(end,:)-X1(1,:);
+%         d = X1all-X2mp;
+%         md = min(sqrt(sum(d.*d,2)));
+%         if (FarAway)
+%             FarAway=False;
+%         end
     end
     % Evolve system
     % Background flow, strain, external force
@@ -24,7 +33,7 @@ for count=0:stopcount-1
         lamguess = 2*lambdas-lambdalast;
     end
     lambdalast=lambdas;
-    [Xnp1,lambdas,fE,Xsp1]=BESolve(nFib,N,deltaLocal,Lmat,I,wIt,FE,Xt,Xtm1,...
+    [Xnp1,lambdas,fE,Xsp1]=CNSolve(nFib,N,deltaLocal,Lmat,I,wIt,FE,Xt,Xtm1,...
         Xst,Xstm1,U0,dt,s0,w0,Lf,eps,Ds,mu,xi,Ld,nonLocal,lamguess,maxIters,fCL+gravF,g);
     Xtm1=Xt;
     Xstm1=Xst;
@@ -40,7 +49,7 @@ for count=0:stopcount-1
 %     else
 %         links=updateMovingLinks(links,reshape(Xt,3,N*nFib)',reshape(Xst,3,N*nFib)',N,s0,w0,Lf, Kspring, rl,g,Ld,dt);
 %     end
-    links(2)=min(Lf(1)/2+t,Lf(1));
+%     links(2)=min(Lf(1)/2+t,Lf(1));
 end
 Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
 forces=[forces; reshape(lambdas,3,N*nFib)'];

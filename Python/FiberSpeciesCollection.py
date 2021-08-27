@@ -1,5 +1,5 @@
 import numpy as np
-from SpatialDatabase import SpatialDatabase, ckDSpatial, RaulLinkedList
+from SpatialDatabase import SpatialDatabase, ckDSpatial, CellLinkedList
 import copy
 
 verbose = -1;
@@ -99,9 +99,9 @@ class FiberSpeciesCollection(object):
             self._allUpsampledWts[firstDir:lastDir] = np.reshape(np.tile(fibCol._fiberDisc.getwDirect(),fibCol._Nfib),(fibCol._Ndirect*fibCol._Nfib,1));
             self._sCheb[first:last] = np.tile(fibCol._fiberDisc.gets(),fibCol._Nfib)
             self._wtsCheb[first:last] = np.tile(fibCol._fiberDisc.getw(),fibCol._Nfib)
-        self._SpatialDirectQuad = RaulLinkedList(np.zeros((self._totnumDirect,3)),Dom);
+        self._SpatialDirectQuad = CellLinkedList(np.zeros((self._totnumDirect,3)),Dom);
         self._totnumUniform = self._UniformPointStartBySpecies[self._nSpecies];
-        self._SpatialUni = RaulLinkedList(np.zeros((self._totnumUniform,3)),Dom);
+        self._SpatialUni = CellLinkedList(np.zeros((self._totnumUniform,3)),Dom);
     
     def initFibers(self,Dom,pointsfileName=None,tanvecfileName=None):
         fibLists = [None]*self._nSpecies;

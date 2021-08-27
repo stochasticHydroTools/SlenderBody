@@ -17,8 +17,8 @@ function [Xp1,lambdas,fEstar,Xsp1] = CNSolve(nFib,N,deltaLoc,chebyshevmat,I,wIt,
     % Precompute the relevant fE's 
     for iFib=1:nFib
         inds = (iFib-1)*3*N+1:3*N*iFib;
-        fE(inds)=FE{iFib}*Xt(inds);
-        fEprev(inds)=FE{iFib}*Xtm1(inds);
+        fE(inds)=FE*Xt(inds);
+        fEprev(inds)=FE*Xtm1(inds);
     end
     fEarg = 1.5*fE-0.5*fEprev;
     fEstar = fEarg;
@@ -43,7 +43,7 @@ function [Xp1,lambdas,fEstar,Xsp1] = CNSolve(nFib,N,deltaLoc,chebyshevmat,I,wIt,
         end
         for iFib=1:nFib % block diagonal solve
             inds = (iFib-1)*3*N+1:3*N*iFib;
-            M = getMloc(N,Xsarg(inds),epsilon(iFib),Lf(iFib),mu,s0{iFib},deltaLoc);
+            M = getMloc(N,Xsarg(inds),epsilon(iFib),Lf(iFib),mu,s0,deltaLoc);
             %M = getMlocRPY(N,Xsarg(inds),1.1204*epsilon*Lf,Lf,mu,s0);
 %             if (~doFP)
 %                 % Form upsampled RPY matrix column by column
@@ -57,18 +57,18 @@ function [Xp1,lambdas,fEstar,Xsp1] = CNSolve(nFib,N,deltaLoc,chebyshevmat,I,wIt,
 %                     M(:,iC) = reshape(U',3*N,1);
 %                 end
 %             end
-            [K,Kt]=getKMats3D(Xsarg(inds),chebyshevmat{iFib},w0{iFib},N,'U',iFib==1); % first fiber is rigid
+            [K,Kt]=getKMats3D(Xsarg(inds),chebyshevmat,w0,N,'U',0); 
             %[K,Kt]=getKMats3DLimited(Xsarg(inds),chebyshevmat,w0,N);
-            K = [K I{iFib}];   Kt = [Kt; wIt{iFib}];
-            B = K-0.5*dt*M*FE{iFib}*K;
+            K = [K I];   Kt = [Kt; wIt];
+            B = K-0.5*dt*M*FE*K;
             RHS = Kt*fE(inds)+Kt*fext(inds)+Kt*M^(-1)*(U0(inds) + nLvel(inds));
             alphaU = lsqminnorm(Kt*M^(-1)*B,RHS);
             ut = K*alphaU;
-            dU(inds) = Dmat{iFib}*ut;
+            dU(inds) = Dmat*ut;
             Xp1(inds) = Xt(inds)+dt*ut;
-            Xsp1(inds) = Dmat{iFib}*Xp1(inds);
+            Xsp1(inds) = Dmat*Xp1(inds);
             l_m1(inds) = l_m(inds);
-            l_m(inds) = M \ (ut-nLvel(inds)-U0(inds))-FE{iFib}*0.5*(Xp1(inds)+Xt(inds))-fext(inds);
+            l_m(inds) = M \ (ut-nLvel(inds)-U0(inds))-FE*0.5*(Xp1(inds)+Xt(inds))-fext(inds);
         end
         reler = norm(l_m-l_m1)/(max([1 norm(l_m)]));
         iters=iters+1;

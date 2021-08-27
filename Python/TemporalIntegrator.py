@@ -11,7 +11,6 @@ from warnings import warn
 # Definitions 
 itercap = 1000; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-6; # larger than GPU tolerance
-kBt = 4e-3;
 verbose = -1;
 
 # Documentation last updated: 03/12/2021
@@ -98,7 +97,7 @@ class TemporalIntegrator(object):
         self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
 
     def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,gravden=0.0,outfile=None,write=1,updateNet=False,turnoverFibs=False,\
-        BrownianUpdate=False,fixedg=None,stress=False):
+        BrownianUpdate=False,kBt=0,fixedg=None,stress=False):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the maximum number of steps numSteps,

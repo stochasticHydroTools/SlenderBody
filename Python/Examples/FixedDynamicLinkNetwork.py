@@ -40,7 +40,7 @@ saveEvery = int(savedt/dt+1e-10);
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,nptsUniform=Nuniformsites,NupsampleForDirect=NupsampleForDirect);
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,nptsUniform=Nuniformsites,NupsampleForDirect=NupsampleForDirect,rigid=rigidFibs);
 
 # Initialize the master list of fibers
 allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,1,0,Dom,nThreads=nThr); # No flow, no nonlocal hydro (nothing to OMP parallelize)
@@ -68,8 +68,13 @@ else:
 np.random.seed(CLseed);
 # Initialize network
 print('Number uniform sites %d' %fibDisc.getNumUniform())
+if (BrownianFluct):
+    kBt = 4e-3;
+else:
+    kBt = 0;
 CLNet = DoubleEndedCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,Kspring,\
-    rl,konCL,koffCL,konSecond,koffSecond,CLseed,Dom,fibDisc,nThreads=nThr);
+    rl,konCL,koffCL,konSecond,koffSecond,CLseed,Dom,fibDisc,nThreads=nThr,\
+    bindingSiteWidth=bindingSiteWidth,kT=kBt);
 #Pairs, _ = CLNet.getPairsThatCanBind(allFibers,Dom);
 #np.savetxt('PairsN'+str(fibDisc.getNumUniform())+'.txt',Pairs);
 if (initFile is None):
@@ -121,7 +126,7 @@ for iT in range(stopcount):
         wr=1;
         mythist = time.time()
     maxX, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,outfile=of,write=wr,\
-        updateNet=updateNet,turnoverFibs=turnover,BrownianUpdate=BrownianFluct);
+        updateNet=updateNet,turnoverFibs=turnover,BrownianUpdate=BrownianFluct,kBt=kBt);
     if (wr==1):
         print('MAIN Time step time %f ' %(time.time()-mythist));
         print('Max x: %f' %maxX)

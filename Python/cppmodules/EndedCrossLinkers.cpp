@@ -45,7 +45,7 @@ class EndedCrossLinkedNetwork {
     
     public:
        
-    EndedCrossLinkedNetwork(int TotSites, vec rates, vec3 DomLengths, vec CLBounds,double kT, 
+    EndedCrossLinkedNetwork(int TotSites, int maxLinksPerSite, vec rates, vec3 DomLengths, vec CLBounds,double kT, 
         double restlen, double KStiffness,double CLseed):_Dom(DomLengths){
         _TotSites = TotSites; 
         _kon = rates[0];
@@ -55,6 +55,8 @@ class EndedCrossLinkedNetwork {
         _kDoubleOn = rates[4];
         _kDoubleOff = rates[5];
         _FreeLinkBound = intvec(TotSites,0);
+        _TotalNumberBound = intvec(TotSites,0);
+        _MaxNumberPerSite = maxLinksPerSite;
         _maxLinks = std::max(4*int(_konSecond/_koffSecond*_kon/_koff*_TotSites),100); // guess for max # of links
         std::cout << "Array size " << _maxLinks << std::endl;
         _LinkHeads = intvec(_maxLinks,-1);
@@ -95,7 +97,7 @@ class EndedCrossLinkedNetwork {
         int nPotentialLinks = MaybeBindingPairs.size()/2;
         vec PrimedShifts(6*nPotentialLinks,0);
         intvec BindingPairs(4*nPotentialLinks,-1);
-        vec distances(nPotentialLinks,0.0);
+        vec distances(2*nPotentialLinks,0.0);
         int nTruePairs = EliminateLinksOutsideRange(MaybeBindingPairs, uniPts, g, PrimedShifts, BindingPairs,distances);
         //std::cout << "Number of true possible pairs " << nTruePairs/2 << std::endl;
         resetHeap();
@@ -113,7 +115,7 @@ class EndedCrossLinkedNetwork {
             startPair[iSite]=startPair[iSite-1]+numLinksPerSite[iSite-1];
         }
         intvec SortedLinks(2*nTruePairs,-1);
-        vec BaseSortedRates(nTruePairs), SortedShifts(3*nTruePairs,0);
+        vec BaseSortedRates(nTruePairs,0), SortedShifts(3*nTruePairs,0);
         for (int iPair=0; iPair < nTruePairs; iPair++){
             int BoundEnd = BindingPairs[2*iPair]; 
             int index = startPair[BoundEnd];
@@ -130,6 +132,7 @@ class EndedCrossLinkedNetwork {
             if (_kT == 0.0){
                 BaseSortedRates[index] = _konSecond*1.0; // add distance dependent factor
             } else {
+                //std::cout << "Distance dependent binding!" << std::endl;
                 double Energy = 0.5*_KStiffness*(distances[iPair]-_restlen)*(distances[iPair]-_restlen);
                 BaseSortedRates[index] = _konSecond*exp(-Energy/_kT);
             }
@@ -164,7 +167,7 @@ class EndedCrossLinkedNetwork {
         TimeAwareHeapInsert(indexDoubleUnbind,RateDoubleUnbind,0,tstep);
         
         double systime;
-        int eventindex, BoundEnd, UnboundEnd, PlusOrMinusSingleBound;
+        int eventindex, BoundEnd, UnboundEnd; 
         topOfHeap(eventindex,systime);
         //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
         while (eventindex > 0) {
@@ -172,27 +175,35 @@ class EndedCrossLinkedNetwork {
             if (eventindex==indexFreeBinding){ // end binding, choose random site and bind an end
                 //std::cout << "Index " << eventindex << ", single binding at time " << systime << std::endl;
                 BoundEnd = int(unif(rng)*_TotSites);
-                PlusOrMinusSingleBound=1;
+                // End can only bind if the site isn't full
+                if (_TotalNumberBound[BoundEnd] < _MaxNumberPerSite){
+                    _FreeLinkBound[BoundEnd]++;
+                    _TotalNumberBound[BoundEnd]++;
+                } // otherwise nothing happens
                 TimeAwareHeapInsert(indexFreeBinding,RateFreeBind,systime,tstep);
             } else if (eventindex >= indexFreeUnbinding && eventindex < indexSecondUnbind){ // single end unbind
                 BoundEnd = eventindex-indexFreeUnbinding;
                 //std::cout << "Index " << eventindex << ", single unbinding at time " << systime << std::endl;
-                PlusOrMinusSingleBound=-1;
+                _FreeLinkBound[BoundEnd]--;
+                _TotalNumberBound[BoundEnd]--;  // that end loses a link
             } else if (eventindex == indexSecondUnbind || eventindex==indexDoubleUnbind){ // CL unbinding
                 int linkNum = int(unif(rng)*_nDoubleBoundLinks);
                 BoundEnd = _LinkHeads[linkNum];
+                UnboundEnd = _LinkTails[linkNum];  
                 if (unif(rng) < 0.5){
-                    BoundEnd = _LinkTails[linkNum];    
+                    BoundEnd = _LinkTails[linkNum];  
+                    UnboundEnd = _LinkHeads[linkNum];
                 }
                 deleteLink(linkNum);
+                _TotalNumberBound[UnboundEnd]--; // Only the unbound end loses a link 
                 linkChange = true;
                 if (eventindex == indexSecondUnbind){
                     // Add a free end at the other site. Always assume the remaining bound end is at the left
                     //std::cout << "Index " << eventindex << ", CL end unbind at time " << systime << std::endl;
-                    PlusOrMinusSingleBound=1;
-                } else{
+                    _FreeLinkBound[BoundEnd]++;
+                } else{ // both ends unbind at once
                     //std::cout << "Index " << eventindex << ", CL both ends unbind at time " << systime << std::endl;
-                    PlusOrMinusSingleBound=0;
+                    _TotalNumberBound[BoundEnd]--;
                 }
             } else { // CL binding
                 // The index now determines which pair of sites the CL is binding to
@@ -201,22 +212,30 @@ class EndedCrossLinkedNetwork {
                 if (eventindex == indexDoubleBind){
                     //std::cout << "Index " << eventindex << ", CL both ends bind at time " << systime << std::endl;
                     pairToBind = int(unif(rng)*nTruePairs);
-                    PlusOrMinusSingleBound=0;
                     TimeAwareHeapInsert(indexDoubleBind,RateDoubleBind,systime,tstep);
                 } else{
                     pairToBind = eventindex-1;
                     //std::cout << "Index " << eventindex << ", CL link " << linkIndex << " both ends bind at time " << systime << std::endl;
-                    PlusOrMinusSingleBound=-1;
                 }
                 BoundEnd = SortedLinks[2*pairToBind];
-                UnboundEnd = SortedLinks[2*pairToBind+1];
-                _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
-                _LinkTails[_nDoubleBoundLinks] = UnboundEnd;
-                for (int d=0; d < 3; d++){
-                    _LinkShiftsPrime[3*_nDoubleBoundLinks+d] = SortedShifts[3*pairToBind+d];
-                }
-                _nDoubleBoundLinks+=1;
-                linkChange = true;
+                UnboundEnd = SortedLinks[2*pairToBind+1]; 
+                // Link can only bind if the unbound end is available
+                if (_TotalNumberBound[UnboundEnd] < _MaxNumberPerSite){
+                    _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
+                    _LinkTails[_nDoubleBoundLinks] = UnboundEnd;
+                    if (eventindex == indexDoubleBind){
+                        _TotalNumberBound[UnboundEnd]++;
+                        _TotalNumberBound[BoundEnd]++;;
+                    } else { // unbound end picks up a link, bound end loses a free link
+                        _TotalNumberBound[UnboundEnd]++;
+                        _FreeLinkBound[BoundEnd]--; // one less free link bound
+                    }
+                    for (int d=0; d < 3; d++){
+                        _LinkShiftsPrime[3*_nDoubleBoundLinks+d] = SortedShifts[3*pairToBind+d];
+                    }
+                    _nDoubleBoundLinks+=1;
+                    linkChange = true;
+                } // otherwise nothing happens
             }   
             if (_nDoubleBoundLinks == _maxLinks){ // double size of link arrays if necessary
                 _maxLinks*=2;    
@@ -225,9 +244,6 @@ class EndedCrossLinkedNetwork {
                 _LinkShiftsPrime.resize(3*_maxLinks);
                 std::cout << "Expanding array size to " << _maxLinks << std::endl;
             }
-            // Recompute subset of rates and times
-            _FreeLinkBound[BoundEnd]+= PlusOrMinusSingleBound;
-            
             // Rates of CL binding change based on number of bound ends
             updateSecondBindingRate(BoundEnd, BaseSortedRates, startPair[BoundEnd], numLinksPerSite[BoundEnd], systime, tstep);
              
@@ -245,6 +261,23 @@ class EndedCrossLinkedNetwork {
             }
             topOfHeap(eventindex,systime);
             //std::cout << "[" << eventindex << " , " << systime << "]" << std::endl;
+            // Debugging check 
+            /*intvec TotNum2(_TotSites, 0);
+            for (int iSite = 0; iSite < _TotSites; iSite++){
+                TotNum2[iSite] = _FreeLinkBound[iSite];
+            }
+            for (int iLink = 0; iLink < _nDoubleBoundLinks; iLink++){
+                TotNum2[_LinkHeads[iLink]]++;
+                TotNum2[_LinkTails[iLink]]++;
+            }
+            for (int iSite = 0; iSite < _TotSites; iSite++){
+                if (TotNum2[iSite] != _TotalNumberBound[iSite]){
+                    std::cout << "COUNTING ER!" << std::endl;
+                }
+                if (_TotalNumberBound[iSite] > _MaxNumberPerSite){
+                    std::cout << "EXCEED MAX!" << std::endl;
+                }
+            }*/ 
         }
     }
     
@@ -334,11 +367,11 @@ class EndedCrossLinkedNetwork {
     }
                      
     private:
-        int _TotSites, _nDoubleBoundLinks, _maxLinks;
+        int _TotSites, _nDoubleBoundLinks, _maxLinks, _MaxNumberPerSite;
         double _kon, _konSecond, _koff, _koffSecond, _kDoubleOn, _kDoubleOff;// rates
         double _kT, _restlen, _KStiffness; // for distance-dependent binding
         double _upperCLBound, _lowerCLBound; // absolute distances
-        intvec _FreeLinkBound, _LinkHeads, _LinkTails;
+        intvec _FreeLinkBound, _LinkHeads, _LinkTails, _TotalNumberBound;
         DomainC _Dom;
         vec _LinkShiftsPrime;
         std::uniform_real_distribution<double> unif;
@@ -442,7 +475,7 @@ class EndedCrossLinkedNetwork {
 
 PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
     py::class_<EndedCrossLinkedNetwork>(m, "EndedCrossLinkedNetwork")
-        .def(py::init<int, vec, vec3, vec, double, double, double, double>())
+        .def(py::init<int, int, vec, vec3, vec, double, double, double, double>())
         .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
         .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails)

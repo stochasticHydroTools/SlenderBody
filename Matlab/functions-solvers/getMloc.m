@@ -1,5 +1,5 @@
 % Get the mobility matrix from Xs
-function M = getMloc(N,Xs,eps,L,mu,s0,delta)
+function [M,Ls] = getMloc(N,Xs,eps,L,mu,s0,delta)
     % Regularized version
     if (delta < 0.5)
         x = 2*s0/L-1;

@@ -6,8 +6,7 @@ if exist('nSpecies')
     Corder = jet(nColors);
 else
     nColors = max(newlabels);
-    Corder =  jet(nColors);%
-    Corder = [1 0 0; 0 0 1];
+    Corder =  colorcube(nColors);%
 end
 % Corder = get(gca, 'ColorOrder');
 % Plot the fibers
@@ -25,7 +24,7 @@ for iFib=plotfibs
     inds=(iFib-1)*3*N+1:3:iFib*3*N;
     fp=[Xt(inds) Xt(inds+1) Xt(inds+2)];
     if (newlabels(iFib)==-1)
-        line='-';
+        line=':';
         fibcolor='k';
         thk=0.5;
     else
@@ -51,7 +50,7 @@ for iFib=plotfibs
     [~,shifts] = calcShifted(fp,gn,Ld,Ld,Ld);
     [sx,sy,sz]=meshgrid(unique(shifts(:,1)),unique(shifts(:,2)),unique(shifts(:,3)));
     sx=sx(:); sy=sy(:); sz=sz(:);
-    sx = 0; sy=0; sz =0;
+%     sx = 0; sy=0; sz =0;
     for iS=1:length(sx)
         PlotLocs = [Xt(inds)-Ld*(sx(iS)+gn*sy(iS)) Xt(inds+1)-Ld*sy(iS) Xt(inds+2)-Ld*sz(iS)];
         PlotLocsPrime = ([1 -gn 0; 0 1 0; 0 0 1]*PlotLocs')'; 
@@ -63,6 +62,7 @@ for iFib=plotfibs
         line,'LineWidth',thk,'Color',fibcolor)
     end
 end
+%scatter3(X2mp(1),X2mp(2),X2mp(3),'x','MarkerEdgeColor',XColor,'LineWidth',2)
 % % Plot the cross linkers
 [nLinks,~]=size(links);
 if (nLinks > 0)
@@ -103,15 +103,15 @@ for iL=1:nLinks
         Lmatn = (cos((0:N-1).*th));
         % Calculate the force density on fiber 1
         s1star=links(iL,2);
-        th1 = acos(2*s1star/Lf(links(iL,1))-1)';
+        th1 = acos(2*s1star/Lf-1);%(links(iL,1))-1)';
         U1 = (cos((0:N-1).*th1));
         X1star = U1*(Lmatn \ X1);
         s2star=links(iL,4);
-        th2 = acos(2*s2star/Lf(links(iL,3))-1)';
+        th2 = acos(2*s2star/Lf-1);%(links(iL,3))-1)';
         U2 = (cos((0:N-1).*th2));
         X2star = U2*(Lmatn \ X2);
         Linkpts = [X1star;X2star];
-        plot3(Linkpts(:,1),Linkpts(:,2),Linkpts(:,3),'--k','LineWidth',0.1)
+        plot3(Linkpts(:,1),Linkpts(:,2),Linkpts(:,3),'-k','LineWidth',1)
 %     end
 end
 end
@@ -121,17 +121,16 @@ view(2)
 %view([12 40])
 %view([30 15])
 %view([60 30])
-xlim([-1 5])
-%ylim([-Ld/2 Ld/2])
-ylim([-2 2])
+xlim([-Ld/2 Ld/2])
+ylim([-Ld/2 Ld/2])
 zlim([-Ld/2 Ld/2])
-% xlim([-2 2])
-% ylim([-2 2])
-% zlim([-2 2])
+%xlim([-2 2])
+%ylim([-2 2])
+%zlim([-2 2])
 xlabel('$x$','interpreter','latex')
 ylabel('$y$','interpreter','latex')
 zlabel('$z$','interpreter','latex')
-pbaspect([6 4 1])
+pbaspect([1 1 1])
 %pbaspect([4 1 1])
 set(gca,'FontName','times New roman','FontSize',14)
 hold off
