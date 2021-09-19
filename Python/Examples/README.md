@@ -1,7 +1,11 @@
 # Examples 
 This folder contains the main python files to run the examples
-in the papers: [1] "An integral-based spectral method for inextensible slender fibers 
-in Stokes flow" [Arxiv link](https://arxiv.org/abs/2007.11728) and [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" [Bioarxiv link](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v1)
+in the papers: 
+* [1] "An integral-based spectral method for inextensible slender fibers in
+Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev, Jan. 2021.
+See [arxiv](https://arxiv.org/abs/2007.11728) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published version
+* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, submitted to PLOS Comp. Bio., June 2021. See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v1) for text
+* [3] "Interplay between Brownian motion and cross-linking kinetics controls bundling dynamics in actin networks" by O. Maxian, A. Donev, and A. Mogilner. submitted to Biophysical Journal, September 2021. See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v1) for text
 
 # Tests from [1]:
 1) ThreeShearedFibs.py corresponds to the 3 fibers being sheared in Section 5.1.2.
@@ -30,9 +34,9 @@ in the code that begins on [line 86 of StrainingCrossLinkedNetwork.py](https://g
 We also include an input file to [initialize the cross-linked network object.](https://github.com/stochasticHydroTools/SlenderBody/blob/4cf402e21404ad8b9589af1de5b652adfbb1f72e/Python/Examples/StrainingCrossLinkedNetwork.py#L101)
 This file, NetworkSteadyStates/F700C8400.txt, has a list of connections and periodic shifts at g=0 for the 8400 links. 
 
-# Tests from [2]:
-The results in [2] can be broadly grouped into three categories
-* Steady state networks with no shear. These tests can be run by executing the file FixedDynamicLinkNetwork.py, which takes an integer command line argument with a random seed. For example, "FixedDynamicLinkNetwork.py 1" runs the network evolution with the parameters listed in 'FixedNetworkInputFile.txt.' By specifying the OutputFileName, the simulation will output statistics prefaced by this name, and a set of dynamic steady state locations, fiber tangent vectors, and links that can be used to initialize the next set of two simulations. 
+# Simulations from [2] and [3]:
+The results in [2] and [3] can be broadly grouped into three categories
+* Steady state networks with no shear (this includes ALL simulations in [3]). These tests can be run by executing the file FixedDynamicLinkNetwork.py, which takes an integer command line argument with a random seed. For example, "FixedDynamicLinkNetwork.py 1" runs the network evolution with the parameters listed in 'FixedNetworkInputFile.txt.' By specifying the OutputFileName, the simulation will output statistics prefaced by this name, and a set of dynamic steady state locations, fiber tangent vectors, and links that can be used to initialize the next set of two simulations.
 * Stress relaxation tests, where a shear is applied for one quarter of a period and then the network relaxes. These tests can be run by executing  "MeasureG0.py," which takes three command line arguments: the seed, frequency of strain, and maximum strain. So for instance, "MeasureG0.py 1 2 0.1" would shear the cell to a 10\% strain with frequency 2 Hz, using a random seed of 1. The parameters are set in the file "StrainInputFile.txt." The name inFile (on line 38 of the input file) should match the OutputFileName of the steady state network generated above. 
 * Measuring elastic and viscous moduli. Here we use the file "StrainDynamicNetwork.py," with the same three command line arguments and input file as for the stress relaxation tests. 
 
