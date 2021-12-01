@@ -273,11 +273,13 @@ class EndedCrossLinkedNetwork {
             for (int iSite = 0; iSite < _TotSites; iSite++){
                 if (TotNum2[iSite] != _TotalNumberBound[iSite]){
                     std::cout << "COUNTING ER!" << std::endl;
+                    std::cout << "Tot number bound at site " << iSite << " = " << _TotalNumberBound[iSite] << std::endl;
+                    std::cout << "Compared to " << iSite << " = " << TotNum2[iSite] << std::endl;
                 }
                 if (_TotalNumberBound[iSite] > _MaxNumberPerSite){
                     std::cout << "EXCEED MAX!" << std::endl;
                 }
-            }*/ 
+            }*/
         }
     }
     
@@ -289,6 +291,8 @@ class EndedCrossLinkedNetwork {
             // Unbind it (remove from lists)
             for (int iSite = 0; iSite < SitesToDelete.size(); iSite++){
                 if (_LinkHeads[iLink]==SitesToDelete[iSite] || _LinkTails[iLink]==SitesToDelete[iSite]){
+                    _TotalNumberBound[_LinkHeads[iLink]]--;
+                    _TotalNumberBound[_LinkTails[iLink]]--;
                     deleteLink(iLink);
                     break; // out of loop over sites
                 }
@@ -297,6 +301,7 @@ class EndedCrossLinkedNetwork {
         // Remove singly bound links as well
         for (int iSite = 0; iSite < SitesToDelete.size(); iSite++){
             _FreeLinkBound[SitesToDelete[iSite]]=0;
+            _TotalNumberBound[SitesToDelete[iSite]] = 0;
         }
     }
             

@@ -1,6 +1,6 @@
-function [K,Kt]=getKMats3D(Xts,chebyshevmat,w0,N,Kttype,rigid)
+function [K,Kt,nPolys]=getKMats3D(Xts,chebyshevmat,w0,N,I,wIt,Kttype,rigid)
     [s,~,b]=chebpts(N,[0 sum(w0)],1);
-    [su,wu,bu]=chebpts(2*N,[0 sum(w0)],1);
+    [su,wu,bu]=chebpts(2*N,[0 sum(w0)],2);
     Rup = barymat(su,s,b);
     Rdwn = barymat(s,su,bu);
     
@@ -9,7 +9,7 @@ function [K,Kt]=getKMats3D(Xts,chebyshevmat,w0,N,Kttype,rigid)
     n1s=[-sin(theta) cos(theta) 0*theta];
     n2s=[-cos(theta).*sin(phi) -sin(theta).*sin(phi) cos(phi)];
 
-    Dinvup = pinv(diffmat(2*N,1,[0 sum(w0)],'chebkind1'));
+    Dinvup = pinv(diffmat(2*N,1,[0 sum(w0)],'chebkind2'));
     IndefInts11 = Dinvup*((n1s(:,1)).*(Rup*chebyshevmat(:,1:N-1)));
     IndefInts12 = Dinvup*((n1s(:,2)).*(Rup*chebyshevmat(:,1:N-1)));
     IndefInts13 = Dinvup*((n1s(:,3)).*(Rup*chebyshevmat(:,1:N-1)));
@@ -18,12 +18,12 @@ function [K,Kt]=getKMats3D(Xts,chebyshevmat,w0,N,Kttype,rigid)
     IndefInts23 = Dinvup*((n2s(:,3)).*(Rup*chebyshevmat(:,1:N-1)));
     
     % To fix the constant to zero by finding value at s = 0 and setting to 0
-%     IndefInts11 = IndefInts11-IndefInts11(1,:);
-%     IndefInts12 = IndefInts12-IndefInts12(1,:);
-%     IndefInts13 = IndefInts13-IndefInts13(1,:);
-%     IndefInts21 = IndefInts21-IndefInts21(1,:);
-%     IndefInts22 = IndefInts22-IndefInts22(1,:);
-%     IndefInts23 = IndefInts23-IndefInts23(1,:);
+    IndefInts11 = IndefInts11-IndefInts11(1,:);
+    IndefInts12 = IndefInts12-IndefInts12(1,:);
+    IndefInts13 = IndefInts13-IndefInts13(1,:);
+    IndefInts21 = IndefInts21-IndefInts21(1,:);
+    IndefInts22 = IndefInts22-IndefInts22(1,:);
+    IndefInts23 = IndefInts23-IndefInts23(1,:);
 %     
     if (rigid)
         nPolys = 1;
@@ -55,4 +55,5 @@ function [K,Kt]=getKMats3D(Xts,chebyshevmat,w0,N,Kttype,rigid)
     %K = R*J;
     %disp('Downsampled K')
     K = (U'*W*U) \ (U'*W*J);
+    K = [K I];   Kt = [Kt; wIt];
 end

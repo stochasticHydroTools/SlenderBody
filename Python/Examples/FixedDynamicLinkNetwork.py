@@ -95,6 +95,9 @@ TIntegrator.setLargeTol(LargeTol);
 of = prepareOutFile('BundlingBehavior/Locs'+OutputFileName);
 allFibers.writeFiberLocations(of);
 saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='w')
+ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+OutputFileName);
+CLNet.writeLinks(ofCL)
+ofCL.close()
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -135,6 +138,9 @@ for iT in range(stopcount):
         saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
+        ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+OutputFileName);
+        CLNet.writeLinks(ofCL)
+        ofCL.close()
                
         # Bundles where connections are 2 links separated by 2*restlen
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);

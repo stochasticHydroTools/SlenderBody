@@ -1,5 +1,5 @@
 % Inextensible update by rotating tangent vectors and integrating
-function [Xnp1,Xsp1] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU,solver)
+function [Xnp1,Xsp1,Omega] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU,solver)
     % Resampling matrices
     th=flipud(((2*(0:N-1)+1)*pi/(2*N))');
     Lmat = (cos((0:N-1).*th));

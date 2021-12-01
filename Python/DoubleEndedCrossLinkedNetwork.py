@@ -147,13 +147,14 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         for iFib in fibNums:
             print('Deleting all links from fiber %d' %iFib)
             sites = self.sitesPerFib(iFib)
-            pyFB[sites]=0;
-            for site in sites:
-                inds = np.where(np.logical_or(pyHeads==site,pyTails==site))[0];
-                pyHeads = np.delete(pyHeads,inds);
-                pyTails = np.delete(pyTails,inds);
-                pyShifts = np.delete(pyShifts,inds,axis=0);
             self._cppNet.deleteLinksFromSites(sites);
+            if (False):
+                pyFB[sites]=0;
+                for site in sites:
+                    inds = np.where(np.logical_or(pyHeads==site,pyTails==site))[0];
+                    pyHeads = np.delete(pyHeads,inds);
+                    pyTails = np.delete(pyTails,inds);
+                    pyShifts = np.delete(pyShifts,inds,axis=0);
         self.syncPythonAndCpp();
         #print('In C++ / python check for number of links %d' %self._nDoubleBoundLinks)
         #print(np.amax(np.abs(pyFB-self._FreeLinkBound)))
