@@ -4,17 +4,27 @@ Slender-body hydrodynamics
 This repository contains the Python/C++ codes for the publications:
 * [1] "An integral-based spectral method for inextensible slender fibers in
 Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev, Jan. 2021.
-See [arxiv](https://arxiv.org/abs/2007.11728) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published
-version
-* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, submitted to PLOS Comp. Bio., June 2021. See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v1) for text
-* [3] "Interplay between Brownian motion and cross-linking kinetics controls bundling dynamics in actin networks" by O. Maxian, A. Donev, and A. Mogilner. submitted to Biophysical Journal, September 2021. See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v1) for text
+See [arxiv](https://arxiv.org/abs/2007.11728) for text and 
+[Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published
+version.
+* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions," 
+by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, Dec. 2021. 
+See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v3) for text and 
+[PLoS Comp. Bio](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009240)
+for published version.
+* [3] "Interplay between Brownian motion and cross-linking kinetics controls bundling dynamics in actin networks," 
+by O. Maxian, A. Donev, and A. Mogilner. Submitted to Biophysical Journal, September 2021. 
+See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v2) for text.
+* [4] "The hydrodynamics of a twisting, bending, inextensible fiber in Stokes flow," 
+by O. Maxian, B. Sprinkle, C.S. Peskin, and A. Donev. Submitted to Phys. Rev. Fluids, Jan. 2022. 
+See [arxiv](https://arxiv.org/abs/2201.04187) for text. 
 
 Organization is as follows:
 * Python: directory with python codes
 * Python/cppmodules: directory with C++ modules linked to python using pybind11 (compile with included makefile)
 * Python/Examples: python scripts to reproduce the tests and examples in the paper. See the README there for more information. 
 * Python/ModifiedFiles: contains files that replace the corresponding ones in the external libraries. See the README there for more information. 
-* Matlab: directory with matlab codes (these are only partially documented)
+* Matlab: directory with matlab codes. These are the only codes used in [4]. 
 
 # External dependencies:
 * [FINUFFT](https://github.com/flatironinstitute/finufft)
