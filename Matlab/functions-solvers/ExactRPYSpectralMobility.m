@@ -1,3 +1,13 @@
+% RPY trans-trans mobility matrix
+% There are 5 parts:
+% 1-2) The local drag matrices for the Stokeslet and doublet
+% 3-4) The matrices for the remaining integral terms in the Stokeslet and
+% doublet (called "finite part matrices" in the code)
+% 5) The matrix for R < 2a, for which there are 3 options depending on the
+% input NForSmall. If NForSmall > 0, it will use NForSmall/2 Gauss-Leg
+% nodes on (s-2a,s) and (s,s+2a). If NForSmall=-1, it will assume a straight
+% segement from (-2a,2a), and if NForSmall=0 it will us the asymptotic
+% representation of the integral from -2a to 2a
 function Mtt = ExactRPYSpectralMobility(N,X,Xs,Xss,Xsss,a,L,mu,s,b,D,AllbS,AllbD,NForSmall)
     Loc_Slt = getMlocStokeslet(N,Xs,a,L,mu,s,0);
     Loc_Dblt = getMlocDoublet(N,Xs,Xss,Xsss,stackMatrix(D),a,L,mu,s,0,0);

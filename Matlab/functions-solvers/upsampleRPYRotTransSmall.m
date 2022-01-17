@@ -1,3 +1,6 @@
+% Compute the integrals on |s-s'| < 2a for the rot-trans (scalar rotational
+% velocity Omega from force f). % It uses Nsm/2 Gauss-Legendre points on the 
+% two different sides of s. 
 function Om = upsampleRPYRotTransSmall(X0,X_s,f0,s0,b0,Nsm,L,a,mu)
     % Collocation pts
     N = length(s0);

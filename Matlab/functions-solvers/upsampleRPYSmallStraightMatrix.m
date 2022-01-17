@@ -1,3 +1,8 @@
+% Compute the integrals on |s-s'| < 2a for the trans-trans matrix Mtt. 
+% It uses Nup/2 Gauss-Legendre points on the two different sides of s. It
+% ALSO ASSUMES THAT THE FIBER IS STRAIGHT. We played around with this as a
+% way to reduce the cost of those integrals, but ended up deciding against
+% it. 
 function Matrix = upsampleRPYSmallStraightMatrix(starg,s0,b0,Xs,Nup,L,a)
     % Collocation pts
     N =length(starg);

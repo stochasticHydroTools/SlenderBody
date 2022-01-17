@@ -1,3 +1,5 @@
+% The local drag (or leading order singular) expansion for the Rotlet term,
+% given in Appendix A of the paper. 
 function MRT = getMlocRotlet(N,Xs,Xss,a,L,mu,s0,delta)
     MRT = zeros(N,3*N);
     for iPt=1:N

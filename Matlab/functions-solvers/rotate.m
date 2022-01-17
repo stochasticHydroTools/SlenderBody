@@ -1,3 +1,4 @@
+% Rodriguez rotation formula
 function rotated_x=rotate(x,Omega)
     nOm = norm(Omega);
     Omhat = Omega/norm(Omega);

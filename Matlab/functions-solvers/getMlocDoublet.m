@@ -1,3 +1,6 @@
+% The local drag matrix for the doublet term. These formulas are given in
+% Appendix A of the paper. The input extraterms is when we want to carry the asymptotic
+% expansion to the next order, and is not used. 
 function MTT = getMlocDoublet(N,Xs,Xss,Xsss,Ds,a,L,mu,s0,delta,extraterms)
     %s = RegularizeS(s0,delta,L);
     s = s0;

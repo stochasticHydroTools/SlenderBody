@@ -1,6 +1,6 @@
 % This function uses the method of Tornberg / Barnett / Klingenberg to
 % evaluate the finite part integral to spectral accuracy using the monomial
-% basis. 
+% basis. This is the velocity from scalar torque.
 function Oonevel = UFromNFPIntegral(X,Xs,Xss,Xsss,s0,N,L,n,nprime,Allbs,mu)
     Oonevel = zeros(N,3);
     for iPt=1:N

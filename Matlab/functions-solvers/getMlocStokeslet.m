@@ -1,3 +1,6 @@
+% The local drag matrix for the Stokeslet term. These formulas are given in
+% Appendix A of the paper. The input delta is for the regularization of the
+% local drag term (i.e., to use SBT). 
 function MTT = getMlocStokeslet(N,Xs,a,L,mu,s0,delta)
     s = RegularizeS(s0,delta,L);
     MTT = zeros(3*N); 

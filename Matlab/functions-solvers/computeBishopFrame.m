@@ -1,3 +1,8 @@
+% Function to compute the Bishop frame by solving the ODE
+% da/ds = (tau cross tau_s) cross a
+% a(L/2) = D1mid
+% Returns the bishop frame (a,b) and material frame (D1,D2). The other axis
+% is Xs in both cases.
 function [bishA,bishB,D1,D2] = computeBishopFrame(N,Xs,Xss,s,b,L,theta,D1mid)
     eyeC = zeros(3*N,3);
     for iC=1:N
@@ -12,7 +17,7 @@ function [bishA,bishB,D1,D2] = computeBishopFrame(N,Xs,Xss,s,b,L,theta,D1mid)
     RHS2 = [zeros(3*N,1); D1mid];
     a2=Matrix2\RHS2;
     allas = reshape(a2(1:3*N),3,N)';
-    bishA = allas;% ./sqrt(sum(allas.*allas,2));
+    bishA = allas;% ./sqrt(sum(allas.*allas,2)); DON'T NORMALIZE
     bishB = cross(Xs,bishA);
     % Material frame from Bishop frame
     D1 = bishA.*cos(theta)+bishB.*sin(theta);

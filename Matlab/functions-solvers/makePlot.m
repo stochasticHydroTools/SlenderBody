@@ -7,9 +7,9 @@ if exist('nSpecies')
 else
     nColors = max(newlabels);
     Corder =  jet(nColors);%
-    Corder = [0    0.4470    0.7410;
-    0.8500    0.3250    0.0980;
-    0.9290    0.6940    0.1250];
+%     Corder = [0    0.4470    0.7410;
+%     0.8500    0.3250    0.0980;
+%     0.9290    0.6940    0.1250];
 end
 % Corder = get(gca, 'ColorOrder');
 % Plot the fibers
@@ -25,6 +25,7 @@ for iFib=plotfibs
 %         plotlinks = [plotlinks; find(links(:,1)==iFib); find(links(:,3)==iFib)];
 %     end
     inds=(iFib-1)*3*N+1:3:iFib*3*N;
+    scinds = (iFib-1)*N+1:iFib*N;
     fp=[Xt(inds) Xt(inds+1) Xt(inds+2)];
     if (newlabels(iFib)==-1)
         line=':';
@@ -49,7 +50,7 @@ for iFib=plotfibs
     end
 %      fibcolor = Corder(mod(iFib,7)+(mod(iFib,7)==0)*7,:);
 %      line='-';
-    scatter3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3), 12,Rpl*theta_s,'filled')
+    scatter3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3), 12,Rpl*theta_s(scinds),'filled')
 %     plot3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3))
     caxis([-2*pi 2*pi])
     hold on
@@ -127,7 +128,8 @@ end
 end
 str=sprintf('$t=$ %1.4f s', t);
 title(str,'Interpreter','latex')
-view(2)
+view([-0.2682   49.0867])
+%view(2)
 %view([12 40])
 %view([30 15])
 %view([60 30])
@@ -138,11 +140,11 @@ view(2)
 % view([-46.9081   30.2241])
 xlim([-L/2 L/2])
 ylim([-L/2 L])
-% zlim([0 2])
+zlim([-L/2 L/2])
 % pbaspect([0.6 0.6 2])
 % xlim([-L L])
 % ylim([-L L])
-pbaspect([1 1.5 2])
+pbaspect([1 1.5 1])
 xlabel('$x$','interpreter','latex')
 ylabel('$y$','interpreter','latex')
 zlabel('$z$','interpreter','latex')

@@ -1,3 +1,9 @@
+% Precomputes the integrals
+% int_D (eta'-eta)/abs(eta'-eta)*T_k(eta') deta'
+% involved in the nearly singular quadratures for the Stokeslet.
+% See Appendix F of the paper. 
+% chebpoly = 0 for monomials (analytical solution exists), chebpoly=1 for
+% Chebyshev polynomials
 function Allbs = precomputeStokesletInts(s0,L,a,N,chebpoly)
     k=0:N-1;
     sscale=-1+2*s0/L;
@@ -14,7 +20,7 @@ function Allbs = precomputeStokesletInts(s0,L,a,N,chebpoly)
         for kk=k
             if (chebpoly)
                 if (etaLow > -1)
-                    [n,w]=chebpts(100,[-1 etaLow],1);
+                    [n,w]=chebpts(200,[-1 etaLow],1);
                     poly = n.^kk;
                     if (chebpoly)
                         poly = cos(kk*acos(n));
@@ -22,7 +28,7 @@ function Allbs = precomputeStokesletInts(s0,L,a,N,chebpoly)
                     q(kk+1)=w*((n-eta)./abs(n-eta).*poly);
                 end
                 if (etaHi < 1)
-                    [n,w]=chebpts(100,[etaHi 1],1);
+                    [n,w]=chebpts(200,[etaHi 1],1);
                     poly = n.^kk;
                     if (chebpoly)
                         poly = cos(kk*acos(n));

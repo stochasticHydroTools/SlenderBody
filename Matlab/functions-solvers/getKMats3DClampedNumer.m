@@ -1,3 +1,4 @@
+% Function to compute the matrix K in the case of a CLAMPED end. 
 function [K,Kt,nPolys]=getKMats3DClampedNumer(Xts,chebyshevmat,w0,N,I,wIt,Kttype,clamped)
     L = sum(w0);
     [s,~,b]=chebpts(N,[0 L],1);

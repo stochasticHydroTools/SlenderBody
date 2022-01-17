@@ -1,6 +1,7 @@
 % This function uses the method of Tornberg / Barnett / Klingenberg to
 % evaluate the finite part integral to spectral accuracy using the monomial
 % basis. 
+% This is the integral that gives Omega from the force
 function Oonevel = OmFromFFPIntegral(X,Xs,Xss,Xsss,s0,N,L,f,fprime,Allbs,mu)
     Oonevel = zeros(N,1);
     for iPt=1:N

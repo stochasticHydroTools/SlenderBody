@@ -1,3 +1,10 @@
+% Grand LOCAL DRAG ,obility matrix for the asymptotic evaluations of the RPY 
+% integrals. Given regularization delta (delta=0 is unregularized), it
+% computes the local drag contributions Mtt (trans-trans), Mtr
+% (trans-rot), Mrt (rot-trans), and Mrr (rot-rot). 
+% Here Mtr is a 3N x N matrix which gives a 3D velocity at the N nodes from
+% a SCALAR parallel torque density. Likewise Mrt is an N x 3N matrix which
+% gives the scalar parallel rotation rate from the N 3D forces
 function [MTT, MTR, MRT, MRR,sNew] = getGrandMloc(N,Xs,Xss,a,L,mu,s0,delta)
     sNew = RegularizeS(s0,delta,L);
     cs = log(sNew.*(L-sNew)./(4*a.^2)); 

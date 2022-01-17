@@ -1,3 +1,7 @@
+% Function to compute a regularized coordinate sbar from the fiber
+% coordinates s over regularized length delta*L. 
+% See Section 2.1 of Maxian et al. https://arxiv.org/pdf/2007.11728.pdf
+% for details
 function [sNew,regwt] = RegularizeS(s0,delta,L)
     sNew = s0;
     regwt = ones(length(s0),1);

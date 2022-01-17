@@ -1,38 +1,61 @@
 % Compute the action of the non-local mobility matrix. Inputs:
-% nFib = number of fibers, N = number of points per fiber, s0 = node 
-% positions (as a function of arclength) on each fiber, w = quadrature
-% weights on each fiber, Lf = length of the fiber, f = force densities on 
+% nFib = number of fibers, N = number of points per fiber, s = node 
+% positions (as a function of arclength) on each fiber, b = barycentric weights
+% Lf = length of the fiber, f = force densities on 
 % the fibers, X = locations of the fibers, Xs = tangent vectors. 
 % f, X , and Xs are n*nFib x 3 arrays. D is the differentiation matrix.
-% xi = Ewald parameter, L = periodic domain length, g = strain on the
+% splittingparam = Ewald parameter, Ld = periodic domain length, strain = strain on the
 % domain (how slanted it is). 
-function nLvel = MNonLocalPeriodic(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu,xi,Lx,Ly,Lz,g,delta)
-    global doSpecialQuad doFP;
-    % First compute the self velocity for each fiber
-    localvel=zeros(N*nFib,3);
+% NupsampleforNL = number of points to directly upsample the quadratures
+% (this code only supports Ewald with direct upsampling)
+% includeFPonRHS = whether to include the finite part integral in this
+% velocity
+function nLvel = MNonLocalPeriodic(nFib,N,s,b,L,f,X,Xs,Xss,a,D,mu,includeFPonRHS,Allb,NupsampleforNL,...
+    splittingparam,Ld,strain)
+    % First compute the non-local velocity from the fiber onto itself
     FPintvel = zeros(N*nFib,3);
-    for iFib=1:nFib
-        inds=(iFib-1)*N+1:iFib*N;
-        [Local,Oone] = calcSelf(N,s0,Lf,epsilon,X(inds,:),Xs(inds,:),f(:,inds),D,delta);
-        localvel(inds,:)= 1/(8*pi*mu)*Local;
-        FPintvel(inds,:) = 1/(8*pi*mu)*Oone;
+    % Compute the local velocity
+    if (includeFPonRHS)
+        for iFib=1:nFib
+            scinds = (iFib-1)*N+1:N*iFib;
+            MFP = StokesletFinitePartMatrix(X(scinds,:),Xs(scinds,:),Xss(scinds,:),D,s,L,N,mu,Allb);
+            FPintvel(scinds,:) = reshape(MFP*reshape(f(scinds,:)',3*N,1),3,N)';
+        end
     end
 
     % Ewald splitting 
-    aRPY=exp(1.5)/4*epsilon*Lf;
-    fwquad = f.*repmat(w,1,nFib);
+    % Upsampling matrix
+    [sup,wup,bup] = chebpts(NupsampleforNL, [0 L],1);
+    Rupsample = barymat(sup,s,b);
+    Xup = zeros(NupsampleforNL,3);
+    fup = zeros(NupsampleforNL,3);
+    for iFib=1:nFib
+        upinds = (iFib-1)*NupsampleforNL+1:iFib*NupsampleforNL;
+        inds = (iFib-1)*N+1:iFib*N;
+        Xup(upinds,:)=Rupsample*X(inds,:);
+        fup(upinds,:)=Rupsample*f(inds,:);
+    end
+    fwquad = fup.*(repmat(wup,1,nFib))';
     % Compute the far field and near field
-    farvel = EwaldFarVel(X,fwquad',mu,Lx,Ly,Lz,xi,aRPY,g)';
-    nearvel = EwaldNearSum(N*nFib,X,fwquad',xi,Lx,Ly,Lz,aRPY,mu,g)';
+    farvel = EwaldFarVel(Xup,fwquad,mu,Ld,Ld,Ld,splittingparam,a,strain);
+    nearvel = EwaldNearSum(NupsampleforNL*nFib,Xup,fwquad,splittingparam,Ld,Ld,Ld,a,mu,strain);
     % Subtract the self term
     RPYvel = farvel+nearvel;
     for iFib=1:nFib
-        inds=(iFib-1)*N+1:iFib*N;
-        totEwaldi = EwaldTotSum(N,X(inds,:),(f(:,inds).*w)',aRPY,mu)';
-        RPYvel(inds,:)=RPYvel(inds,:)-totEwaldi;
+        upinds = (iFib-1)*NupsampleforNL+1:iFib*NupsampleforNL;
+        totEwaldi = EwaldTotSum(NupsampleforNL,Xup(upinds,:),fup(upinds,:).*wup',a,mu);
+        RPYvel(upinds,:)=RPYvel(upinds,:)-totEwaldi;
     end
-    % Corrections for close fibers
-    if (doSpecialQuad)
+    % Downsample it
+    othervel = zeros(nFib*N,3);
+    Rdownsample = barymat(s,sup,bup);
+    for iFib=1:nFib
+        upinds = (iFib-1)*NupsampleforNL+1:iFib*NupsampleforNL;
+        inds = (iFib-1)*N+1:iFib*N;
+        othervel(inds,:)=Rdownsample*RPYvel(upinds,:);
+    end
+    % Corrections for close fibers - not using right now
+    if (false)
         for iFib=1:nFib
             for ipt=1:N
                 iPt = N*(iFib-1)+ipt;
@@ -55,10 +78,6 @@ function nLvel = MNonLocalPeriodic(nFib,N,s0,w,Lf,epsilon,f,X,Xs,D,mu,xi,Lx,Ly,L
             end
         end
     end
-%     % Finally the total velocity
-    if (doFP)
-        nLvel = FPintvel+RPYvel;
-    else
-        nLvel = RPYvel;
-    end
+    % Finally the total velocity
+    nLvel = FPintvel+othervel;
 end

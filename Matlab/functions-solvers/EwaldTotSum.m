@@ -1,4 +1,5 @@
-% Sum total RPY kernel
+% Sum total RPY kernel in free space. Used for subtracting out the self
+% contribution to the total velocity obtained from Ewald splitting. 
 function velTot = EwaldTotSum(Npts,pts,forces,a,mu)
     velTot=zeros(3,Npts);
     for iPt=1:Npts
@@ -12,4 +13,5 @@ function velTot = EwaldTotSum(Npts,pts,forces,a,mu)
             velTot(:,jPt)=velTot(:,jPt)+Mother*(forces(iPt,:)');
         end
     end
+    velTot = velTot';
 end

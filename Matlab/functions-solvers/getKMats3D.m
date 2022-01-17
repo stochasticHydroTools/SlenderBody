@@ -1,3 +1,4 @@
+% Function to compute the matrix K. 
 function [K,Kt,nPolys]=getKMats3D(Xts,chebyshevmat,w0,N,I,wIt,Kttype,rigid)
     [s,~,b]=chebpts(N,[0 sum(w0)],1);
     [su,wu,bu]=chebpts(2*N,[0 sum(w0)],2);

@@ -1,6 +1,9 @@
+ % 3N x 3N Matrix for the remaining doublet contribution to the RPY
+% trans-trans mobility. Specifically, the integral of the doublet is
+% written as int_D = M_doub,loc + M_doub, nonloc
+% This is the nonlocal part of that matrix. It uses the precomputed
+% integrals "Allbs" that are precomputed in precomputeDoubletInts.m
 function FPMat = DoubletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,Allbs)
-    % 3N x 3N Matrix for the finite part integral M_FP*f, formed explicitly
-    % See python for documentation
     FPMatrix = Allbs';
     ActualFPMat = zeros(3*N);
     DfPart = zeros(3*N);

@@ -11,7 +11,7 @@ function velfar = EwaldFarVel(pts,forces,mu,Lx,Ly,Lz,xi,a,g)
     xE=(0:nx-1)*hx;
     yE=(0:ny-1)*hy;
     zE=(0:nz-1)*hz;
-    sup=nx; % Support of the Gaussian, 12 for 3 digits as Ewald changes
+    sup=min(20,nx); % Support of the Gaussian, 12 for 3 digits as Ewald changes
     kvx=[0:nx/2-1 -nx/2:-1]*2*pi/Lx;
     kvy=[0:ny/2-1 -ny/2:-1]*2*pi/Ly;
     kvz=[0:nz/2-1 -nz/2:-1]*2*pi/Lz;
@@ -56,5 +56,5 @@ function velfar = EwaldFarVel(pts,forces,mu,Lx,Ly,Lz,xi,a,g)
     uxpts=interpolate(hx*hy*hz*S,ux,nx,ny,nz);
     uypts=interpolate(hx*hy*hz*S,uy,nx,ny,nz);
     uzpts=interpolate(hx*hy*hz*S,uz,nx,ny,nz);
-    velfar=[uxpts'; uypts'; uzpts'];
+    velfar=[uxpts uypts uzpts];
 end

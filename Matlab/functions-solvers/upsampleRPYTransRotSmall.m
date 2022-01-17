@@ -1,3 +1,6 @@
+% Compute the integrals on |s-s'| < 2a for the trans-rot (velocity from scalar torque
+% n0. It uses Nsm/2 Gauss-Legendre points on the 
+% two different sides of s. 
 function U = upsampleRPYTransRotSmall(X0,X_s,n0,s0,b0,Nsm,L,a,mu)
     % Collocation pts
     N = length(s0);
