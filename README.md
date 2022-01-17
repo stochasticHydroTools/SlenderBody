@@ -1,7 +1,7 @@
 # SlenderBody
 Slender-body hydrodynamics
 
-This repository contains the Python/C++ codes for the publications:
+This repository contains the Python/C++ and Matlab codes for the publications:
 * [1] "An integral-based spectral method for inextensible slender fibers in
 Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev, Jan. 2021.
 See [arxiv](https://arxiv.org/abs/2007.11728) for text and 
