@@ -2,7 +2,8 @@
 % elasticity 
 % This Section 5.2 in the paper Maxian et al. "The hydrodynamics of a
 % twisting, bending, inextensible filament in Stokes flow"
-%close all;
+close all;
+addpath('../functions-solvers')
 newlabels = 1;
 Periodic=0;     % Is domain periodic or free space?
 flowtype = 'S'; % S for shear, Q for quadratic, not relevant here
@@ -21,9 +22,9 @@ bottomwall = 0;     % Whether there is a bottom wall that influences the hydrody
 interFiberHydro = 0;  % Inter-fiber hydrodynamics; irrelevant for a single fiber
 includeFPonRHS = 0;   % For SBT calculations, whether to include the finite part integral on the RHS (explicit)
 includeFPonLHS = 0;   % For SBT calculations, whether to include the finite part integral on the LHS (implicit)
-twmod =0;       % Twist modulus
+twmod =1;       % Twist modulus
 deltaLocal = 0; % part of the fiber to make ellipsoidal/taper the radius function ove
-makeMovie = 0;  
+makeMovie = 1;  
 nFib=1;
 nCL = 0;
 N = 40;         % Number of Chebyshev collocation points
@@ -93,7 +94,7 @@ for count=0:stopcount-1
     end
     U0 = zeros(3*N,1);
     lambdaprev = lambdas;
-    TemporalIntegrator_Blur;
+    TemporalIntegrator;
     Xtm1=Xt;
     Xstm1=Xst;
     Xt = Xp1;

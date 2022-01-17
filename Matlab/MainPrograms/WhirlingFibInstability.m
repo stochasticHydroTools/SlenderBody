@@ -5,6 +5,7 @@
 % The variables below are documented in SBTRelaxingFib.m. Here I just
 % clarify the ones that are new/different. 
 %close all;
+addpath('../functions-solvers')
 newlabels = 1;
 Periodic=0; 
 flowtype = 'S'; % S for shear, Q for quadratic, not relevant here
@@ -29,8 +30,8 @@ period = 2*pi/xic;
 omegafac = 0.8;
 TurnFreq = omegafac*wcrit;
 smperiod = 2*pi/TurnFreq;
-deltaLocal = 1; % part of the fiber to make ellipsoidal
-makeMovie = 0;
+deltaLocal = 0; % part of the fiber to make ellipsoidal
+makeMovie = 1;
 nFib=1;
 nCL = 0;%nFib*(nFib-1)/2;
 N = 40;
@@ -75,7 +76,7 @@ if (twmod==0)
 end
 theta0 = pinv(D)*theta_s;
 theta0 = theta0-barymat(L/2,s,b)*theta0;
-deflect = 0.1;
+deflect = 0.01;
 %X_s = [deflect*cos(s.* (s-L).^3) deflect*sin(s.*(s - L).^3) ones(N,1) ]/sqrt(1+deflect^2);
 X_s = [deflect*cos(s.* (s-L).^3) ones(N,1) deflect*sin(s.*(s - L).^3) ]/sqrt(1+deflect^2);
 % Apply rotation matrix
