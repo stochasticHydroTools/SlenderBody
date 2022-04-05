@@ -2,7 +2,7 @@
 % % % with Johnson
 % % % Discretization on centerline
 BI=1;
-SBT=1;
+SBT=0;
 trans=1;
 rot=0;
 nTurns=0.5;
@@ -10,20 +10,17 @@ if (BI)
 index=1;
 L = 2;
 a = 40e-3;
-Ns = [5 10 20];
+Ns = [10 20 40 80];
 for N=Ns
 mu = 1;
-[s,w,b]=chebpts(N,[-1 1],1);
+ds = L/N;
+s = (0.5:N)'*ds-1;
 Nc = 500;
-[sc,wc,bc]=chebpts(Nc,[-1 1],1);
-Rcompare = barymat(sc,s,b);
-D=diffmat(N,[0 L],'chebkind1');
 [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,nTurns);
 radius = a*sqrt(1-s.^2);
 % Choose number of theta pts so that spacing on cross section = centerline
 CLdist = 2*pi*radius;
-avgds = L/N;
-Ntheta = max(ceil(CLdist/avgds),2);
+Ntheta = max(ceil(CLdist/ds),2);
 ThetaStart = [1;1+cumsum(Ntheta(1:end-1))];
 dtheta = 2*pi./Ntheta;
 rho = radius/a;
@@ -91,11 +88,11 @@ for iN=1:N
                 nRe = norm(Re);
                 if (nR > 1e-12)
                     M(3*iindex-2:3*iindex,3*jindex-2:3*jindex) = 1/(8*pi*mu)*(eye(3)/nR+R'*R/nR^3)...
-                        *w(jN)*dtheta(jN);
+                        *ds*dtheta(jN);
                 end
                 if (nRe > 1e-12)
                     M(3*iindex-2:3*iindex,3*iindex-2:3*iindex) = M(3*iindex-2:3*iindex,3*iindex-2:3*iindex)...
-                        -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*w(jN)*dtheta(jN);
+                        -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*ds*dtheta(jN);
                 end
             end
         end
@@ -117,20 +114,20 @@ for iN=1:N
 end
 navg_par = sum(navg.*Xs,2);
 nperp=navg-navg_par.*Xs;
-sBI = s;
-wBI = w;
-XBI=X;
-FToCompare{index}=Rcompare*favg;
-NToCompare{index}=Rcompare*navg_par;
+FToCompare{index}=favg;
+NToCompare{index}=navg_par;
+sv{index}=s;
 index=index+1;
 end
 FErrors=zeros(index-2,1);
 NErrors=zeros(index-2,1);
 for iEr=1:index-2
-    FErrorVec = FToCompare{iEr}-FToCompare{iEr+1};
-    FErrors(iEr) = sqrt(wc*sum(FErrorVec.*FErrorVec,2));
-    NErrorVec = NToCompare{iEr}-NToCompare{iEr+1};
-    NErrors(iEr) = sqrt(wc*(NErrorVec.*NErrorVec));
+    Refined = 1/2*(FToCompare{iEr+1}(1:2:end,:)+FToCompare{iEr+1}(2:2:end,:));
+    FErrorVec = FToCompare{iEr}-Refined;
+    FErrors(iEr) = sqrt(ds*sum(sum(FErrorVec.*FErrorVec,2)));
+    Refined = 1/2*(NToCompare{iEr+1}(1:2:end)+NToCompare{iEr+1}(2:2:end));
+    NErrorVec = NToCompare{iEr}-Refined;
+    NErrors(iEr) = sqrt(ds*sum(NErrorVec.*NErrorVec));
 end
 end
 if (SBT)
