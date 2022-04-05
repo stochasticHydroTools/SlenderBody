@@ -2,41 +2,51 @@
 % % % with Johnson
 % % % Discretization on centerline
 BI=1;
-SBT=0;
-trans=0;
-rot=1;
+SBT=1;
+trans=1;
+rot=0;
+nTurns=0.5;
 if (BI)
 index=1;
 L = 2;
-a = 80e-3;
-Ns = 100;
+a = 40e-3;
+Ns = [5 10 20];
 for N=Ns
 mu = 1;
-Nthet = 8;
-dtheta = 2*pi/Nthet;
 [s,w,b]=chebpts(N,[-1 1],1);
 Nc = 500;
-%[sc,wc,bc]=chebpts(Nc,[-1 1],1);
-%Rcompare = barymat(sc,s,b);
+[sc,wc,bc]=chebpts(Nc,[-1 1],1);
+Rcompare = barymat(sc,s,b);
 D=diffmat(N,[0 L],'chebkind1');
-[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,D);
+[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,nTurns);
 radius = a*sqrt(1-s.^2);
+% Choose number of theta pts so that spacing on cross section = centerline
+CLdist = 2*pi*radius;
+avgds = L/N;
+Ntheta = max(ceil(CLdist/avgds),2);
+ThetaStart = [1;1+cumsum(Ntheta(1:end-1))];
+dtheta = 2*pi./Ntheta;
 rho = radius/a;
 Drho = -s./sqrt(1-s.^2);
 % Compute mobility matrix U = M*F
-Nt=Nthet*N;
+Nt=sum(Ntheta);
 M = zeros(3*Nt);
 U3 = zeros(Nt,3);
 TanVecs = zeros(Nt,3);
 RhoHats = zeros(Nt,3);
+chkindex=0;
 for iN=1:N
-    for iT=1:Nthet
-        iindex = (iN-1)*Nthet+iT;
+    for iT=1:Ntheta(iN)
+        chkindex=chkindex+1;
+        iindex = ThetaStart(iN)+(iT-1);
+        if (iindex-chkindex ~=0)
+            keyboard
+        end
         Xic = X(iN,:);
-        itheta = iT*dtheta;
+        itheta = iT*dtheta(iN);
         iRhoHat = n1(iN,:)*cos(itheta)+n2(iN,:)*sin(itheta);
         if (trans)
-            U3(iindex,:) = Uhelix(s(iN),L);
+            U3(iindex,:) = Uhelix(s(iN),L,nTurns);
         end
         if (rot)
             U3(iindex,:) =U3(iindex,:)+1/(a^2)*cross(Xs(iN,:),radius(iN)*iRhoHat); % Omega^\parallel = 1
@@ -67,10 +77,10 @@ for iN=1:N
         sprime = se;
         Xisph = efflength*(sprime-se)*Xs(iN,:)+c*sqrt(1-sprime^2)*iRhoHat+Xic;
         for jN=1:N
-            for jT=1:Nthet
-                jindex = (jN-1)*Nthet+jT;
+            for jT=1:Ntheta(jN)
+                jindex = ThetaStart(jN)+(jT-1);
                 Xjc = X(jN,:);
-                jtheta = jT*dtheta;
+                jtheta = jT*dtheta(jN);
                 jRhoHat = n1(jN,:)*cos(jtheta)+n2(jN,:)*sin(jtheta);
                 Xj = Xjc + radius(jN)*jRhoHat;
                 sprime = s(jN);
@@ -79,15 +89,13 @@ for iN=1:N
                 Re = Xisph-Xjsph;
                 nR = norm(R);
                 nRe = norm(Re);
-                nRs(jN)=nR;
-                nRes(jN)=nRe;
                 if (nR > 1e-12)
                     M(3*iindex-2:3*iindex,3*jindex-2:3*jindex) = 1/(8*pi*mu)*(eye(3)/nR+R'*R/nR^3)...
-                        *w(jN)*dtheta;
+                        *w(jN)*dtheta(jN);
                 end
                 if (nRe > 1e-12)
                     M(3*iindex-2:3*iindex,3*iindex-2:3*iindex) = M(3*iindex-2:3*iindex,3*iindex-2:3*iindex)...
-                        -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*w(jN)*dtheta;
+                        -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*w(jN)*dtheta(jN);
                 end
             end
         end
@@ -99,9 +107,13 @@ Allf = reshape(M \ reshape(U3',3*Nt,1),3,Nt)';
 favg = zeros(N,3);
 navg = zeros(N,3);
 for iN=1:N
-    inds = (iN-1)*Nthet+1:iN*Nthet;
-    favg(iN,:)=sum(Allf(inds,:))*dtheta;
-    navg(iN,:)=radius(iN)*sum(cross(RhoHats(inds,:),Allf(inds,:)))*dtheta;
+    try
+    inds = ThetaStart(iN):ThetaStart(iN+1)-1;
+    catch
+    inds = ThetaStart(iN):Nt;
+    end
+    favg(iN,:)=sum(Allf(inds,:))*dtheta(iN);
+    navg(iN,:)=radius(iN)*sum(cross(RhoHats(inds,:),Allf(inds,:)))*dtheta(iN);
 end
 navg_par = sum(navg.*Xs,2);
 nperp=navg-navg_par.*Xs;
@@ -122,9 +134,11 @@ for iEr=1:index-2
 end
 end
 if (SBT)
-ks = [2 2.25 2.5 2.75 3];
+%ks = [2 2.25 2.5 2.75 3];
+ks = 0;
 UEr = zeros(index-1,length(ks));
 OmEr = zeros(index-1,length(ks));
+normForceEr = zeros(index-1,length(ks));
 % % Johnson SBT
 for getIndex=1:index-1
 [sc,wc,bc]=chebpts(Nc,[-1 1],1);
@@ -138,7 +152,7 @@ Rdowncompare = barymat(s-1,sc,bc);
 %radius = a*sqrt(1-(2*s/L-1).^2);
 aRPY = a;%*exp(3/2)/4;
 D=diffmat(NSBT,[0 L],'chebkind1');
-[X,Xs,Xss,n1,n2,~,~] = fibGeoHelix(s-1,L,D);
+[X,Xs,Xss,n1,n2,~,~] = fibGeoHelix(s-1,L,nTurns);
 XSB=X;
 warning('True finite part!')
 Allb = precomputeStokesletInts(s,L,0,NSBT,1);
@@ -157,7 +171,7 @@ else
         MRR*nBI;
 end
 if (trans)
-    UBI = UBI - Uhelix(s-1,L);
+    UBI = UBI - Uhelix(s-1,L,nTurns);
 end
 if (rot)
     OmBI = OmBI-1/a^2;
@@ -178,23 +192,23 @@ OmEr(getIndex,ik) = sqrt(wD*((RToDouble*OmBI).*(RToDouble*OmBI)));
 %     f = reshape(f,3,NSBT)';
 %     MRT_FP(:,iCol) = OmFromFFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,f,D*f,Allb,mu);
 % end
-% MSBT = MTT+SletFP;
-% U3 = zeros(NSBT,3);
-% USB = reshape(U3',3*NSBT,1);
-% OmSB = ones(NSBT,1)./a^2;
-% fSBT = reshape(MSBT\ ,3,NSBT)';
-% % Upsample fsbt to meaasure error
+MSBT = MTT+SletFP;
+U3 = Uhelix(s-1,L,nTurns);
+USB = reshape(U3',3*NSBT,1);
+OmSB = ones(NSBT,1)./a^2;
+fSBT = reshape(MSBT\ USB,3,NSBT)';
+% Upsample fsbt to meaasure error
 % GrandMobility = [MTT+SletFP MTR+MTR_FP; MRT+MRT_FP MRR];
 % UOm = [USB; OmSB];
 % fn = GrandMobility \ UOm;
 % fSBT = reshape(fn(1:3*NSBT),3,[])';
 % npar = fn(3*NSBT+1:end);
-% Rup = barymat(sBI+1,s,b);
-% fSBT_c = Rup*fSBT;
+Rup = barymat(sBI+1,s,b);
+fSBT_c = Rup*fSBT;
 % nSBT_c = Rup*npar;
-% % 2 norm difference in force and torque
-% forceEr = fSBT_c-favg;
-% normForceEr(ik) = sqrt(wBI*sum(forceEr.*forceEr,2))
+% 2 norm difference in force and torque
+forceEr = fSBT_c-favg;
+normForceEr(getIndex,ik) = sqrt(wBI*sum(forceEr.*forceEr,2));
 % TorqEr = nSBT_c-navg_par;
 % normTorqEr(ik) = sqrt(wBI*(TorqEr.^2))
 end
@@ -205,13 +219,14 @@ end
 end
 % % 
 % % 
-function U3 = Uhelix(s,L)
+function U3 = Uhelix(s,L,nTurns)
     N=length(s);
+    L = L/nTurns;
     U3 = L/(2*pi)*[-sin(2*pi*s/L) cos(2*pi*s/L) zeros(N,1)];
 end
 
 %             
-function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L)
+function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,nTurns)
     warning('s matters for a helix!')
     N = length(s);
     nTurns=0.5;
