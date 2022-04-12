@@ -17,8 +17,9 @@ function [bishA,bishB,D1,D2] = computeBishopFrame(N,Xs,Xss,s,b,L,theta,D1mid)
     RHS2 = [zeros(3*N,1); D1mid];
     a2=Matrix2\RHS2;
     allas = reshape(a2(1:3*N),3,N)';
-    bishA = allas;% ./sqrt(sum(allas.*allas,2)); DON'T NORMALIZE
+    bishA = allas./sqrt(sum(allas.*allas,2)); % NORMALIZE
     bishB = cross(Xs,bishA);
+    bishB = bishB./sqrt(sum(bishB.*bishB,2));
     % Material frame from Bishop frame
     D1 = bishA.*cos(theta)+bishB.*sin(theta);
     D2 = -bishA.*sin(theta)+bishB.*cos(theta);

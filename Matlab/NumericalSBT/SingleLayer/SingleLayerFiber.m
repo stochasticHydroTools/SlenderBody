@@ -1,49 +1,43 @@
 % % % Single layer boundary integral for ellipsoidal filament and comparison
 % % % with Johnson
 % % % Discretization on centerline
-BI=1;
-SBT=0;
-trans=1;
-rot=0;
-nTurns=0.5;
+%clear;
+for Nthet = [8]
+BI=0;
+SBT=1;
+trans=0;
+rot=1;
 if (BI)
 index=1;
 L = 2;
-a = 40e-3;
-Ns = [10 20 40 80];
+a = 80e-3;
+Ns = [40];
 for N=Ns
 mu = 1;
-ds = L/N;
-s = (0.5:N)'*ds-1;
+dtheta = 2*pi/Nthet;
+[s,w,b]=chebpts(N,[-1 1],1);
 Nc = 500;
-[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,nTurns);
+[sc,wc,bc]=chebpts(Nc,[-1 1],1);
+Rcompare = barymat(sc,s,b);
+D=diffmat(N,[0 L],'chebkind1');
+[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,D);
 radius = a*sqrt(1-s.^2);
-% Choose number of theta pts so that spacing on cross section = centerline
-CLdist = 2*pi*radius;
-Ntheta = max(ceil(CLdist/ds),2);
-ThetaStart = [1;1+cumsum(Ntheta(1:end-1))];
-dtheta = 2*pi./Ntheta;
 rho = radius/a;
 Drho = -s./sqrt(1-s.^2);
 % Compute mobility matrix U = M*F
-Nt=sum(Ntheta);
+Nt=Nthet*N;
 M = zeros(3*Nt);
 U3 = zeros(Nt,3);
 TanVecs = zeros(Nt,3);
 RhoHats = zeros(Nt,3);
-chkindex=0;
 for iN=1:N
-    for iT=1:Ntheta(iN)
-        chkindex=chkindex+1;
-        iindex = ThetaStart(iN)+(iT-1);
-        if (iindex-chkindex ~=0)
-            keyboard
-        end
+    for iT=1:Nthet
+        iindex = (iN-1)*Nthet+iT;
         Xic = X(iN,:);
-        itheta = iT*dtheta(iN);
+        itheta = iT*dtheta;
         iRhoHat = n1(iN,:)*cos(itheta)+n2(iN,:)*sin(itheta);
         if (trans)
-            U3(iindex,:) = Uhelix(s(iN),L,nTurns);
+            U3(iindex,:) = Uhelix(s(iN),L);
         end
         if (rot)
             U3(iindex,:) =U3(iindex,:)+1/(a^2)*cross(Xs(iN,:),radius(iN)*iRhoHat); % Omega^\parallel = 1
@@ -74,10 +68,10 @@ for iN=1:N
         sprime = se;
         Xisph = efflength*(sprime-se)*Xs(iN,:)+c*sqrt(1-sprime^2)*iRhoHat+Xic;
         for jN=1:N
-            for jT=1:Ntheta(jN)
-                jindex = ThetaStart(jN)+(jT-1);
+            for jT=1:Nthet
+                jindex = (jN-1)*Nthet+jT;
                 Xjc = X(jN,:);
-                jtheta = jT*dtheta(jN);
+                jtheta = jT*dtheta;
                 jRhoHat = n1(jN,:)*cos(jtheta)+n2(jN,:)*sin(jtheta);
                 Xj = Xjc + radius(jN)*jRhoHat;
                 sprime = s(jN);
@@ -86,13 +80,15 @@ for iN=1:N
                 Re = Xisph-Xjsph;
                 nR = norm(R);
                 nRe = norm(Re);
+                nRs(jN)=nR;
+                nRes(jN)=nRe;
                 if (nR > 1e-12)
                     M(3*iindex-2:3*iindex,3*jindex-2:3*jindex) = 1/(8*pi*mu)*(eye(3)/nR+R'*R/nR^3)...
-                        *ds*dtheta(jN);
+                        *w(jN)*dtheta;
                 end
                 if (nRe > 1e-12)
                     M(3*iindex-2:3*iindex,3*iindex-2:3*iindex) = M(3*iindex-2:3*iindex,3*iindex-2:3*iindex)...
-                        -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*ds*dtheta(jN);
+                        -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*w(jN)*dtheta;
                 end
             end
         end
@@ -104,38 +100,34 @@ Allf = reshape(M \ reshape(U3',3*Nt,1),3,Nt)';
 favg = zeros(N,3);
 navg = zeros(N,3);
 for iN=1:N
-    try
-    inds = ThetaStart(iN):ThetaStart(iN+1)-1;
-    catch
-    inds = ThetaStart(iN):Nt;
-    end
-    favg(iN,:)=sum(Allf(inds,:))*dtheta(iN);
-    navg(iN,:)=radius(iN)*sum(cross(RhoHats(inds,:),Allf(inds,:)))*dtheta(iN);
+    inds = (iN-1)*Nthet+1:iN*Nthet;
+    favg(iN,:)=sum(Allf(inds,:))*dtheta;
+    navg(iN,:)=radius(iN)*sum(cross(RhoHats(inds,:),Allf(inds,:)))*dtheta;
 end
 navg_par = sum(navg.*Xs,2);
 nperp=navg-navg_par.*Xs;
-FToCompare{index}=favg;
-NToCompare{index}=navg_par;
-sv{index}=s;
+sBI = s;
+wBI = w;
+XBI=X;
+FToCompare{index}=Rcompare*favg;
+NToCompare{index}=Rcompare*navg_par;
 index=index+1;
 end
 FErrors=zeros(index-2,1);
 NErrors=zeros(index-2,1);
 for iEr=1:index-2
-    Refined = 1/2*(FToCompare{iEr+1}(1:2:end,:)+FToCompare{iEr+1}(2:2:end,:));
-    FErrorVec = FToCompare{iEr}-Refined;
-    FErrors(iEr) = sqrt(ds*sum(sum(FErrorVec.*FErrorVec,2)));
-    Refined = 1/2*(NToCompare{iEr+1}(1:2:end)+NToCompare{iEr+1}(2:2:end));
-    NErrorVec = NToCompare{iEr}-Refined;
-    NErrors(iEr) = sqrt(ds*sum(NErrorVec.*NErrorVec));
+    FErrorVec = FToCompare{iEr}-FToCompare{iEr+1};
+    FErrors(iEr) = sqrt(wc*sum(FErrorVec.*FErrorVec,2));
+    NErrorVec = NToCompare{iEr}-NToCompare{iEr+1};
+    NErrors(iEr) = sqrt(wc*(NErrorVec.*NErrorVec));
 end
 end
 if (SBT)
-%ks = [2 2.25 2.5 2.75 3];
-ks = 0;
+ks = [2 2.4 2.8 3];
 UEr = zeros(index-1,length(ks));
 OmEr = zeros(index-1,length(ks));
 normForceEr = zeros(index-1,length(ks));
+normTorqEr = zeros(index-1,length(ks));
 % % Johnson SBT
 for getIndex=1:index-1
 [sc,wc,bc]=chebpts(Nc,[-1 1],1);
@@ -149,7 +141,7 @@ Rdowncompare = barymat(s-1,sc,bc);
 %radius = a*sqrt(1-(2*s/L-1).^2);
 aRPY = a;%*exp(3/2)/4;
 D=diffmat(NSBT,[0 L],'chebkind1');
-[X,Xs,Xss,n1,n2,~,~] = fibGeoHelix(s-1,L,nTurns);
+[X,Xs,Xss,n1,n2,~,~] = fibGeoHelix(s-1,L,D);
 XSB=X;
 warning('True finite part!')
 Allb = precomputeStokesletInts(s,L,0,NSBT,1);
@@ -168,7 +160,7 @@ else
         MRR*nBI;
 end
 if (trans)
-    UBI = UBI - Uhelix(s-1,L,nTurns);
+    UBI = UBI - Uhelix(s-1,L);
 end
 if (rot)
     OmBI = OmBI-1/a^2;
@@ -176,54 +168,57 @@ end
 UEr(getIndex,ik) = sqrt(wD*sum((RToDouble*UBI).*(RToDouble*UBI),2));
 OmEr(getIndex,ik) = sqrt(wD*((RToDouble*OmBI).*(RToDouble*OmBI)));
 % Rotlet FP matrices column by column
-% MTR_FP = zeros(3*NSBT,NSBT);
-% for iCol=1:NSBT
-%     n = zeros(NSBT,1);
-%     n(iCol)=1;
-%     MTR_FP(:,iCol) = reshape(UFromNFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,n,D*n,Allb,mu)',3*NSBT,1);
-% end
-% MRT_FP = zeros(NSBT,3*NSBT);
-% for iCol=1:3*NSBT
-%     f = zeros(3*NSBT,1);
-%     f(iCol)=1;
-%     f = reshape(f,3,NSBT)';
-%     MRT_FP(:,iCol) = OmFromFFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,f,D*f,Allb,mu);
-% end
+MTR_FP = zeros(3*NSBT,NSBT);
+for iCol=1:NSBT
+    n = zeros(NSBT,1);
+    n(iCol)=1;
+    MTR_FP(:,iCol) = reshape(UFromNFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,n,D*n,Allb,mu)',3*NSBT,1);
+end
+MRT_FP = zeros(NSBT,3*NSBT);
+for iCol=1:3*NSBT
+    f = zeros(3*NSBT,1);
+    f(iCol)=1;
+    f = reshape(f,3,NSBT)';
+    MRT_FP(:,iCol) = OmFromFFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,f,D*f,Allb,mu);
+end
 MSBT = MTT+SletFP;
-U3 = Uhelix(s-1,L,nTurns);
+U3 = zeros(NSBT,3);
 USB = reshape(U3',3*NSBT,1);
 OmSB = ones(NSBT,1)./a^2;
-fSBT = reshape(MSBT\ USB,3,NSBT)';
 % Upsample fsbt to meaasure error
-% GrandMobility = [MTT+SletFP MTR+MTR_FP; MRT+MRT_FP MRR];
-% UOm = [USB; OmSB];
-% fn = GrandMobility \ UOm;
-% fSBT = reshape(fn(1:3*NSBT),3,[])';
-% npar = fn(3*NSBT+1:end);
-Rup = barymat(sBI+1,s,b);
+GrandMobility = [MTT+SletFP MTR+MTR_FP; MRT+MRT_FP MRR];
+UOm = [USB; OmSB];
+fn = GrandMobility \ UOm;
+fSBT = reshape(fn(1:3*NSBT),3,[])';
+npar = fn(3*NSBT+1:end);
+Rup = barymat(sc+1,s,b);
 fSBT_c = Rup*fSBT;
-% nSBT_c = Rup*npar;
+nSBT_c = Rup*npar;
 % 2 norm difference in force and torque
-forceEr = fSBT_c-favg;
-normForceEr(getIndex,ik) = sqrt(wBI*sum(forceEr.*forceEr,2));
-% TorqEr = nSBT_c-navg_par;
-% normTorqEr(ik) = sqrt(wBI*(TorqEr.^2))
+forceEr = fSBT_c-FToCompare{getIndex};
+normForceEr(getIndex,ik) = sqrt(wc*sum(forceEr.*forceEr,2));
+TorqEr = nSBT_c-NToCompare{getIndex};
+normTorqEr(getIndex,ik) = sqrt(wc*(TorqEr.^2));
 end
 end
 if (rot)
     OmEr=OmEr*a^2;
 end
 end
+clear M
+%save(strcat('ResultsHalfTurn_a20Nt',num2str(Nthet),'.mat'))
+end
 % % 
 % % 
-function U3 = Uhelix(s,L,nTurns)
+function U3 = Uhelix(s,L)
     N=length(s);
+    nTurns=0.5;
     L = L/nTurns;
     U3 = L/(2*pi)*[-sin(2*pi*s/L) cos(2*pi*s/L) zeros(N,1)];
 end
 
 %             
-function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,nTurns)
+function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,D)
     warning('s matters for a helix!')
     N = length(s);
     nTurns=0.5;
@@ -232,12 +227,13 @@ function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,nTurns)
     Xs = [-sin(2*pi*s/L) cos(2*pi*s/L) ones(N,1)]/sqrt(2);
     Xss = [-cos(2*pi*s/L) -sin(2*pi*s/L) zeros(N,1)]/sqrt(2)*2*pi/L;
     n1 = [-cos(2*pi*s/L) -sin(2*pi*s/L) zeros(N,1)];
-    dn1 = [sin(2*pi*s/L)*2*pi/L -cos(2*pi*s/L)*2*pi/L zeros(N,1)];
+    dn12 = [sin(2*pi*s/L)*2*pi/L -cos(2*pi*s/L)*2*pi/L zeros(N,1)];
+    dn1 = D*n1;
     n2 = cross(Xs,n1);
-    dn2 = cross(Xss,n1)+cross(Xs,dn1);
+    dn2 = D*n2;
 end
       
-function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeo(s,L)
+function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeo(s,L,D)
     N = length(s);
     X = [zeros(N,2) s];
     Xs = [zeros(N,2) ones(N,1)];

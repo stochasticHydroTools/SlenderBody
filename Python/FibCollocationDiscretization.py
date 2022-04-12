@@ -2,11 +2,12 @@ import numpy as np
 import scipy.linalg as sp
 import chebfcns as cf
 import time
-from math import sqrt
+from math import sqrt, exp
 from scipy.linalg import lu_factor, lu_solve
 
 # Documentation last updated: 03/12/2021
 
+aRPYFac = exp(1.5)/4        # equivalent RPY blob radius a = aRPYFac*epsilon*L;
 # Some definitions that are not specific to any particular discretization
 numBCs = 4; # number of boundary conditions
 # Numbers of uniform/upsampled points
@@ -26,7 +27,7 @@ class FibCollocationDiscretization(object):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16,rigid=False):
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16,rigid=False,trueRPYMobility=False):
         """
         Constructor. 
         L = fiber length, epsilon = fiber aspect ratio, Eb = bending stiffness, mu = fluid viscosity. 
@@ -36,6 +37,7 @@ class FibCollocationDiscretization(object):
         """
         self._L = L;
         self._epsilon = epsilon;
+        self._a = aRPYFac*self._epsilon*self._L;
         self._Eb = Eb;
         self._mu = mu;
         self._N = N;
@@ -43,6 +45,7 @@ class FibCollocationDiscretization(object):
         self._nptsUniform = nptsUniform;
         self._nptsDirect = NupsampleForDirect;
         self._nPolys = self._N-1;
+        self._truRPYMob = trueRPYMobility;
         if (rigid):
             self._nPolys = 1;
 
@@ -75,7 +78,11 @@ class FibCollocationDiscretization(object):
         s_scaled = np.reshape(s_dim1scaled,(self._N,1)); # Rescale everything to [-1,1];
         q=(1.0+(-1.0)**(k+1.0)-2*s_scaled**(k+1.0))/(k+1.0);
         VanderMat = np.vander(s_dim1scaled,increasing=True);
-        self._FPMatrix = np.linalg.solve(VanderMat.T,q.T);
+        self._FPMatrix = 1.0/(8.0*np.pi*self._mu)*0.5*self._L*np.linalg.solve(VanderMat.T,q.T);
+        self._DoubletFPMatrix = np.zeros((self._N,self._N));
+        self._Nsmall = 0;
+        self._RLess2aResamplingMat = np.zeros((self._N*self._Nsmall,self._N));
+        self._RLess2aWts = np.zeros(self._N*self._Nsmall);
 
     def initLocalcvals(self,delta=0.1):
         """
@@ -356,7 +363,18 @@ class FibCollocationDiscretization(object):
         This is the matrix A such that U = A*g, where g is the 
         modified finite part density with the singularity factored out. 
         """
-        return 1.0/(8.0*np.pi*self._mu)*0.5*self._L*self._FPMatrix.T;
+        return self._FPMatrix.T;
+    
+    def getDoubletFPMatrix(self):
+        """
+        Finite part matrix
+        This is the matrix A such that U = A*g, where g is the 
+        modified finite part density with the singularity factored out. 
+        """
+        return self._DoubletFPMatrix.T;
+    
+    def getRless2aResampMat(self):
+        return self._RLess2aResamplingMat;
     
     def calcLocalVelocity(self,Xsarg,forceDs):
         """
@@ -455,8 +473,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,rigid=False):
-        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid);
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,rigid=False,trueRPYMobility=False):
+        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,trueRPYMobility);
 		# Chebyshev grid and weights
         self._s = cf.chebPts(self._N,[0,self._L],chebGridType);
         self._w = cf.chebWts(self._N,[0,self._L],chebGridType);
@@ -472,7 +490,78 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self.initD4BC();
         self.initResamplingMatrices();
         self.initSpecialQuadMatrices();
-
+    
+    def initFPMatrix(self):
+        """
+        Initialize the matrix for the finite part integral. 
+        Uses the adjoint method of Anna Karin Tornberg. 
+        This method is distinct from the one in the parent class because it uses 
+        numerical integration of Chebyshev polynomials instead of exact integration
+        of monomials
+        """
+        sscale=-1+2*self._s/self._L;
+        AllQs = np.zeros((self._N,self._N));
+        AllDs = np.zeros((self._N,self._N));
+        self._DoubletFPMatrix = np.zeros((self._N,self._N));
+        self._Nsmall = 0;
+        self._RLess2aResamplingMat = np.zeros((self._N*self._Nsmall,self._N));
+        self._RLess2aWts = np.zeros(self._N*self._Nsmall);
+        a = 0;
+        if (self._truRPYMob):
+            a = self._a;
+        for iPt in range(self._N):
+            s = self._s[iPt];
+            eta = sscale[iPt];
+            sLow = max(s-2*a, 0);
+            sHi = min(s+2*a, self._L);
+            etaLow = -1+2*sLow/self._L;
+            etaHi = -1+2*sHi/self._L;
+            # Compute integrals numerically to high accuracy
+            q = np.zeros(self._N);
+            qd = np.zeros(self._N);
+            NoversampToCompute = 200; # enough to get 10 digits
+            for kk in range(self._N):
+                if (etaLow > -1):
+                    n = cf.chebPts(NoversampToCompute,[-1, etaLow],1);
+                    w = cf.chebWts(NoversampToCompute,[-1, etaLow],1);
+                    poly = np.cos(kk*np.arccos(n));
+                    q[kk]=np.dot(w,((n-eta)/np.abs(n-eta)*poly));
+                    qd[kk]=np.dot(w,((n-eta)/np.abs(n-eta)**3*poly));
+                if (etaHi < 1):
+                    n = cf.chebPts(NoversampToCompute,[etaHi, 1],1);
+                    w = cf.chebWts(NoversampToCompute,[etaHi, 1],1);
+                    poly = np.cos(kk*np.arccos(n));
+                    q[kk]+=np.dot(w,((n-eta)/np.abs(n-eta)*poly));
+                    qd[kk]+=np.dot(w,((n-eta)/np.abs(n-eta)**3*poly));
+            AllQs[iPt,:]=q;
+            AllDs[iPt,:]=qd;
+        self._FPMatrix =  1.0/(8.0*np.pi*self._mu)*0.5*self._L*np.linalg.solve(self._Lmat.T,AllQs.T);
+        if (self._truRPYMob):
+            self._DoubletFPMatrix =  1.0/(8.0*np.pi*self._mu)*0.5*self._L*np.linalg.solve(self._Lmat.T,AllDs.T);
+            # Initialize the resampling matrices for R < 2a
+            # The only thing that can be precomputed are the matrices on [s-a, s] and [s,s+a] for resampling the
+            # fiber positions
+            # Each of these matrices is Nsmall/2 x N 
+            # So the total matrix is Nsmall x N for each point. What gets passed into C++ is the row stacked version
+            # of the grand matrix, which is (N*Nsmall) x N
+            self._Nsmall = 4;
+            if (self._epsilon > 1e-3):
+                self._Nsmall = 8;
+            self._RLess2aResamplingMat = np.zeros((self._N*self._Nsmall,self._N));
+            self._RLess2aWts = np.zeros(self._N*self._Nsmall);
+            for iPt in range(self._N):
+                for iD in range(2):   
+                    dom = [self._s[iPt], min(self._s[iPt]+2*self._a,self._L)];
+                    if (iD==0):
+                        dom = [max(self._s[iPt]-2*self._a,0),self._s[iPt]];         
+                    ssm = cf.chebPts(self._Nsmall//2,dom,'L');
+                    wsm = cf.chebWts(self._Nsmall//2,dom,'L');
+                    ChebCoeffsToVals = cf.CoeffstoValuesMatrix(self._N,self._N,chebGridType);
+                    LegCoeffsToVals = np.cos(np.outer(np.arccos(2*ssm/self._L-1),np.arange(self._N)));
+                    self._RLess2aResamplingMat[iPt*self._Nsmall+iD*self._Nsmall//2:iPt*self._Nsmall+(iD+1)*self._Nsmall//2,:] =\
+                     np.dot(LegCoeffsToVals,np.linalg.inv(ChebCoeffsToVals));
+                    self._RLess2aWts[iPt*self._Nsmall+iD*self._Nsmall//2:iPt*self._Nsmall+(iD+1)*self._Nsmall//2]=wsm;
+    
     def initD4BC(self):
         """
         Compute the operator D_4^BC that is necessary when computing 

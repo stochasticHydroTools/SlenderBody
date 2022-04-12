@@ -54,7 +54,7 @@ for iC=1:3*N
 end
 
 % Approach 2: singularity subtraction & Tornberg
-XBC = UpsampleXBCMat2*Xt + BCShift;
+XBC = UpsampleXBCMat*Xt + BCShift;
 fE= reshape(FE*XBC,3,N)';
 % Calculate twisting force according to BC
 Xss = stackMatrix(R4ToN*D_sp4^2)*XBC;

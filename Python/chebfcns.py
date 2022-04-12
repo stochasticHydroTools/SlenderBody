@@ -22,7 +22,7 @@ def chebPts(N,dom,kind,numPanels=1):
     # Rescale
     x = float(dom[1]-dom[0])/2*(x+1)+dom[0];
     return x;
-
+    
 def chebWts(N,dom,kind):
     """
     Chebyshev integration weights on the interval dom of kind kind. 
@@ -45,6 +45,8 @@ def chebWts(N,dom,kind):
         w = np.real(np.fft.ifft(c));
         w[0]/=2;
         w=np.concatenate((w,[w[0]]))
+    elif kind=='L':
+        _, w=np.polynomial.legendre.leggauss(N);
     else:
         raise ValueError('Invalid kind of points for Chebyshev weights: 1 or 2 supported')
     w *= float(dom[1]-dom[0])/2;
@@ -64,6 +66,9 @@ def theta(N,type,numPanels):
     elif (type=='u'):
         xu = np.linspace(-1.0,1.0,N);
         th=np.arccos(xu);
+    elif (type=='L'): # Legendre
+        xL, _ = np.polynomial.legendre.leggauss(N);
+        th = np.arccos(xL);
     else:
         raise ValueError('Invalid Chebyshev grid type; 1, 2 or uniform are supported');
     if (numPanels > 1):

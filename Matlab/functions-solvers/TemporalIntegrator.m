@@ -11,21 +11,22 @@ Xp1old = Xt;
 for iFib=1:nFib
     inds = (iFib-1)*3*N+1:3*N*iFib;
     np4inds = (iFib-1)*3*(N+4)+1:3*(N+4)*iFib;
+    np2inds = (iFib-1)*(N+2)+1:(N+2)*iFib;
     scinds = (iFib-1)*N+1:N*iFib;
-    XBCprev(np4inds) = UpsampleXBCMat*Xtm1(inds) + BCShift;
-    XBC(np4inds) = UpsampleXBCMat*Xt(inds) + BCShift;
+    XBCprev(np4inds) = UpsampleXBCMat*Xtm1(inds) + BCShift(np4inds);
+    XBC(np4inds) = UpsampleXBCMat*Xt(inds) + BCShift(np4inds);
     fE(inds) = FE*XBC(np4inds);
     fEprev(inds) = FE*XBCprev(np4inds);
     % Calculate twisting force according to BC
     if (strongthetaBC)
-        theta_s_sp2 = barymat(sp2,s,b)*thetaarg(scinds);
+        theta_s_sp2(np2inds) = barymat(sp2,s,b)*thetaarg(scinds);
     else
-        theta_s_sp2 = UpsampleThetaBCMat \ [thetaarg(scinds); ThetaBC0; 0];
+        theta_s_sp2(np2inds) = UpsampleThetaBCMat \ [thetaarg(scinds); ThetaBC0(iFib); 0];
     end
-    Theta_ss = D_sp2*theta_s_sp2;
+    Theta_ss = D_sp2*theta_s_sp2(np2inds);
     XBC3 = reshape(XBC(np4inds),3,[])';
     fTwb = twmod*((R4ToDouble*(R2To4*Theta_ss)).*(R4ToDouble*cross(D_sp4*XBC3,D_sp4^2*XBC3))+...
-        (R4ToDouble*(R2To4*theta_s_sp2)).*(R4ToDouble*cross(D_sp4*XBC3,D_sp4^3*XBC3)));
+        (R4ToDouble*(R2To4*theta_s_sp2(np2inds))).*(R4ToDouble*cross(D_sp4*XBC3,D_sp4^3*XBC3)));
     fTw3=RDoubleToN*fTwb;
     fTw(inds) = reshape(fTw3',3*N,1);
     nparTw(scinds) = twmod*R2ToN*Theta_ss;
@@ -129,21 +130,25 @@ for iFib=1:nFib % block diagonal solve
         end
     end
     % Solve for fiber evolution
-    [K,Kt,nPolys]=getKMats3DClampedNumer(Xsarg(inds),Lmat,w,N,I,wIt,'U',[clamp0 clampL]);
-    [~,dimK]=size(K);
+    %[K,Kt,nPolys]=getKMats3DClampedNumer(Xsarg(inds),Lmat,w,N,I,wIt,'U',[clamp0 clampL]);
+    [K,Kt]=getKMats3DOmega(Xst,L,N,I,wIt,IntDdoublest,sDouble,[],wDouble,bDouble,RNToDouble_st,clamp0,[]);
     B = K-impcoeff*dt*M*FE*(UpsampleXBCMat*K);
     RHS = Kt*(fE(inds)+fext(inds)+fTw(inds)+M \ (UFromTorq(inds) + U0(inds) + nLvel(inds)));
+    %if (clamp0)
+    %    alphaU = lsqminnorm(Kt*M^(-1)*B,RHS,1e-6);
+    %else
     alphaU = lsqminnorm(Kt*M^(-1)*B,RHS);
+    %end
     ut = K*alphaU;
     dU(inds) = Ds*ut;
     Xp1(inds) = Xt(inds)+dt*ut;
     Xsp1(inds) = Ds*Xp1(inds);
     l_m1(inds) = l_m(inds);
     l_m(inds) = M \ (ut-nLvel(inds)-U0(inds)-UFromTorq(inds))...
-        -FE*(UpsampleXBCMat*(impcoeff*Xp1(inds)+(1-impcoeff)*Xt(inds))+BCShift)-fext(inds)-fTw(inds);
-    U2 = M*(FE*(UpsampleXBCMat*Xp1(inds)+BCShift)+fTw(inds)+l_m(inds)+fext(inds))+UFromTorq(inds);
+        -FE*(UpsampleXBCMat*(impcoeff*Xp1(inds)+(1-impcoeff)*Xt(inds))+BCShift(np4inds))-fext(inds)-fTw(inds);
+    U2 = M*(FE*(UpsampleXBCMat*Xp1(inds)+BCShift(np4inds))+fTw(inds)+l_m(inds)+fext(inds))+UFromTorq(inds);
     % Solve theta ODE 
-    force = l_m(inds)+fTw(inds)+FE*(UpsampleXBCMat*Xp1(inds)+BCShift);
+    force = l_m(inds)+fTw(inds)+FE*(UpsampleXBCMat*Xp1(inds)+BCShift(np4inds));
     f3 = reshape(force,3,N)';
     RotFromTrans = zeros(N,1);
     if (~noRotTransAtAll)
@@ -176,19 +181,19 @@ for iFib=1:nFib % block diagonal solve
         extrawallterm = sum(OmFull_nparWall.*Xs3,2);
     end
     RHS = theta_s(scinds) + dt*(-OmegaDotXss+D*RotFromTrans+D*extrawallterm);
-    ThetaBC0 = 0;
+    ThetaBC0(iFib) = 0;
     if (clamp0)
-        ThetaBC0 = TurnFreq-barymat(0,s,b)*(RotFromTrans+extrawallterm); % omega^parallel(0)
+        ThetaBC0(iFib) = TurnFreq(iFib)-barymat(0,s,b)*(RotFromTrans+extrawallterm); % omega^parallel(0)
         if (TorqBC)
-            ThetaBC0 = -w*diag(Mrr^(-1))*TurnFreq/twmod;
+            ThetaBC0(iFib) = -w*diag(Mrr^(-1))*TurnFreq(iFib)/twmod;
         end
     end
     if (strongthetaBC)
         theta_sp1(scinds) = [ThetaBCMat_low(1,:); ThetaImplicitMatrix(2:N-1,:); ThetaBCMat_low(2,:)] \ ...
-           [ThetaBC0; RHS(2:end-1); 0];
+           [ThetaBC0(iFib); RHS(2:end-1); 0];
     else
-        theta_sp1(scinds) = ThetaImplicitMatrix \ (RHS+dt*D*Mrr*R2ToN*twmod*D_sp2*...
-            (UpsampleThetaBCMat \ [zeros(N,1);ThetaBC0;0]));
+        theta_sp1(scinds) = ThetaImplicitMatrix \ (RHS+dt*R2ToN*D_sp2*Mrr_sp2*twmod*D_sp2*...
+            (UpsampleThetaBCMat \ [zeros(N,1);ThetaBC0(iFib);0]));
     end
 end
 reler = norm(l_m-l_m1)/(max([1 norm(l_m)]));
@@ -213,15 +218,22 @@ end
 lambdas=l_m;
 % Compute material frame (start of next time step)
 % Update first material frame vector (at 0)
-nparTw((iFib-1)*N+1:N*iFib) = twmod*R2ToN*D_sp2*theta_s_sp2;
-OmegaPar = RotFromTrans+Mrr*nparTw;
-OmegaTot = OmegaPerp+OmegaPar.*reshape(Xsp1,3,N)';
-OmegaPar0_re = barymat(0,s,b)*OmegaPar;
-OmegaMid_re = barymat(L/2,s,b)*OmegaTot;
-Xsmid = barymat(L/2,s,b)*reshape(Xsp1,3,N)';
-D1mid = rotate(D1mid,dt*OmegaMid_re);
-% 1) Compute Bishop frame and rotate it
-XBCNext =  UpsampleXBCMat*Xt(inds) + BCShift;
-XssNext = reshape(stackMatrix(R4ToN*D_sp4^2)*XBC,3,N)';
-theta = (eye(N)-barymat(L/2,s,b))*pinv(D)*theta_sp1;
-[bishA,bishB,D1next,D2next] = computeBishopFrame(N,reshape(Xsp1,3,N)',XssNext,s,b,L,theta,D1mid');
+for iFib=1:nFib
+    inds = (iFib-1)*3*N+1:3*N*iFib;
+    scinds = (iFib-1)*N+1:N*iFib;
+    np2inds = (iFib-1)*(N+2)+1:(N+2)*iFib;
+    np4inds = (iFib-1)*3*(N+4)+1:3*(N+4)*iFib;
+    nparTw((iFib-1)*N+1:N*iFib) = twmod*R2ToN*D_sp2*theta_s_sp2(np2inds);
+    OmegaPar = RotFromTrans+Mrr*nparTw(scinds);
+    OmegaTot = OmegaPerp+OmegaPar.*reshape(Xsp1(inds),3,N)';
+    OmegaPar0_re = barymat(0,s,b)*OmegaPar;
+    OmegaMid_re = barymat(L/2,s,b)*OmegaTot;
+    Xsmid = barymat(L/2,s,b)*reshape(Xsp1(inds),3,N)';
+    D1mid(iFib,:) = rotate(D1mid(iFib,:),dt*OmegaMid_re);
+    % 1) Compute Bishop frame and rotate it
+    XBCNext =  UpsampleXBCMat*Xt(inds) + BCShift(np4inds);
+    XssNext = reshape(stackMatrix(R4ToN*D_sp4^2)*XBC(np4inds),3,N)';
+    theta = (eye(N)-barymat(L/2,s,b))*pinv(D)*theta_sp1(scinds);
+    [bishA(scinds,:),bishB(scinds,:),D1next(scinds,:),D2next(scinds,:)] = ...
+        computeBishopFrame(N,reshape(Xsp1(inds),3,N)',XssNext,s,b,L,theta,D1mid(iFib,:)');
+end

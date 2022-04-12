@@ -1,0 +1,3 @@
+[submodule "Python/Dependencies/UAMMD_PSE_Python"]
+	path = Python/Dependencies/UAMMD_PSE_Python
+	url = https://github.com/RaulPPelaez/UAMMD_PSE_Python

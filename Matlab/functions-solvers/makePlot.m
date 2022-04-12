@@ -51,7 +51,7 @@ for iFib=plotfibs
 %      fibcolor = Corder(mod(iFib,7)+(mod(iFib,7)==0)*7,:);
 %      line='-';
     scatter3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3), 12,Rpl*theta_s(scinds),'filled')
-%     plot3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3))
+    %plot3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3))
     caxis([-2*pi 2*pi])
     hold on
     indices=count*N+1:(count+1)*N;
@@ -114,11 +114,11 @@ for iL=1:nLinks
         Lmatn = (cos((0:N-1).*th));
         % Calculate the force density on fiber 1
         s1star=links(iL,2);
-        th1 = acos(2*s1star/Lf-1);%(links(iL,1))-1)';
+        th1 = acos(2*s1star/L-1);%(links(iL,1))-1)';
         U1 = (cos((0:N-1).*th1));
         X1star = U1*(Lmatn \ X1);
         s2star=links(iL,4);
-        th2 = acos(2*s2star/Lf-1);%(links(iL,3))-1)';
+        th2 = acos(2*s2star/L-1);%(links(iL,3))-1)';
         U2 = (cos((0:N-1).*th2));
         X2star = U2*(Lmatn \ X2);
         Linkpts = [X1star;X2star];
@@ -128,23 +128,17 @@ end
 end
 str=sprintf('$t=$ %1.4f s', t);
 title(str,'Interpreter','latex')
-view([-0.2682   49.0867])
-%view(2)
-%view([12 40])
-%view([30 15])
-%view([60 30])
-% xlim([-Ld/2 Ld/2])
-% ylim([-Ld/2 Ld/2])
-% zlim([-Ld/2 Ld/2])
-% pbaspect([1 1 2])
-% view([-46.9081   30.2241])
-xlim([-L/2 L/2])
-ylim([-L/2 L])
-zlim([-L/2 L/2])
-% pbaspect([0.6 0.6 2])
-% xlim([-L L])
-% ylim([-L L])
-pbaspect([1 1.5 1])
+view(3)
+%view([25 15])
+% xlim([-0.25 0.25])
+% ylim([0 2])
+% zlim([-0.25 0.25])
+% pbaspect([0.5 2 0.5])
+%ylim([-1e-4 1e-4])
+%xlim([-1.05 1.05])
+%PlotAspect
+ylim([-1e-3 1e-3])
+view(2)
 xlabel('$x$','interpreter','latex')
 ylabel('$y$','interpreter','latex')
 zlabel('$z$','interpreter','latex')

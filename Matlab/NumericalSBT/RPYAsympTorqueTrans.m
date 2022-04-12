@@ -3,97 +3,21 @@
 L = 2;
 as= [0.08 0.04 0.02 0.01];
 
-for ia=4
+for ia=2
 a = as(ia);
 mu = 1;
-N = 6400;
-Nfp = 40;
-sFP = chebpts(Nfp,[0 L],1);
-[n,nprime,~] = ParalleltorqDen(sFP);
-[X,Xs,Xss,Xsss] = fibGeo(sFP);
-Oonevel = UFromNFPIntegral(X,Xs,Xss,Xsss,sFP,Nfp,L,n,nprime);
-allfiniteparts = zeros(Nfp,3);
-ts = sFP;
-for iPt=1:length(ts)
-t = ts(iPt,:);
-
-[Xpt,Xspt,Xsspt] = fibGeo(t);
-[npt,nprimept]=torqDen(t);
-v = cross(Xspt,nprimept)+1/2*cross(Xsspt,npt);
-
-% Integral for R < 2a 
-[smalls,wsm] = chebpts(N,[max(0,t-2*a) min(L,t+2*a)]);
-[smX,smXs,smXss] = fibGeo(smalls);
-[nsm,nprimesm]=torqDen(smalls);
-Rsm = Xpt-smX;
-nRsm = sqrt(sum(Rsm.*Rsm,2));
-smallig = 1/(2*a^2)*(1/a-(3*nRsm)/(8*a^2)).*cross(nsm,Rsm);
-numersmall = wsm*smallig;
-taucrossn = cross(Xspt,npt);
-if (t > 2*a && t < L-2*a)
-    asymptsmall = 7/6*v;
-elseif (t <=2*a)
-    sbar = t/a;
-    asymptsmall = taucrossn/(2*a)*(1-1/2*sbar^2+1/8*sbar^3)+...
-        1/192*(112+32*sbar^3-9*sbar^4)*v;
-else
-    sbar = (L-t)/a;
-    asymptsmall = taucrossn/(2*a)*(-1+1/2*sbar^2-1/8*sbar^3)+...
-        1/192*(112+32*sbar^3-9*sbar^4)*v;
-end
-er_small = numersmall-asymptsmall
-
-% Integral for R > 2a
-lesspart = [0 0 0];
-if (t > 2*a)
-[sless,wless] = chebpts(N,[0 t-2*a]);
-[Xl,Xsl,Xssl] = fibGeo(sless);
-[nl,nsl] = torqDen(sless);
-Rl = Xpt-Xl;
-nR = sqrt(sum(Rl.*Rl,2));
-kernel = cross(nl,Rl)./nR.^3;
-lesspart = wless*kernel;
-end
-
-greaterpart = [0 0 0];
-if (t < L-2*a)
-[sgreater,wgreater] = chebpts(N,[min(L,t+2*a) L]);
-[Xl,Xsl,Xssl] = fibGeo(sgreater);
-[nl,nsl] = torqDen(sgreater);
-Rl = Xpt-Xl;
-nR = sqrt(sum(Rl.*Rl,2));
-kernel = cross(nl,Rl)./nR.^3;
-greaterpart = wgreater*kernel;
-end
-total_RPY(iPt,:) = lesspart + greaterpart + numersmall;
-
-[sall,wall] = chebpts(N,[0 L]);
-[X,Xs,Xss]=fibGeo(sall);
-[n,nprime] = torqDen(sall);
-CommIG = taucrossn.*(sall-t)./abs(sall-t).^3+v./abs(sall-t);
-R = Xpt-X;
-nR = sqrt(sum(R.*R,2));
-totIG = cross(n,R)./nR.^3;
-FPIG = totIG-CommIG;
-[~,minindex] = min(abs(sall-t));
-FPIG(minindex,:)=0;
-if (t > 2*a && t < L-2*a)
-    Local = (log(((L-t)*t)/(4*a^2))+7/6)*v+taucrossn*(L-2*t)/((L-t)*t);
-elseif (t <=2*a)
-    sbar = t/a;
-    Local = taucrossn/(2*a)*(1-1/2*sbar^2+1/8*sbar^3+(L-t-2*a)/(L-t))+...
-        (7/12+1/6*sbar^3-3/64*sbar^4+log((L-t)/(2*a)))*v;
-else
-    sbar = (L-t)/a;
-    Local = taucrossn/(2*a)*(-1+1/2*sbar^2-1/8*sbar^3+(2*a-t)/t)+...
-        (7/12+1/6*sbar^3-3/64*sbar^4+log(t/(2*a)))*v;
-end
-finitepart=wall*FPIG;
-asymptotic(iPt,:) = finitepart + Local;
-totalerror = norm(asymptotic-total_RPY)
-allfiniteparts(iPt,:)=finitepart;
-ers(1,ia)=totalerror;
-end
+Nq = 200;
+N = 50;
+[s,w,b] = chebpts(N,[0 L],1);
+[n,nprime,~] = ParalleltorqDen(s);
+[X,Xs,Xss,Xsss] = fibGeo(s);
+Allb_trueFP = precomputeStokesletInts(s,L,0,N,1);
+Oonevel = UFromNFPIntegral(X,Xs,Xss,Xsss,s,N,L,n,nprime,Allb_trueFP,mu);
+[MTT, MTR, MRT, MRR,sNew] = getGrandMloc(N,reshape(Xs',3*N,1),reshape(Xss',3*N,1),a,L,mu,s,0);
+ULocal = MTR*n;
+UAsymp = reshape(ULocal,3,N)'+Oonevel;
+U_ref=1/(8*pi*mu)*upsampleRPYRotTrans(X,s,X,n.*Xs,s,b,Nq,L,a);
+max(abs(UAsymp-U_ref))
 end
 
 function [X,Xs,Xss,Xsss] = fibGeo(s)

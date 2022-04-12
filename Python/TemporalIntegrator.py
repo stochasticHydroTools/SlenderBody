@@ -9,7 +9,7 @@ from fiberCollection import fiberCollection
 from warnings import warn
 
 # Definitions 
-itercap = 1000; # cap on GMRES iterations if we converge all the way
+itercap = 300; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-6; # larger than GPU tolerance
 verbose = -1;
 
@@ -161,13 +161,13 @@ class TemporalIntegrator(object):
         lamStar = self.getLamNonLoc(iT); # lambdas
         self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
         
-        RHS = self._allFibers.formBlockDiagRHS(XforNL,XsforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
+        RHS = self._allFibers.formBlockDiagRHS(XforNL,XsforNL,tvalSolve,forceExt,lamStar,Dom,Ewald,FPimplicit=self._FPimplicit);
         if (verbose > 0):
             print('Time to form RHS %f' %(time.time()-thist))
             thist = time.time()
             
         # Apply preconditioner to get (delta lambda,delta alpha) from the block diagonal solver
-        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(RHS,XsforNL,dt,self._impco,XforNL)
+        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(RHS,XsforNL,dt,self._impco,XforNL,doFP=self._FPimplicit)
         if (verbose > 0):
             print('Time to apply preconditioner %f' %(time.time()-thist))
             thist = time.time()
@@ -180,7 +180,7 @@ class TemporalIntegrator(object):
             itsneeded = 0;
         else:
             # GMRES set up and solve
-            RHS = self._allFibers.calcNewRHS(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald);
+            RHS = self._allFibers.calcNewRHS(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald,FPimplicit=self._FPimplicit);
             systemSize = self._allFibers.getSysDimension();
             A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
                 X_nonLoc=XforNL, Xs_nonLoc=XsforNL, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
@@ -199,6 +199,9 @@ class TemporalIntegrator(object):
                 print(resno)
                 print('Number of iterations %d' %len(resno))
                 print('Last residual %f' %resno[len(resno)-1])
+            if (itsneeded == itercap):
+                resno = Solution.resnorms
+                print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
             lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
             if (verbose > 0):
                 print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))

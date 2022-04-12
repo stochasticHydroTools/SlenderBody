@@ -32,7 +32,7 @@ class FiberCollection {
     //===========================================
     //        METHODS FOR INITIALIZATION
     //===========================================
-    FiberCollection(double muin,vec3 Lengths, double epsIn, double Lin, double aRPYFacIn, 
+    FiberCollection(double muin,vec3 Lengths, double epsIn, double Lin, double aRPYFacIn, bool useExactRPY,
                        int NFibIn,int NChebIn, int NuniIn, int NForDirectQuad, double deltain, int nPolys,int nThreads):
         _Dom(Lengths), _RPYEvaluator(aRPYFacIn*epsIn*Lin,muin,NFibIn*NChebIn, Lengths){
         /**
@@ -50,10 +50,11 @@ class FiberCollection {
         @param nThreads = # of OpenMP threads for parallel calculations
         **/
         _aRPYFac = aRPYFacIn;
-        // Set domain lengths
+        _useExactRPY = useExactRPY;
         _epsilon = epsIn;
         mu = muin;
         _L = Lin;
+        _a = _aRPYFac*_epsilon*_L;
         _NUniPerFib = NuniIn;
         _NFib = NFibIn;
         _delta = deltain;
@@ -61,6 +62,7 @@ class FiberCollection {
         _NForEwaldDirect = NForDirectQuad;
         _NChebPolys = nPolys;   
     }
+    
 
     void initSpecQuadParams(double rcritIn, double dsCLin, double dInterpIn, 
                           double d2panIn, double upsampdIn, double specDIn){
@@ -138,7 +140,7 @@ class FiberCollection {
         std::memcpy(_DirectDownSampMatrix.data(),pyDirectDownSamp.data(),pyDirectDownSamp.size()*sizeof(double));
     }
 
-    void init_FinitePartMatrix(npDoub pyFPMatrix, npDoub pyDiffMatrix){    
+    void init_FinitePartMatrix(npDoub pyFPMatrix, npDoub pyDoubFPMatrix, npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyDiffMatrix){    
         /**
         Python wrapper to initialize variables for finite part integration in C++. 
         @param pyFPMatrix = matrix that maps g function coefficients to velocity values on the N point Cheb grid (2D numpy array)
@@ -147,11 +149,26 @@ class FiberCollection {
 
         // allocate std::vector (to pass to the C++ function)
         _FinitePartMatrix = vec(pyFPMatrix.size());
+        _DbltFinitePartMatrix = vec(pyDoubFPMatrix.size());
         _DiffMatrix = vec(pyDiffMatrix.size());
+        _RL2aResampMatrix = vec(pyRL2aResampMatrix.size());
+        _RLess2aWts = vec(pyRLess2aWts.size());
 
         // copy py::array -> std::vector
         std::memcpy(_FinitePartMatrix.data(),pyFPMatrix.data(),pyFPMatrix.size()*sizeof(double));
         std::memcpy(_DiffMatrix.data(),pyDiffMatrix.data(),pyDiffMatrix.size()*sizeof(double));
+        std::memcpy(_DbltFinitePartMatrix.data(),pyDoubFPMatrix.data(),pyDoubFPMatrix.size()*sizeof(double));
+        std::memcpy(_RL2aResampMatrix.data(),pyRL2aResampMatrix.data(),pyRL2aResampMatrix.size()*sizeof(double));
+        std::memcpy(_RLess2aWts.data(),pyRLess2aWts.data(),pyRLess2aWts.size()*sizeof(double));
+        _HalfNForSmall = _RL2aResampMatrix.size()/(2*_NChebPerFib*_NChebPerFib);
+        _stackedDiffMatrix = vec(9*_DiffMatrix.size());
+        for (int i = 0; i < _NChebPerFib; i++){
+            for (int j = 0; j < _NChebPerFib; j++){
+                for (int d = 0; d < 3; d++){
+                    _stackedDiffMatrix[(3*i+d)*3*_NChebPerFib+3*j+d] =  _DiffMatrix[i*_NChebPerFib+j];
+                }
+            }
+        }
     }
     
     void initMatricesForPreconditioner(npDoub pyUpsampMat, npDoub pyUpsampledchebPolys, npDoub pyLeastSquaresDownsampler, npDoub pyDpInv,
@@ -167,6 +184,7 @@ class FiberCollection {
         All of the matrices are passed as 2D numpy arrays which are then converted to matrices in C (row major) order
         */
         
+        initLocalDragCoeffsRPY();
         _MatFromNto2N = vec(pyUpsampMat.size());
         _LeastSquaresDownsampler = vec(pyLeastSquaresDownsampler.size());
         _UpsampledChebPolys = vec(pyUpsampledchebPolys.size());
@@ -270,6 +288,7 @@ class FiberCollection {
         std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
         std::memcpy(FDens.data(),pyForceDens.data(),pyForceDens.size()*sizeof(double));
         std::memcpy(Xs.data(),pyXs.data(),pyXs.size()*sizeof(double));
+        double DoubletFac = 2.0*_a*_a/3.0;
 
         // call pure C++ function
         vec uFP(ChebPoints.size(),0.0);
@@ -304,13 +323,66 @@ class FiberCollection {
                         if (iPt==jPt){
                             uFP[3*iPtInd+d] += (0.5*(Xs[3*iPtInd+d]*Xssdotf+Xss[3*iPt+d]*Xsdotf)+
                                 fprime[3*iPt+d]+Xs[3*iPtInd+d]*Xsdotfprime) *_FinitePartMatrix[_NChebPerFib*iPt+iPt];
+                            if (_useExactRPY) { // add the part due to the Doublet
+                                uFP[3*iPtInd+d] += (-1.5*(Xs[3*iPtInd+d]*Xssdotf+Xss[3*iPt+d]*Xsdotf)+
+                                    fprime[3*iPt+d]-3.0*Xs[3*iPtInd+d]*Xsdotfprime) *_DbltFinitePartMatrix[_NChebPerFib*iPt+iPt]*DoubletFac;
+                            }
                         } else{
                             uFP[3*iPtInd+d] += ((FDens[3*jPtInd+d] + rvec[d]*rdotf*oneoverr*oneoverr)*oneoverr*std::abs(ds)-\
                                 (FDens[3*iPtInd+d]+Xs[3*iPtInd+d]*Xsdotf))*oneoverds*_FinitePartMatrix[_NChebPerFib*iPt+jPt]; 
+                            if (_useExactRPY) { // add the part due to the Doublet
+                                uFP[3*iPtInd+d] += ((FDens[3*jPtInd+d] -3.0*rvec[d]*rdotf*oneoverr*oneoverr)*pow(oneoverr,3)*pow(std::abs(ds),3)-\
+                                (FDens[3*iPtInd+d]-3.0*Xs[3*iPtInd+d]*Xsdotf))*oneoverds*_DbltFinitePartMatrix[_NChebPerFib*iPt+jPt]*DoubletFac; 
+                            }
                         } // end if iPt==jPt
                     } // end d loop
                 } // end jPt loop
             } // end iPt loop
+            if (_useExactRPY){
+                double viscInv = 1.0/(8.0*M_PI*mu);
+                // Compute resampled X and resampled f for R < 2a integrals
+                vec XSamples(3*_NChebPerFib*2*_HalfNForSmall,0.0);
+                vec fSamples(3*_NChebPerFib*2*_HalfNForSmall,0.0);
+                // Xsamples and fsamples are (Ncheb*Nhalf*2 x 3) matrices
+                // For each point, the first Nhalf rows are for the [s-2a,s] domain and the next Nhalf are for the [s,s+2a] domain
+                MatVec(_NChebPerFib*2*_HalfNForSmall, _NChebPerFib, 3, _RL2aResampMatrix, ChebPoints, start, XSamples);
+                MatVec(_NChebPerFib*2*_HalfNForSmall, _NChebPerFib, 3, _RL2aResampMatrix, FDens, start, fSamples);
+                for (int iPt=0; iPt < _NChebPerFib; iPt++){
+                    int iPtInd = start+iPt;
+                    for (int iD=0; iD < 2; iD++){
+                        for (int jPt = 0; jPt <  _HalfNForSmall; jPt++){
+                            vec3 rvec;
+                            vec3 jforce;
+                            double rdotf = 0;
+                            int jStartIndex = (2*iPt+iD)*3*_HalfNForSmall+jPt*3;
+                            for (int id=0; id < 3; id++){
+                                rvec[id]=ChebPoints[3*iPtInd+id]-XSamples[jStartIndex+id];
+                                jforce[id] = fSamples[jStartIndex+id];
+                                rdotf+=rvec[id]*jforce[id];
+                            }
+                            double r = normalize(rvec);
+                            double w = _RLess2aWts[(2*iPt+iD)*_HalfNForSmall+jPt];
+                            double diagterm = viscInv*(4.0/(3.0*_a)*(1.0-9.0*r/(32.0*_a)))*w;
+                            double offDiagTerm = viscInv*(1.0/(8.0*_a*_a))*w*rdotf;
+                            for (int id=0; id < 3; id++){
+                                uFP[3*iPtInd+id] += diagterm*jforce[id];
+                                if (r > 1e-12){
+                                    uFP[3*iPtInd+id] += offDiagTerm*rvec[id];
+                                }
+                            }  
+                        } // end jPt
+                    } // end domain
+                    // Subtract diagonal term included in local drag piece
+                    double XsdotF = 0.0;
+                    for (int id = 0; id < 3; id++){
+                        XsdotF+=Xs[3*iPtInd+id]*FDens[3*iPtInd+id];
+                    }
+                    for (int id = 0; id < 3; id++){
+                        uFP[3*iPtInd+id] += -viscInv*RLess2aIPart[iPt]* FDens[3*iPtInd+id] 
+                         -viscInv*Rless2aTauPart[iPt]*XsdotF*Xs[3*iPtInd+id];
+                    } 
+                } // end iPt
+            } // end use exact RPY correction
         } // end fiber loop
         return make1DPyArray(uFP);
     } // end calcFP velocity
@@ -510,9 +582,10 @@ class FiberCollection {
         return makePyDoubleArray(correctionUs);
     }
     
-    py::array applyPreconditioner(npDoub pyTangents,npDoub pyb, double impcodt){
+    py::array applyPreconditioner(npDoub pyPoints, npDoub pyTangents,npDoub pyb, double impcodt, bool implicitFP){
         /*
         Apply preconditioner to obtain lambda and alpha. 
+        @param pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
         @param pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
         @param pyb = RHS vector b 
         @param impcodt = implicit factor * dt (usually dt/2)
@@ -520,6 +593,8 @@ class FiberCollection {
         */
 
         // allocate std::vector (to pass to the C++ function)
+        vec chebPoints(pyPoints.size());
+        std::memcpy(chebPoints.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
         vec Tangents(pyTangents.size());
         std::memcpy(Tangents.data(),pyTangents.data(),pyTangents.size()*sizeof(double));
         vec b(pyb.size());
@@ -532,10 +607,12 @@ class FiberCollection {
         #pragma omp parallel for num_threads(_nOMPThr)
         for (int iFib = 0; iFib < nFib; iFib++){
 	    //std::cout << "Doing fiber " << iFib << " on thread " << omp_get_thread_num() << std::endl;
+	        vec LocalPoints(3*N);
             vec LocalTangents(3*N);
             vec bFirst(3*N), MinvbFirst(3*N);
             vec bSecond(2*nP+3);
             for (int i=0; i < 3*N; i++){
+                LocalPoints[i] = chebPoints[3*N*iFib+i];
                 LocalTangents[i] = Tangents[3*N*iFib+i];
                 bFirst[i] = b[3*N*iFib+i];
                 MinvbFirst[i] = b[3*N*iFib+i];
@@ -565,6 +642,13 @@ class FiberCollection {
             // Schur complement block B
             vec M(3*N*3*N);
             calcMLocal(LocalTangents,M);
+            if (implicitFP){
+                addMFP(LocalPoints, LocalTangents,M);
+                if (_useExactRPY){
+                    addMFPDoublet(LocalPoints,LocalTangents,M);
+                    addNumericalRLess2a(LocalPoints,LocalTangents,M);
+                }
+            }
             vec D4BCK(3*N*(2*nP+3));
             BlasMatrixProduct(3*N,3*N,2*nP+3,1.0,0.0,_D4BC,false,KWithI,D4BCK);
             vec B(3*N*(2*nP+3));
@@ -704,7 +788,13 @@ class FiberCollection {
                         deltaij=1;
                     }
                     double XsXs_ij = Tangents[3*iPt+id]*Tangents[3*iPt+jd];
-                    M[3*id+jd] = viscInv*(c*(deltaij+XsXs_ij)+(deltaij-3*XsXs_ij));
+                    if (_useExactRPY) { 
+                        M[3*id+jd] = viscInv*(StokesletPart[ptPosition]*(deltaij+XsXs_ij)+
+                            2*_a*_a/3.0*DoubletPart[ptPosition]*(deltaij-3*XsXs_ij)
+                            +RLess2aIPart[ptPosition]*deltaij+Rless2aTauPart[ptPosition]*XsXs_ij);
+                    } else {
+                        M[3*id+jd] = viscInv*(c*(deltaij+XsXs_ij)+(deltaij-3*XsXs_ij));
+                    }
                 }
             }
             BlasMatrixProduct(3,3,1,1.0,0.0,M,false,f,u);
@@ -717,16 +807,43 @@ class FiberCollection {
     
     private:
     
-    double _epsilon, _L, _delta, _aRPYFac, mu;
-    int _NFib, _NChebPerFib, _NUniPerFib, _NUpsample, _nOMPThr, _NForEwaldDirect, _NChebPolys;
+    double _epsilon, _L, _delta, _aRPYFac, _a, mu;
+    bool _useExactRPY;
+    int _NFib, _NChebPerFib, _NUniPerFib, _NUpsample, _nOMPThr, _NForEwaldDirect, _NChebPolys, _HalfNForSmall;
     vec _NormalChebNodes, _UpsampledNodes, _NormalChebWts, _UpsampledChebWts;
     vec _LocalDragCs, _UpsampledChebPolys, _DpInv, _MatFromNto2N, _LeastSquaresDownsampler, _weightedUpsampler, _D4BC;
+    vec StokesletPart, DoubletPart, RLess2aIPart,Rless2aTauPart;
     double _dstarCL,_dstarInterp, _dstar2panels;
     double _UpsampledQuadDist, _SpecQuadDist;
-    vec _FinitePartMatrix, _DiffMatrix;
+    vec _FinitePartMatrix, _DbltFinitePartMatrix, _RL2aResampMatrix, _RLess2aWts, _DiffMatrix, _stackedDiffMatrix;
     vec _UpsamplingMatrix, _TwoPanMatrix, _ValtoCoeffMatrix,_CoefftoValMatrix, _DirectUpsampMatrix, _DirectDownSampMatrix;
     DomainC _Dom;
     RPYKernelEvaluator _RPYEvaluator;
+    
+    void initLocalDragCoeffsRPY(){
+        StokesletPart = vec(_NChebPerFib);
+        DoubletPart = vec(_NChebPerFib);
+        RLess2aIPart = vec(_NChebPerFib);
+        Rless2aTauPart = vec(_NChebPerFib);
+        for (int iPt = 0; iPt < _NChebPerFib; iPt++){
+            double s = _NormalChebNodes[iPt];
+            StokesletPart[iPt] = log(s*(_L-s)/(4.0*_a*_a));
+            DoubletPart[iPt] = 1.0/(4.0*_a*_a)-1.0/(2.0*s*s)-1.0/(2.0*(_L-s)*(_L-s)); 
+            RLess2aIPart[iPt] = 23.0/6.0;
+            Rless2aTauPart[iPt] = 1.0/2.0;
+            if (s < 2*_a){ 
+                StokesletPart[iPt] = log((_L-s)/(2.0*_a));
+                DoubletPart[iPt] = 1.0/(8.0*_a*_a)-1.0/(2.0*(_L-s)*(_L-s));
+                RLess2aIPart[iPt] = 23.0/12.0+4.0*s/(3.0*_a)-3.0*s*s/(16.0*_a*_a);
+                Rless2aTauPart[iPt] = 1.0/4.0+s*s/(16.0*_a*_a);
+            } else if (s > _L-2*_a){
+                StokesletPart[iPt] = log(s/(2.0*_a));
+                DoubletPart[iPt] = 1.0/(8.0*_a*_a)-1.0/(2.0*s*s);
+                RLess2aIPart[iPt] = 23.0/12.0+4.0*(_L-s)/(3.0*_a)-3.0*(_L-s)*(_L-s)/(16.0*_a*_a);
+                Rless2aTauPart[iPt] = 1.0/4.0+(_L-s)*(_L-s)/(16.0*_a*_a);
+            }
+        }
+    }
     
     void deAliasIntegral(const vec &f, vec &Integrals2N){
         /*
@@ -763,7 +880,7 @@ class FiberCollection {
             double z = XsUpsampled[3*iPt+2];
             double theta = atan2(y,x);
             double phi = atan2(z,sqrt(x*x+y*y));
-            if (abs(abs(phi)-M_PI*0.5) < 1e-12){
+            if (std::abs(std::abs(phi)-M_PI*0.5) < 1e-12){
                 theta = 0;
             } 
             n1x[iPt] = -sin(theta);
@@ -805,11 +922,199 @@ class FiberCollection {
                         deltaij=1;
                     }
                     double XsXs_ij = Tangents[3*iPt+id]*Tangents[3*iPt+jd];
-                    M[3*_NChebPerFib*(3*iPt+id)+3*iPt+jd] = viscInv*(_LocalDragCs[iPt]*(deltaij+XsXs_ij)+(deltaij-3*XsXs_ij));
+                    if (_useExactRPY) { 
+                        M[3*_NChebPerFib*(3*iPt+id)+3*iPt+jd] = viscInv*(StokesletPart[iPt]*(deltaij+XsXs_ij)+
+                            2*_a*_a/3.0*DoubletPart[iPt]*(deltaij-3*XsXs_ij)+RLess2aIPart[iPt]*deltaij+Rless2aTauPart[iPt]*XsXs_ij);
+                    } else {
+                        M[3*_NChebPerFib*(3*iPt+id)+3*iPt+jd] = viscInv*(_LocalDragCs[iPt]*(deltaij+XsXs_ij)+(deltaij-3*XsXs_ij));
+                    }
                 }
             }
         }
-    }     
+    }
+    
+    void addMFP(const vec &ChebPoints, const vec &Xs, vec &M){
+        /*
+        Adds the finite part matrix to the local drag matrix
+        Inputs: chebPoints as a 3N array, Tangents as a 3N array
+        */
+        // Differentiate Xs to get Xss
+        vec MFP(3*_NChebPerFib*3*_NChebPerFib,0.0);
+        vec DFPart(3*_NChebPerFib*3*_NChebPerFib,0.0);
+        vec Xss(3*_NChebPerFib,0.0);
+        MatVec(_NChebPerFib, _NChebPerFib, 3, _DiffMatrix, Xs, 0, Xss);
+        for (int iPt=0; iPt < _NChebPerFib; iPt++){
+            for (int jPt=0; jPt < _NChebPerFib; jPt++){
+                if (iPt==jPt){
+                    for (int id=0; id < 3; id++){
+                        for (int jd=0; jd < 3; jd++){
+                            double deltaij=0;
+                            if (id==jd){
+                                deltaij = 1;
+                            }
+                            MFP[3*_NChebPerFib*(3*iPt+id)+3*jPt+jd] +=
+                                0.5*(Xs[3*iPt+id]*Xss[3*jPt+jd]+Xs[3*jPt+jd]*Xss[3*iPt+id])*_FinitePartMatrix[_NChebPerFib*iPt+iPt];
+                            DFPart[3*_NChebPerFib*(3*iPt+id)+3*jPt+jd]=(deltaij+Xs[3*iPt+id]*Xs[3*jPt+jd])*_FinitePartMatrix[_NChebPerFib*iPt+iPt];
+                        }
+                    }
+                } else {
+                    vec3 rvec;
+                    for (int d = 0; d < 3; d++){
+                        rvec[d] = ChebPoints[3*iPt+d]-ChebPoints[3*jPt+d];
+                    }
+                    double r = sqrt(dot(rvec,rvec));
+                    double oneoverr = 1.0/r;
+                    double ds = _NormalChebNodes[jPt]-_NormalChebNodes[iPt];
+                    double oneoverds = 1.0/ds;
+                    for (int id=0; id < 3; id++){
+                        for (int jd=0; jd < 3; jd++){
+                            double deltaij=0;
+                            if (id==jd){
+                                deltaij = 1;
+                            }
+                            // Off diagonal part
+                            MFP[3*_NChebPerFib*(3*iPt+id)+3*jPt+jd] = (deltaij + rvec[id]*rvec[jd]*oneoverr*oneoverr)
+                                *oneoverr*std::abs(ds)*oneoverds*_FinitePartMatrix[_NChebPerFib*iPt+jPt];
+                            // Diagonal part
+                            MFP[3*_NChebPerFib*(3*iPt+id)+3*iPt+jd] -= (deltaij + Xs[3*iPt+id]*Xs[3*iPt+jd])*oneoverds
+                                *_FinitePartMatrix[_NChebPerFib*iPt+jPt];
+                        }
+                    }
+                }
+            }
+        } // end forming matrices
+        BlasMatrixProduct(3*_NChebPerFib, 3*_NChebPerFib, 3*_NChebPerFib,1, 1, DFPart, false, _stackedDiffMatrix, MFP);  // MFP -> DFPart*BigDiff+MFP
+        for (int i = 0; i <M.size(); i++){
+            M[i]+=MFP[i];
+        }
+    } // end method
+    
+    void addMFPDoublet(const vec &ChebPoints, const vec &Xs, vec &M){
+        /*
+        Adds the finite part matrix for the doublet to the local drag matrix for the Stokeslet
+        and the finite part matrix for the Stokeslet
+        Inputs: chebPoints as a 3N array, Tangents as a 3N array
+        */
+        // Differentiate Xs to get Xss
+        vec MFP(3*_NChebPerFib*3*_NChebPerFib,0.0);
+        vec DFPart(3*_NChebPerFib*3*_NChebPerFib,0.0);
+        vec Xss(3*_NChebPerFib,0.0);
+        MatVec(_NChebPerFib, _NChebPerFib, 3, _DiffMatrix, Xs, 0, Xss);
+        for (int iPt=0; iPt < _NChebPerFib; iPt++){
+            for (int jPt=0; jPt < _NChebPerFib; jPt++){
+                if (iPt==jPt){
+                    for (int id=0; id < 3; id++){
+                        for (int jd=0; jd < 3; jd++){
+                            double deltaij=0;
+                            if (id==jd){
+                                deltaij = 1;
+                            }
+                            MFP[3*_NChebPerFib*(3*iPt+id)+3*jPt+jd] +=
+                                -1.5*(Xs[3*iPt+id]*Xss[3*jPt+jd]+Xs[3*jPt+jd]*Xss[3*iPt+id])*_DbltFinitePartMatrix[_NChebPerFib*iPt+iPt];
+                            DFPart[3*_NChebPerFib*(3*iPt+id)+3*jPt+jd]=(deltaij-3*Xs[3*iPt+id]*Xs[3*jPt+jd])*_DbltFinitePartMatrix[_NChebPerFib*iPt+iPt];
+                        }
+                    }
+                } else {
+                    vec3 rvec;
+                    for (int d = 0; d < 3; d++){
+                        rvec[d] = ChebPoints[3*iPt+d]-ChebPoints[3*jPt+d];
+                    }
+                    double r = sqrt(dot(rvec,rvec));
+                    double oneoverr = 1.0/r;
+                    double ds = _NormalChebNodes[jPt]-_NormalChebNodes[iPt];
+                    double oneoverds = 1.0/ds;
+                    for (int id=0; id < 3; id++){
+                        for (int jd=0; jd < 3; jd++){
+                            double deltaij=0;
+                            if (id==jd){
+                                deltaij = 1;
+                            }
+                            // Off diagonal part
+                            MFP[3*_NChebPerFib*(3*iPt+id)+3*jPt+jd] = (deltaij -3*rvec[id]*rvec[jd]*oneoverr*oneoverr)
+                                *pow(oneoverr,3)*pow(std::abs(ds),3)*oneoverds*_DbltFinitePartMatrix[_NChebPerFib*iPt+jPt];
+                            // Diagonal part
+                            MFP[3*_NChebPerFib*(3*iPt+id)+3*iPt+jd] -= (deltaij -3*Xs[3*iPt+id]*Xs[3*iPt+jd])*oneoverds
+                                *_DbltFinitePartMatrix[_NChebPerFib*iPt+jPt];
+                        }
+                    }
+                }
+            }
+        } // end forming matrices
+        BlasMatrixProduct(3*_NChebPerFib, 3*_NChebPerFib, 3*_NChebPerFib,1, 1, DFPart, false, _stackedDiffMatrix, MFP);  // MFP -> DFPart*BigDiff+MFP
+        for (int i = 0; i <M.size(); i++){
+            M[i]+=2.0*_a*_a/3.0*MFP[i];
+        }
+    } // end method
+    
+    void addNumericalRLess2a(const vec &ChebPoints, const vec &Tangents, vec &M){
+        double viscInv = 1.0/(8.0*M_PI*mu);
+        vec XSamples(_NChebPerFib*2*_HalfNForSmall*3,0.0);
+        //vec Mpart(3*_NChebPerFib*3*_NChebPerFib);
+        BlasMatrixProduct(_NChebPerFib*2*_HalfNForSmall, _NChebPerFib, 3, 1.0,0.0,_RL2aResampMatrix, false, ChebPoints, XSamples);
+        // Xsamples is an (Ncheb*Nhalf*2 x 3) matrix
+        // For each point, the first Nhalf rows are for the [s-2a,s] domain and the next Nhalf are for the [s,s+2a] domain
+        for (int iPt=0; iPt < _NChebPerFib; iPt++){
+            for (int iD=0; iD < 2; iD++){
+                vec RowVec(9*_HalfNForSmall);
+                for (int jPt = 0; jPt <  _HalfNForSmall; jPt++){
+                    vec3 rvec;
+                    int jStartIndex = iPt*6*_HalfNForSmall+iD*_HalfNForSmall*3+jPt*3;
+                    for (int id=0; id < 3; id++){
+                        rvec[id]=ChebPoints[3*iPt+id]-XSamples[jStartIndex+id];
+                    }
+                    double r = normalize(rvec);
+                    double diagterm = viscInv*(4.0/(3.0*_a)*(1.0-9.0*r/(32.0*_a)));
+                    double offDiagTerm = viscInv*(1.0/(8.0*_a*_a))*r;
+                    for (int id=0; id < 3; id++){
+                        for (int jd=0; jd < 3; jd++){
+                            double deltaij=0;
+                            if (id==jd){
+                                deltaij=1;
+                            }
+                            RowVec[id*(3*_HalfNForSmall)+3*jPt+jd] = diagterm*deltaij;
+                            if (r > 1e-12){
+                                RowVec[id*(3*_HalfNForSmall)+3*jPt+jd] +=offDiagTerm*rvec[id]*rvec[jd];
+                            }
+                        }
+                    }
+                } // end jPt
+                // Add the row vector to the grand mobility (multiplying by the correct resampling matrix and 
+                // the correct integration weight
+                int startMat = (2*iPt+iD)*(_NChebPerFib*_HalfNForSmall);
+                for (int iR = 0; iR < 3; iR++){
+                    for (int jPt=0; jPt < _NChebPerFib; jPt++){
+                        for (int h = 0; h < _HalfNForSmall; h++){
+                            for (int jd=0; jd < 3; jd++){
+                                M[(3*iPt+iR)*3*_NChebPerFib+3*jPt+jd]+=
+                                    RowVec[iR*3*_HalfNForSmall+3*h+jd]*
+                                    _RL2aResampMatrix[startMat+h*_NChebPerFib+jPt]*_RLess2aWts[(2*iPt+iD)*_HalfNForSmall+h];
+                            }
+                        }
+                    }
+                }
+            } // end domain
+        } // end iPt
+        // Subtract diagonal part from M
+        for (int iPt = 0; iPt < _NChebPerFib; iPt++){
+            for (int id = 0; id < 3; id++){
+                for (int jd =0; jd < 3; jd++){
+                    double deltaij = 0;
+                    if (id==jd){
+                        deltaij=1;
+                    }
+                    double XsXs_ij = Tangents[3*iPt+id]*Tangents[3*iPt+jd];
+                    M[3*_NChebPerFib*(3*iPt+id)+3*iPt+jd]-= viscInv*(RLess2aIPart[iPt]*deltaij+Rless2aTauPart[iPt]*XsXs_ij);
+                }
+            }
+        }
+        /*for (int i=0; i < 3*_NChebPerFib; i++){
+            for (int j =0; j < 3*_NChebPerFib; j++){
+                std::cout << M[i*3*_NChebPerFib+j] << " , ";
+            }
+            std::cout << std::endl;
+        }*/
+    }
+      
     
     void OneRPYKernelWithForce(const vec3 &targ, const vec &sourcePts, const vec &Forces, vec3 &utarg){
         /**
@@ -1116,7 +1421,7 @@ class FiberCollection {
 PYBIND11_MODULE(FiberCollection, m) {
     py::class_<FiberCollection>(m, "FiberCollection")
     
-        .def(py::init<double,vec3, double, double, double,int,int, int, int,double, int,int>())
+        .def(py::init<double,vec3, double, double, double,bool,int,int, int, int,double, int,int>())
         .def("initSpecQuadParams", &FiberCollection::initSpecQuadParams)
         .def("initNodesandWeights", &FiberCollection::initNodesandWeights)
         .def("initResamplingMatrices",&FiberCollection::initResamplingMatrices)

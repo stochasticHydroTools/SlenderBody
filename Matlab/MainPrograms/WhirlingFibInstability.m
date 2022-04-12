@@ -8,7 +8,6 @@
 addpath('../functions-solvers')
 newlabels = 1;
 Periodic=0; 
-flowtype = 'S'; % S for shear, Q for quadratic, not relevant here
 clamp0 = 1;
 clampL = 0;
 TorqBC = 0;
@@ -27,7 +26,7 @@ xir=32/9*pi*mu*a^2;
 wcrit = 8.9*Eb/(xir*L^2);
 xic = 22.9*Eb*(log(epshat^(-2)/16)+4)/(8*pi*mu*L^4);
 period = 2*pi/xic;
-omegafac = 0.8;
+omegafac = 2.2;
 TurnFreq = omegafac*wcrit;
 smperiod = 2*pi/TurnFreq;
 deltaLocal = 0; % part of the fiber to make ellipsoidal
@@ -54,19 +53,12 @@ maxiters = 1;
 Temporal_order=1;
 Ld = 8; % periodic domain size (microns) not relevant here
 xi = 0; % Ewald parameter not relevant here
-dtfactor = 5e-4;
+dtfactor = 2.5e-5;
 dt=dtfactor*period;
-%dt = 0.1*smperiod;
-omega=0;
-gam0=0; % no shear
 t=0;
-tf=5*period;
-grav=0; % for falling fibers, value of gravity
-Kspring = 0; % spring constant for cross linkers
-rl = 0; % rest length for cross linkers
+tf=1;%5*period;
 [s,w,b] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE.
-% Falling fibers
-% Fiber initialization (Floren's configuration)
+% Fiber initialization
 D = diffmat(N, 1, [0 L], 'chebkind1');
 [~, ~, ~,Mrr,~] = getGrandMloc(N,zeros(3*N,1),zeros(3*N),a,L,mu,s,deltaLocal);
 theta_s=TurnFreq/twmod*pinv(D)*(Mrr \ ones(N,1));
@@ -86,7 +78,7 @@ R = [cos(p) -sin(p) 0 ;sin(p) cos(p) 0;0 0 1 ];
 X_s = (R*X_s')';
 fibpts = pinv(D)*X_s;
 fibpts=fibpts-barymat(0,s,b)*fibpts;%+[0 0 2*a];
-saveEvery=1e-2/dtfactor;
+saveEvery=max(1e-4/dtfactor,1);
 endPoints=[];
 InitFiberVars;
 % Parameters for the bottom wall, where we take upsampled integrals 
@@ -96,6 +88,10 @@ Rglobalupsample = barymat(sup, s, b);
 Rglobaldown = barymat(s,sup,bup);
 Wmat=diag(reshape(repmat(wup,3,1),3*Nups,1));
 D1s=[];
+BCers=[];
+stopcount=floor(tf/dt+1e-5);
+Xpts=[];
+Thetass=[];
 %% Computations
 for count=0:stopcount-1 
     t=count*dt;
@@ -109,11 +105,17 @@ for count=0:stopcount-1
         Thetass=[Thetass; theta_s];
         endPoints = [endPoints; barymat(L,s,b)*reshape(Xt,3,N)'];
         D1s=[D1s; D1];
+        BCdiff=XBCMat_low*reshape(Xt,3,N)';
+        BCdiff(2,:)=BCdiff(2,:)-[0 1 0];
+        BCers=[BCers;BCdiff];
+        Xrs = Rpl*reshape(Xt,3,N)';
     end
     % Evolve system
     fext = zeros(3*N,1);
     lamguess = zeros(3*N,1);
     U0 = zeros(3*N,1);
+    %periodnumber = floor(t/(2*period));
+    %TurnFreq=(0.96+periodnumber*0.08)*wcrit;
     TemporalIntegrator;
     Xtm1=Xt;
     Xstm1=Xst;
@@ -121,6 +123,15 @@ for count=0:stopcount-1
     Xst = Xsp1;
     theta_s = theta_sp1;
     D1=D1next;
+    for ip=1:1000
+        displac = Xrs-Xrs(ip,:);
+        displac = sqrt(sum(displac.*displac,2));
+        displac(abs(spl(ip)-spl) < 2.2*a)=inf;
+        [val,ind]=min(displac);
+        if (val < 2*a)
+            warning('Possible encroachment!')
+        end
+    end
 end
 Xpts=[Xpts;reshape(Xt,3,N*nFib)'];
 forces=[forces; reshape(lambdas,3,N*nFib)'];

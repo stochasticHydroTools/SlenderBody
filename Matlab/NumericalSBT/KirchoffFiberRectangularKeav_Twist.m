@@ -1,14 +1,14 @@
 localdrag = 0;
-% delta = 0;
+delta = 0;
 L = 2;
-% eps = 0.005;
+% eps = 0.0025;
 kappa = 1;
 twistmod = 1;
 linesty='-';
 % if (twistmod > 0)
-%     N = 4/eps;
+%      N = 4/eps;
 % else
-%     N = 4/eps;
+%      N =1/eps;
 % end
 mu = 1;
 a = eps*L;
@@ -121,6 +121,7 @@ uEuler = K*alphaU;
 lambda = Mtt \(uEuler-Mtr_par*npar) - fE;
 mismatch = Ds_sm*(Mtt*(fE+lambda)+Mtr_par*npar) + Avg_sm*XsCross*(Mrt*(fE+lambda)+Mrr*npar);
 OmegaPar_Euler = sum(reshape(Mrt*(fE+lambda)+Mrr*npar,3,N)'.*Xs_u,2);
+
 % Compute moments of lambda against Cheb polynomials up to 40
 RectMoments = zeros(3,40);
 lambda = reshape(lambda,3,N)';
@@ -132,23 +133,23 @@ end
 RectuEuler = uEuler;
 % plot(s_u,uEuler(:,2))
 return
-
-% for iD=0
-subplot(1,3,2)
-hold on
-box on
-plot(s_u,lambda(1:3:end),linesty)
-ylabel('$\lambda_E^{(x)}$ (Euler)','interpreter','latex')
-subplot(1,3,1)
-hold on
-box on
-plot(s_u,uEuler(2:3:end),linesty)
-ylabel('$U_E^{(y)}$ (Euler)','interpreter','latex')
-subplot(1,3,3)
-hold on
-box on
-plot(s_u,OmegaPar_Euler,linesty)
-ylabel('$\Omega_E^\parallel$','interpreter','latex')
+% 
+% % for iD=0
+% subplot(1,3,2)
+% hold on
+% box on
+% plot(s_u,lambda(1:3:end),linesty)
+% ylabel('$\lambda_E^{(x)}$ (Euler)','interpreter','latex')
+% subplot(1,3,1)
+% hold on
+% box on
+% plot(s_u,uEuler(2:3:end),linesty)
+% ylabel('$U_E^{(y)}$ (Euler)','interpreter','latex')
+% subplot(1,3,3)
+% hold on
+% box on
+% plot(s_u,OmegaPar_Euler,linesty)
+% ylabel('$\Omega_E^\parallel$','interpreter','latex')
 % end
 % 
 % 
@@ -197,18 +198,18 @@ mintinds = s_uep(2:end-1) > normdistance & s_uep(2:end-1) < L-normdistance;
 
 line2 = [sqrt(sum(ds*sum(mismatch(mintinds,:).*mismatch(mintinds,:),2))) ...
 sqrt(sum(ds*sum(deltaU(inds,:).*deltaU(inds,:),2))) ...
-sqrt(sum(ds*sum(deltaF(inds,:).*deltaF(inds,:),2))) ...
+sqrt(sum(ds*sum(deltaF(minds,:).*deltaF(minds,:),2))) ...
 sqrt(sum(ds*sum(DDeltaU(mintinds,:).*DDeltaU(mintinds,:),2))) ... 
 sqrt(sum(ds*sum(deltaOmCrossTau(inds,:).*deltaOmCrossTau(inds,:),2))) ...
 sqrt(sum(ds*deltaOmDotTau(inds).*deltaOmDotTau(inds)))];
 DUEuler = DCToC*uEuler;
-% normalizations = [normalizations;  sqrt(sum(ds*sum(uEuler(inds,:).*uEuler(inds,:),2))) ...
-%     sqrt(sum(ds*sum(DUEuler(inds,:).*DUEuler(inds,:),2))) ...
-%  sqrt(sum(ds*sum(F0(minds,:).*F0(minds,:),2))) ...
-%  sqrt(sum(ds*OmegaPar_Euler(inds,:).*OmegaPar_Euler(inds,:)))];
-% allLine1s=[allLine1s; line1];
-% allLine2s=[allLine2s; line2];
-% 
+normalizations = [normalizations;  sqrt(sum(ds*sum(uEuler(inds,:).*uEuler(inds,:),2))) ...
+     sqrt(sum(ds*sum(DUEuler(inds,:).*DUEuler(inds,:),2))) ...
+  sqrt(sum(ds*sum(F0(minds,:).*F0(minds,:),2))) ...
+  sqrt(sum(ds*OmegaPar_Euler(inds,:).*OmegaPar_Euler(inds,:)))];
+ %allLine1s=[allLine1s; line1];
+ allLine2s=[allLine2s; line2];
+ 
 % % sqrt(sum(ds*sum(MismatchLocal(inds,:).*MismatchLocal(inds,:),2)))
 % % Matrix to convert coordinates from (x,y,z) -> local triad
 CoordinateConv_LINKS =  ChangeCoordsMat(s_u,L);

@@ -31,7 +31,7 @@ function [MTT, MTR, MRT, MRR,sNew] = getGrandMloc(N,Xs,Xss,a,L,mu,s0,delta)
                 MTT(inds,inds)=(2+4/3*sbar-3/16*sbar^2)*eye(3)+1/16*sbar^2*XsXs...
                     +log(t/(2*a))*(eye(3)+XsXs);
                 MTR(inds,iPt)=(7/12+1/6*sbar^3-3/64*sbar^4+log(t/(2*a)))*1/2*cross(tau,Xsprime);
-                MRT(iPt,inds)=(7/12+1/6*sbar^3-3/64*sbar^4+log((L-t)/(2*a)))*1/2*cross(tau,Xsprime);
+                MRT(iPt,inds)=(7/12+1/6*sbar^3-3/64*sbar^4+log(t/(2*a)))*1/2*cross(tau,Xsprime);
                 aI_MRR = 1/a^2*(5/8+sbar-27/64*sbar^2 + 5/256*sbar^4-1/2*(1/8-a^2/(2*t^2)));
                 aTau_MRR = 1/a^2*(3/8+9/64*sbar^2 - 3/256*sbar^4+3/2*(1/8-a^2/(2*t^2)));
             else

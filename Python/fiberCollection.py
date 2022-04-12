@@ -71,7 +71,7 @@ class fiberCollection(object):
         
         # Initialize C++ class 
         r = self._epsilon*self._Lf;
-        self._FibColCpp = FiberCollection(mu,DLens,self._epsilon, self._Lf,aRPYFac,self._Nfib,self._Npf,self._Nunifpf,\
+        self._FibColCpp = FiberCollection(mu,DLens,self._epsilon, self._Lf,aRPYFac,fibDisc._truRPYMob,self._Nfib,self._Npf,self._Nunifpf,\
             self._Ndirect,fibDisc._delta,self._nPolys,nThreads);
         dstarCL = dstarCenterLine*self._epsilon*self._Lf;
         dstarInt = dstarInterpolate*self._epsilon*self._Lf;
@@ -82,7 +82,9 @@ class fiberCollection(object):
         self._FibColCpp.initResamplingMatrices(fibDisc.getUpsamplingMatrix(), fibDisc.get2PanelUpsamplingMatrix(),\
                     fibDisc.getValstoCoeffsMatrix(),np.linalg.inv(fibDisc.getValstoCoeffsMatrix()),self._fiberDisc._MatfromNtoDirectN,\
                     self._fiberDisc._MatfromDirectNtoN);
-        self._FibColCpp.init_FinitePartMatrix(fibDisc.getFPMatrix(), fibDisc.getDiffMat());
+        # For Stokeslet and doublet FP matrices, the get method returns the TRANSPOSE of the matrix!
+        self._FibColCpp.init_FinitePartMatrix(fibDisc.getFPMatrix(), fibDisc.getDoubletFPMatrix(),\
+            fibDisc.getRless2aResampMat(),fibDisc._RLess2aWts,fibDisc.getDiffMat());
         self._FibColCpp.initMatricesForPreconditioner(fibDisc._MatfromNto2N, fibDisc._UpsampledChebPolys.T, fibDisc._LeastSquaresDownsampler,\
             fibDisc._Dpinv2N,fibDisc._WeightedUpsamplingMat, fibDisc._D4BC,fibDisc._leadordercs);
     
@@ -142,9 +144,9 @@ class fiberCollection(object):
         self._alphas = np.zeros((2*self._nPolys+3)*self._Nfib);
         self._velocities = np.zeros(self._Npf*self._Nfib*3);         
         # Initialize the spatial database objects
-        self._SpatialCheb = ckDSpatial(self._ptsCheb,Dom);
-        self._SpatialDirectQuad = ckDSpatial(np.zeros((self._totnumDirect,3)),Dom);
-        self._SpatialUni = CellLinkedList(np.zeros((self._Nunifpf*self._Nfib,3)),Dom,nThr=self._nThreads);
+        self._SpatialCheb = CellLinkedList(self._ptsCheb,Dom,nThr=self._nThreads);
+        self._SpatialDirectQuad = CellLinkedList(np.zeros((self._totnumDirect,3)),Dom,nThr=self._nThreads);
+        self._SpatialUni = ckDSpatial(np.zeros((self._Nunifpf*self._Nfib,3)),Dom,nThr=self._nThreads);
     
    
     def fillPointArrays(self):
@@ -183,23 +185,25 @@ class fiberCollection(object):
         the hydro for the species collection is still outstanding) 
         The block diagonal RHS is 
         [M^Local*(F*X^n+f^ext) + M^NonLocal * (F*X^(n+1/2,*)+lambda*+f^ext)+u_0; 0]
+        M^Local is the part that is being treated explicitly, and M^NonLocal is the part that is being treated
+        implicitly
         """
         #print('Strain val %f' %Dom._g)
         fnBend = self.evalBendForceDensity(self._ptsCheb);
         Local = self.calcLocalVelocities(np.reshape(Xs_nonLoc,self._totnum*3),exForceDen+fnBend);
+        if (FPimplicit==1 and self._nonLocal > 0): # do the finite part separetely if it's to be treated implicitly
+            Local+= self._FibColCpp.FinitePartVelocity(X_nonLoc, exForceDen+fnBend, Xs_nonLoc)
+            #print('Doing FP separate, it''s being treated implicitly')
         U0 = self.evalU0(X_nonLoc,t);
         fNLBend = self.evalBendForceDensity(X_nonLoc);
         totForce = lamstar+exForceDen+fNLBend;
         # Compute upsampled points once and for all iterations
         if (self._nonLocal == 3):
             self._Xupsampled = self.getPointsForUpsampledQuad(X_nonLoc);
-            self._SpatialDirectQuad.updateSpatialStructures(self._Xupsampled,Dom);        
+            self._SpatialDirectQuad.updateSpatialStructures(self._Xupsampled,Dom);   
         nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,totForce,Dom,RPYEval,1-FPimplicit);
-        if (FPimplicit==1 and self._nonLocal > 0): # do the finite part separetely if it's to be treated implicitly
-            nonLocal+= self._FibColCpp.FinitePartVelocity(X_nonLoc, fnBend, Xs_nonLoc)
-            print('Doing FP separate, it''s being treated implicitly')
         if (returnForce):
-            return np.concatenate((Local+nonLocal+U0,np.zeros((2*self._nPolys+3)*self._Nfib))),totForce  
+            return np.concatenate((Local+nonLocal+U0,np.zeros((2*self._nPolys+3)*self._Nfib))),totForce 
         return np.concatenate((Local+nonLocal+U0,np.zeros((2*self._nPolys+3)*self._Nfib)));
     
     def calcNewRHS(self,BlockDiagAnswer,X_nonLoc,Xs_nonLoc,dtimpco,lamstar, Dom, RPYEval,FPimplicit=0,returnForce=False):
@@ -248,7 +252,7 @@ class fiberCollection(object):
         FirstBlock = -(Local+nonLocal)+Kalph; # zero if lambda, alpha = 0
         SecondBlock = Ktlam;
         if (returnForce):
-            return np.concatenate((FirstBlock,SecondBlock)), forceDs;    
+            return np.concatenate((FirstBlock,SecondBlock)), forceDs;   
         return np.concatenate((FirstBlock,SecondBlock));
        
     def BlockDiagPrecond(self,b,Xs_nonLoc,dt,implic_coeff,X_nonLoc,doFP=0):
@@ -263,12 +267,13 @@ class fiberCollection(object):
         XsAll = np.reshape(Xs_nonLoc,self._Npf*self._Nfib*3);
         fD = self._fiberDisc;
         b1D = np.reshape(b,len(b));
-        return self._FibColCpp.applyPreconditioner(Xs_nonLoc,b1D,implic_coeff*dt);
+        return self._FibColCpp.applyPreconditioner(X_nonLoc, Xs_nonLoc,b1D,implic_coeff*dt,doFP);
         
         # Numba version
         lamalph = NumbaColloc.linSolveAllFibersForGM(self._Nfib,self._nPolys,self._Npf,b1D, Xs_nonLoc,XsAll,dt*implic_coeff, \
             fD._leadordercs, self._mu, fD._MatfromNto2N, fD._UpsampledChebPolys, fD._WeightedUpsamplingMat,fD._LeastSquaresDownsampler, fD._Dpinv2N, \
             fD._D4BC,fD._I,fD._wIt,X_nonLoc,fD.getFPMatrix(),fD._Dmat,fD._s,doFP);
+        print(np.amax(np.abs(a1-lamalph)))
         return lamalph;
     
     def BrownianUpdate(self,dt,kbT,Randoms):
@@ -288,7 +293,6 @@ class fiberCollection(object):
         Outputs: nonlocal velocity as a tot#ofpts*3 one-dimensional array.
         """
         # If not doing nonlocal hydro, return nothing
-        doFinitePart = 1;
         if (self._nonLocal==0):
             return np.zeros(self._totnum*3);
         elif (self._nonLocal==2):
@@ -304,7 +308,7 @@ class fiberCollection(object):
             print('Time to eval finite part %f' %(time.time()-thist));
             thist=time.time();
         if (self._nonLocal==4):
-            return finitePart;
+            return doFinitePart*finitePart;
         
         # Ewald w/ special quadrature corrections
         if (self._nonLocal==1 or self._nonLocal==2):
@@ -499,6 +503,8 @@ class fiberCollection(object):
         other = the other (previous time step) fiber collection
         """
         fD = self._fiberDisc;
+        if (fD._truRPYMob):
+            raise NotImplementedError('RPY kernel not implemented to respawn lambda for turned-over fibers')
         for iFib in newfibs:
             rowinds = self.getRowInds(iFib);
             stackinds = self.getStackInds(iFib);
@@ -507,7 +513,7 @@ class fiberCollection(object):
             fnBend = fD.calcfE(X);
             fEx = exForceDen[stackinds];
             #print('Max CL force on new fiber %f' %np.amax(np.abs(fEx)))
-            Local = NumbaColloc.calcLocalVelocities(Xs,fnBend+fEx,self._fiberDisc._leadordercs,self._mu,self._Npf,1);
+            Local = self.calcLocalVelocities(Xs,fnBend+fEx);
             U0 = self.evalU0(self._ptsCheb[rowinds,:],t);
             RHS = np.concatenate((Local+U0,np.zeros(2*self._nPolys+3)));
             lamalph =  NumbaColloc.linSolveAllFibersForGM(1,self._nPolys,self._Npf,RHS, self._tanvecs[rowinds,:],Xs,dt*implic_coeff, \
@@ -602,8 +608,6 @@ class fiberCollection(object):
         Outputs: the velocity M_loc*f on all fibers as a 1D array
         """
         return self._FibColCpp.evalLocalVelocities(Xs,forceDsAll)
-        # Numba
-        Num= NumbaColloc.calcLocalVelocities(Xs,forceDsAll,self._fiberDisc._leadordercs,self._mu,self._Npf,self._Nfib);
         
     def determineQuadLists(self, XnonLoc, Xuniform, Dom):
         """

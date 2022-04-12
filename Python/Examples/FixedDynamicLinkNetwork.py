@@ -32,6 +32,8 @@ for iLine in Input:
     copyInput.write(iLine);
 copyInput.write('COMMAND LINE ARGS \n')
 copyInput.write('CLseed = '+str(CLseed)+'\n')
+copyInput.write('Implicit Fp = '+str(ImplicitFinitePart)+'\n')
+copyInput.write('True RPY mob = '+str(RPYMob)+'\n')
 copyInput.close();
 Input.close()
 saveEvery = int(savedt/dt+1e-10);  
@@ -40,7 +42,8 @@ saveEvery = int(savedt/dt+1e-10);
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,nptsUniform=Nuniformsites,NupsampleForDirect=NupsampleForDirect,rigid=rigidFibs);
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,nptsUniform=Nuniformsites,\
+    NupsampleForDirect=NupsampleForDirect,rigid=rigidFibs,trueRPYMobility=RPYMob);
 
 # Initialize the master list of fibers
 allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,1,0,Dom,nThreads=nThr); # No flow, no nonlocal hydro (nothing to OMP parallelize)
@@ -85,9 +88,9 @@ print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
         
 # Initialize the temporal integrator
 if (BrownianFluct or useBackwardEuler):
-    TIntegrator = BackwardEuler(allFibers, CLNet);
+    TIntegrator = BackwardEuler(allFibers, CLNet,FPimp=ImplicitFinitePart);
 else:  
-    TIntegrator = CrankNicolson(allFibers, CLNet);
+    TIntegrator = CrankNicolson(allFibers, CLNet,FPimp=ImplicitFinitePart);
 TIntegrator.setMaxIters(nIts);
 TIntegrator.setLargeTol(LargeTol);
 
@@ -138,9 +141,9 @@ for iT in range(stopcount):
         saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
-        ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+OutputFileName);
-        CLNet.writeLinks(ofCL)
-        ofCL.close()
+        #ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+OutputFileName);
+        #CLNet.writeLinks(ofCL)
+        #ofCL.close()
                
         # Bundles where connections are 2 links separated by 2*restlen
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);
