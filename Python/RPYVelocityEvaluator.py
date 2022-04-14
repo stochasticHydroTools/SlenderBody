@@ -273,7 +273,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
 
 
 # Parameters for Raul's code 
-GPUtol = 1e-6 # single precision, so 1e-6 is smallest tolerance
+GPUtol = 1e-10 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
     """
@@ -303,7 +303,7 @@ class GPUEwaldSplitter(EwaldSplitter):
         # Raul's code
         import uammd
         self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
-            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]));
+            Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
         self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
         
         # Calculate the truncation distance for Ewald
@@ -328,12 +328,13 @@ class GPUEwaldSplitter(EwaldSplitter):
         pts = self._currentDomain.primecoords(ptsxyz);
         self.checkrcut();
         # Reshape for GPU
-        positions = np.array(np.reshape(pts,3*self._Npts), np.float32);
-        forcesR = np.array(np.reshape(forces,3*self._Npts), np.float32);
+        positions = np.array(np.reshape(pts,3*self._Npts), np.float64);
+        forcesR = np.array(np.reshape(forces,3*self._Npts), np.float64);
         # It is really important that the result array has the same floating precision as the compiled uammd, otherwise
         # python will just silently pass by copy and the results will be lost
-        MF=np.zeros(3*self._Npts, np.float32);
-        self._GPUEwald.Mdot(positions, forcesR, self._currentDomain.getg(), MF)
+        MF=np.zeros(3*self._Npts, np.float64);
+        self._GPUEwald.setShearStrain(self._currentDomain.getg())
+        self._GPUEwald.computeHydrodynamicDisplacements(positions, forcesR,MF)
         if (verbose > 0):
             print('Method Raul time: %f' %(time.time()-thist));
         return np.array(np.reshape(MF,(self._Npts,3)),np.float64);
@@ -345,6 +346,6 @@ class GPUEwaldSplitter(EwaldSplitter):
         print('Updating GPU far field arrays')
         import uammd
         self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
-            box=uammd.Box(self._PerLengths[0],self._PerLengths[1],self._PerLengths[2]));
+            Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2]);
         self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
         

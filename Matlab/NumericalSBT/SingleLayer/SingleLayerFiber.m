@@ -1,8 +1,8 @@
 % % % Single layer boundary integral for ellipsoidal filament and comparison
 % % % with Johnson
 % % % Discretization on centerline
-%clear;
-for Nthet = [8]
+% clear;
+for Nthet = [16]
 BI=0;
 SBT=1;
 trans=0;
@@ -11,7 +11,7 @@ if (BI)
 index=1;
 L = 2;
 a = 80e-3;
-Ns = [40];
+Ns = [40:20:160];
 for N=Ns
 mu = 1;
 dtheta = 2*pi/Nthet;
@@ -123,7 +123,7 @@ for iEr=1:index-2
 end
 end
 if (SBT)
-ks = [2 2.4 2.8 3];
+ks = [2 2.4 2.82 3];
 UEr = zeros(index-1,length(ks));
 OmEr = zeros(index-1,length(ks));
 normForceEr = zeros(index-1,length(ks));
