@@ -20,20 +20,25 @@ def saveCurvaturesAndStrains(allFibers,CLNet,OutputFileName,wora='a'):
     writeArray('DynamicRheo/LinkStrains'+OutputFileName,[LinkStrainSqu],wora=wora)
     writeArray('DynamicRheo/FibCurves'+OutputFileName,FibCurvatures,wora=wora)
 
-Input = open('StrainInputFile.txt','r')
-for iLine in Input:
-    exec(iLine);
-InputCopyName='DynamicRheo/InputFile_'+outFile;
-copyInput = open(InputCopyName,'w')
-Input = open('StrainInputFile.txt','r')
-for iLine in Input:
-    copyInput.write(iLine);
-copyInput.write('COMMAND LINE ARGS \n')
-copyInput.write('CLseed = '+str(CLseed)+'\n')
-copyInput.write('Omega = '+str(omegasToDo[0])+'\n')
-copyInput.write('Strain = '+str(maxStrain)+'\n')
-copyInput.close();
-Input.close()
+try:
+	Input = open('StrainInputFile.txt','r')
+	for iLine in Input:
+		exec(iLine);
+	InputCopyName='DynamicRheo/InputFile_'+outFile;
+	copyInput = open(InputCopyName,'w')
+	Input = open('StrainInputFile.txt','r')
+	for iLine in Input:
+		copyInput.write(iLine);
+	copyInput.write('COMMAND LINE ARGS \n')
+	copyInput.write('CLseed = '+str(CLseed)+'\n')
+	copyInput.write('Omega = '+str(omegasToDo[0])+'\n')
+	copyInput.write('Strain = '+str(maxStrain)+'\n')
+	copyInput.close();
+	Input.close()
+except:
+	raise ValueError('This file takes three command line arguments: the seed (for CL network),\
+the frequency omega to shear at, and the maximum strain (on [0,1]), in that order')
+
 
 # Array of frequencies in Hz 
 for omHz in omegasToDo:

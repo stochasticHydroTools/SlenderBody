@@ -28,15 +28,16 @@ SpatialkD = ckDSpatial(pts,ShearDom);
 
 # Velocity of the blobs - parallelogram domain
 uParallelogram = Ewald.calcBlobTotalVel(pts,forces,ShearDom,SpatialkD);
-par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, box=uammd.Box(Lx,Ly,Lz));
+par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, Lx=Lx,Ly=Ly,Lz=Lz)
 pse = uammd.UAMMD(par,Npts);
 #pse.Mdot assumes interleaved positions and forces, that is x1,y1,z1,x2,y2,z2,...
 shearedpts = pts.copy();
 shearedpts[:,0]-=g*shearedpts[:,1]; # THIS INCLUDES TRANSFER TO SHEARED SPACE!
-positions = np.array(np.reshape(shearedpts,3*Npts), np.float32);
-forcesR = np.array(np.reshape(forces,3*Npts), np.float32);
-MF=np.zeros(3*Npts, np.float32);
-pse.Mdot(positions, forcesR, g, MF)
+positions = np.array(np.reshape(shearedpts,3*Npts), np.float64);
+forcesR = np.array(np.reshape(forces,3*Npts), np.float64);
+MF=np.zeros(3*Npts, np.float64);
+pse.setShearStrain(g)
+pse.computeHydrodynamicDisplacements(positions, forcesR, MF)
 MF = np.reshape(MF,(Npts,3))
 print('Velocities parallelogram')
 print(uParallelogram)
@@ -51,13 +52,14 @@ Ewald = EwaldSplitter(a,mu,xi,RectDom,2*Npts);
 SpatialkD = ckDSpatial(ptsRect,RectDom);
 uRectangle = Ewald.calcBlobTotalVel(ptsRect,forcesRect,RectDom,SpatialkD);
 # Raul version
-par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, box=uammd.Box(Lx,2*Ly,Lz));
+par = uammd.PSEParameters(psi=Ewald._xi, viscosity=mu, hydrodynamicRadius=a, tolerance=1e-6, Lx=Lx,Ly=2*Ly,Lz=Lz);
 pse = uammd.UAMMD(par,2*Npts);
 #pse.Mdot assumes interleaved positions and forces, that is x1,y1,z1,x2,y2,z2,...
-positions = np.array(np.reshape(ptsRect,6*Npts), np.float32);
-forcesR = np.array(np.reshape(forcesRect,6*Npts), np.float32);
-MFR=np.zeros(6*Npts, np.float32);
-pse.Mdot(positions, forcesR, 0, MFR)
+positions = np.array(np.reshape(ptsRect,6*Npts), np.float64);
+forcesR = np.array(np.reshape(forcesRect,6*Npts), np.float64);
+MFR=np.zeros(6*Npts, np.float64);
+pse.setShearStrain(0.0)
+pse.computeHydrodynamicDisplacements(positions, forcesR, MFR)
 MFR = np.reshape(MFR,(2*Npts,3))
 print('Velocities rectangle')
 print(uRectangle)

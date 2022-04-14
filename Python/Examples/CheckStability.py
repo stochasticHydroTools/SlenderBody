@@ -13,22 +13,26 @@ This file runs the stability test in Section 5.2.
 """
 
 # Inputs for the slender body simulation
-nFib=1000		    # number of fibers
-#N=16		    # number of points per fiber
-Lf=2		    # length of each fiber
-nonLocal=3	    # doing nonlocal solves? See fiberCollection.py for list of possible values. 
-deltaLocal=0.1;
-#Ld=4		    # length of the periodic domain
-mu=1		    # fluid viscosity
-eps=float(sys.argv[2]);	    # slenderness ratio
-dt=5e-2		    # timestep
-omega=2*pi	    # frequency of oscillations
-gam0=0.2*pi	    # base rate of strain 
-tf=5		    # final time
-gravity=0.0     # no uniform force
+try:
+	nFib=1000		    # number of fibers
+	#N=16		    # number of points per fiber
+	Lf=2		    # length of each fiber
+	nonLocal=3	    # doing nonlocal solves? See fiberCollection.py for list of possible values. 
+	deltaLocal=0.1;
+	#Ld=4		    # length of the periodic domain
+	mu=1		    # fluid viscosity
+	eps=float(sys.argv[2]);	    # slenderness ratio
+	dt=5e-2		    # timestep
+	omega=2*pi	    # frequency of oscillations
+	gam0=0.2*pi	    # base rate of strain 
+	tf=5		    # final time
+	gravity=0.0     # no uniform force
 
-TemporalOrder = int(sys.argv[1]);
-Nin = int(sys.argv[3]);
+	TemporalOrder = int(sys.argv[1]);
+	Nin = int(sys.argv[3]);
+except:
+	raise ValueError('This file takes three command line arguments: the temporal integrator order,\
+the slenderness epsilon, and the number of collocation points N, in that order')
 print('Temporal order: %d' %TemporalOrder)
 print('Epsilon: %f' %eps)
 print('N: %d' %Nin)

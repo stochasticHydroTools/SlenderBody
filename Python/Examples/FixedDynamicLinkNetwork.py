@@ -22,20 +22,25 @@ def saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='
 # Inputs for the slender body simulation
 
 # Fiber parameters
-Input = open('FixedNetworkInputFile.txt','r')
-for iLine in Input:
-    exec(iLine);
-InputCopyName='BundlingBehavior/FixedNetInputFile_'+OutputFileName;
-copyInput = open(InputCopyName,'w')
-Input = open('FixedNetworkInputFile.txt','r')
-for iLine in Input:
-    copyInput.write(iLine);
-copyInput.write('COMMAND LINE ARGS \n')
-copyInput.write('CLseed = '+str(CLseed)+'\n')
-copyInput.write('Implicit Fp = '+str(ImplicitFinitePart)+'\n')
-copyInput.write('True RPY mob = '+str(RPYMob)+'\n')
-copyInput.close();
-Input.close()
+try:
+	Input = open('FixedNetworkInputFile.txt','r')
+	for iLine in Input:
+		exec(iLine);
+	InputCopyName='BundlingBehavior/FixedNetInputFile_'+OutputFileName;
+	copyInput = open(InputCopyName,'w')
+	Input = open('FixedNetworkInputFile.txt','r')
+	for iLine in Input:
+		copyInput.write(iLine);
+	copyInput.write('COMMAND LINE ARGS \n')
+	copyInput.write('CLseed = '+str(CLseed)+'\n')
+	copyInput.write('Implicit Fp = '+str(ImplicitFinitePart)+'\n')
+	copyInput.write('True RPY mob = '+str(RPYMob)+'\n')
+	copyInput.close();
+	Input.close();
+except:
+	raise ValueError('This file takes three command line arguments: the seed (for CL network),\
+whether to do the finite part implicitly (0 or 1), and whether to use RPY mobility (0 or 1), in that order')
+
 saveEvery = int(savedt/dt+1e-10);  
 
 # Initialize the domain and spatial database
