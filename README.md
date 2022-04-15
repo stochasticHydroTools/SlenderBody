@@ -47,7 +47,9 @@ The code here is independent of the linequad code of af Klinteberg and Barnett.
 git clone --recursive https://github.com/stochasticHydroTools/SlenderBody
 ```
 This will also clone the submodules in the dependency folder. 
+
 2) cd into the Python and run make. This will compile all the dependencies and the C++ modulues
+
 3) Common mistakes:
 * Make sure you include the directory containing the dependencies in your python path. This can be done by adding
 ```
@@ -67,6 +69,7 @@ in cppmodules will compile the fortran code. You need to make sure your system k
 ```
 export LD_LIBRARY_PATH=/home/ondrejmaxian/lib
 ```
+
 4) Run the python scripts in Python/Examples. For example, 
 ```
 python3 ThreeShearedFibs.py
