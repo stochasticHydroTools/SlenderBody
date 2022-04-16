@@ -46,29 +46,21 @@ The code here is independent of the linequad code of af Klinteberg and Barnett.
 ```
 git clone --recursive https://github.com/stochasticHydroTools/SlenderBody
 ```
-This will also clone the submodules in the dependency folder. 
-
-2) cd into the Python directory and run make. This will compile all the dependencies and the C++ modulues
+This will also clone the submodules in the dependency folder. Then run 
+```
+cd SlenderBody
+bash install.sh
+```
+in the main directory. This will compile all of the dependencies and C++ modulues. It will also
+add the appropriate directories (where the python modulues are compiled) to your PYTHONPATH.  
 
 3) Common mistakes:
-* Make sure you include the directory containing the dependencies in your python path. This can be done by adding
-```
-export PYTHONPATH=${PYTHONPATH}:/HomeDir/SlenderBody/Python/cppmodules
-export PYTHONPATH=${PYTHONPATH}:/HomeDir/SlenderBody/Python/Dependencies/BatchedNBodyRPY
-export PYTHONPATH=${PYTHONPATH}:/HomeDir/SlenderBody/Python/Dependencies/UAMMD_PSE_Python
-export PYTHONPATH=${PYTHONPATH}:/HomeDir/SlenderBody/Python/Dependencies/NeighborSearch
-export PYTHONPATH=${PYTHONPATH}:/HomeDir/SlenderBody/Python/Dependencies
-```
-to your .bashrc file, for example, where HomeDir is where you have installed this repo. 
 * When compiling UAMMD in the dependencies, the compiler may complain depending on what version of nvcc you use.
 If it complains that there is no file called cub, cd into SlenderBody/Python/Dependencies/UAMMD_PSE_Python/uammd/src/third_party
 and change the folder called "cub_bak" to "cub." This should fix that issue. See also the [UAMMD webpage](https://github.com/RaulPPelaez/UAMMD) 
 for more compilation instructions. 
 * You will need to add the location of the fortran module SlenderBody/Fortran/MinHeapModule.f90 to your LD_LIBRARY_PATH. Specifically, the makefile
-in cppmodules will compile the fortran code. You need to make sure your system knows where that .so file is to load it in. For me this is
-```
-export LD_LIBRARY_PATH=/home/ondrejmaxian/lib
-```
+in cppmodules will compile the fortran code. You need to make sure your system knows where that .so file is to load it in.
 
 4) Run the python scripts in Python/Examples. For example, 
 ```
