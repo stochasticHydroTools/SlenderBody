@@ -13,9 +13,9 @@ CrossLinkForceEvaluator:
 	c++ -O3 -Wall -shared CrossLinkForceEvaluator.cpp -o CrossLinkForceEvaluator.so -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke `python3 -m pybind11 --includes`
 
 EndedCrossLinking:
-	gfortran -shared -O3 ../../Fortran/MinHeapModule.f90 -o /home/ondrejmaxian/lib/libFortranHeap.so -fPIC
+	gfortran -shared -O3 ../../Fortran/MinHeapModule.f90 -o /home/ondrejmaxian/Documents/SLENDER_FIBERS/SlenderBody/Fortran/libFortranHeap.so -fPIC
 	c++ -O3 -Wall -shared EndedCrossLinkers.cpp -o EndedCrossLinkedNetwork.so \
-	    -L/home/ondrejmaxian/lib/ -lFortranHeap -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke `python3 -m pybind11 --includes`
+	    -L/home/ondrejmaxian/Documents/SLENDER_FIBERS/SlenderBody/Fortran/ -lFortranHeap -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke `python3 -m pybind11 --includes`
 
 clean:
 	rm *.so

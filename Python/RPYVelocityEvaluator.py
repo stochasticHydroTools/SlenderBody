@@ -335,6 +335,9 @@ class GPUEwaldSplitter(EwaldSplitter):
         MF=np.zeros(3*self._Npts, np.float64);
         self._GPUEwald.setShearStrain(self._currentDomain.getg())
         self._GPUEwald.computeHydrodynamicDisplacements(positions, forcesR,MF)
+        if (np.amax(np.abs(MF))==0 and np.amax(np.abs(forcesR)) > 0):
+        	raise ValueError('You are getting zero velocity with finite force, your UAMMD precision is wrong!')
+        	# You need to change the precision in MF to np.float32 or float64, depending on how you compiled UAMMD
         if (verbose > 0):
             print('Method Raul time: %f' %(time.time()-thist));
         return np.array(np.reshape(MF,(self._Npts,3)),np.float64);
