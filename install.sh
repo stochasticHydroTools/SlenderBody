@@ -1,5 +1,5 @@
 set -e #End script if any command fails
-#(cd Python && make)
+(cd Python && make)
 #Check if slender is already present:
 if grep "SLENDER_PYTHON" ~/.bashrc; then echo "Slender body already present in bashrc"; exit 0; fi
 #If SLENDER_PYTHON is not present in bashrc append these lines to it
