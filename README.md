@@ -54,13 +54,13 @@ bash install.sh
 in the main directory. This will compile all of the dependencies and C++ modulues. It will also
 add the appropriate directories (where the python modulues are compiled) to your PYTHONPATH.  
 
+If the compilation process fails this script will show an error. In that case fix the compilation issue and run ```bash install.sh``` again.
+
 3) Common mistakes:
 * When compiling UAMMD in the dependencies, the compiler may complain depending on what version of nvcc you use.
 If it complains that there is no file called cub, cd into SlenderBody/Python/Dependencies/UAMMD_PSE_Python/uammd/src/third_party
 and change the folder called "cub_bak" to "cub." This should fix that issue. See also the [UAMMD webpage](https://github.com/RaulPPelaez/UAMMD) 
 for more compilation instructions. 
-* You will need to add the location of the fortran module SlenderBody/Fortran/MinHeapModule.f90 to your LD_LIBRARY_PATH. Specifically, the makefile
-in cppmodules will compile the fortran code. You need to make sure your system knows where that .so file is to load it in.
 
 4) Run the python scripts in Python/Examples. For example, 
 ```
@@ -84,3 +84,8 @@ on the command line in linux using (for example, to obtain 4 threads)
 ```
 export NUMBA_NUM_THREADS=4
 ```
+
+# Uninstalling 
+1) Run ```make clean``` inside the Python folder.  
+
+2) The install.sh script modifies the .bashrc file (which are marked as written by the script). Simply remove these lines.  
