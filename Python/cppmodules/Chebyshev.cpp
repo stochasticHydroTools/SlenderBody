@@ -79,7 +79,7 @@ void IntegrateCoefficients(const vec &incoefs, int numDirs, double L, vec &intco
         }
         intcoefs[(N-1)*numDirs+d] = 1.0/(2*(N-1))*incoefs[numDirs*(N-2)+d];
     }
-    for (int j=0; j < intcoefs.size(); j++){
-        intcoefs[j]*=0.5*L;
+    for (uint j=0; j < intcoefs.size(); j++){
+      intcoefs[j]*=0.5*L;
     }
 }

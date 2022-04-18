@@ -43,7 +43,7 @@ void setVandermonde(const vec &SpecialVanderIn, int Nupsample){
     SpecialVandermonde = SpecialVanderIn;
     // Precompute LU factorization
     int info;
-    dgetrf_(&Nupsample, &Nupsample, &*SpecialVandermonde.begin(), &Nupsample, ipivVander, &info);
+    LAPACK_dgetrf(&Nupsample, &Nupsample, &*SpecialVandermonde.begin(), &Nupsample, ipivVander, &info);
 }
 
 complex rootfinder_initial_guess(const vec &nodes, const vec &Points, const vec3 &target){
@@ -60,7 +60,7 @@ complex rootfinder_initial_guess(const vec &nodes, const vec &Points, const vec3
     double Rsqmin2 = INFINITY;
     int imin1, imin2;
     vec3 dvec;
-    for (int i=0; i<nodes.size(); i++) {
+    for (uint i=0; i<nodes.size(); i++) {
         for (int d=0; d < 3; d++){
             dvec[d] = Points[3*i+d]-target[d];
         }
@@ -418,10 +418,15 @@ void specialWeights(const vec &tnodes, const complex &troot, vec &w1s, vec &w3s,
         // Precomputed LU
         char trans = 'T';
         int nrhs = 1;
-        int info;
-        dgetrs_(&trans, &n, &nrhs, & *SpecialVandermonde.begin(), &n, ipivVander, & *I1s.begin(), &n, &info);
-        dgetrs_(&trans, &n, &nrhs, & *SpecialVandermonde.begin(), &n, ipivVander, & *I3s.begin(), &n, &info);
-        dgetrs_(&trans, &n, &nrhs, & *SpecialVandermonde.begin(), &n, ipivVander, & *I5s.begin(), &n, &info);
+        LAPACKESafeCall(
+	      LAPACKE_dgetrs(LAPACK_ROW_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I1s.data(), n)
+			);
+        LAPACKESafeCall(
+	      LAPACKE_dgetrs(LAPACK_ROW_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I3s.data(), n)
+			);
+        LAPACKESafeCall(
+	      LAPACKE_dgetrs(LAPACK_ROW_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I5s.data(), n)
+			);
         for (int i=0; i< n; i++){
             double tdist = std::abs(tnodes[i]-troot);
             w1s[i]=I1s[i]*tdist*Lf*0.5;

@@ -1,4 +1,7 @@
-// TYPE DEFINITIONS FOR C++ code 
+// TYPE DEFINITIONS FOR C++ code
+#include<vector>
+#include<array>
+#include<complex>
 typedef std::vector <double> vec;
 typedef std::array <double,3> vec3;
 typedef std::vector <int> intvec;

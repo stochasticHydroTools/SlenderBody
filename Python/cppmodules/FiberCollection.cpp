@@ -984,7 +984,7 @@ class FiberCollection {
             }
         } // end forming matrices
         BlasMatrixProduct(3*_NChebPerFib, 3*_NChebPerFib, 3*_NChebPerFib,1, 1, DFPart, false, _stackedDiffMatrix, MFP);  // MFP -> DFPart*BigDiff+MFP
-        for (int i = 0; i <M.size(); i++){
+        for (uint i = 0; i <M.size(); i++){
             M[i]+=MFP[i];
         }
     } // end method
@@ -1041,7 +1041,7 @@ class FiberCollection {
             }
         } // end forming matrices
         BlasMatrixProduct(3*_NChebPerFib, 3*_NChebPerFib, 3*_NChebPerFib,1, 1, DFPart, false, _stackedDiffMatrix, MFP);  // MFP -> DFPart*BigDiff+MFP
-        for (int i = 0; i <M.size(); i++){
+        for (uint i = 0; i <M.size(); i++){
             M[i]+=2.0*_a*_a/3.0*MFP[i];
         }
     } // end method

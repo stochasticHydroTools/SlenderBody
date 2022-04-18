@@ -2,6 +2,16 @@
 #include "types.h"
 #include "cblas.h"
 #include "lapacke.h"
+#include<exception>
+
+void throwLapackeError(int info, std::string functionName){
+  throw std::runtime_error("LAPACKE Failed in function "+
+			   functionName +
+			   " with error code "+std::to_string(info));
+}
+
+#define LAPACKESafeCall(info) {if(info != 0){throwLapackeError(info, __func__);}}
+
 //#include <mkl.h>
 #pragma once // only include once
 
@@ -19,7 +29,7 @@ void cross(const vec3 &a, const vec3 &b, vec3 &result){
 
 void plus(const vec &a, double alpha, const vec &b, double beta, vec &result){
     // Return alpha*A+beta*B
-    for (int i=0; i < a.size(); i++){
+    for (uint i=0; i < a.size(); i++){
         result[i]=alpha*a[i]+beta*b[i];
     }
 }

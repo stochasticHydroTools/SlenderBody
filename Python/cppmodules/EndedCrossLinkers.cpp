@@ -289,7 +289,7 @@ class EndedCrossLinkedNetwork {
         std::memcpy(SitesToDelete.data(),pySiteNumbers.data(),pySiteNumbers.size()*sizeof(int));
         for (int iLink=_nDoubleBoundLinks-1; iLink >=0; iLink--){
             // Unbind it (remove from lists)
-            for (int iSite = 0; iSite < SitesToDelete.size(); iSite++){
+            for (uint iSite = 0; iSite < SitesToDelete.size(); iSite++){
                 if (_LinkHeads[iLink]==SitesToDelete[iSite] || _LinkTails[iLink]==SitesToDelete[iSite]){
                     _TotalNumberBound[_LinkHeads[iLink]]--;
                     _TotalNumberBound[_LinkTails[iLink]]--;
@@ -299,7 +299,7 @@ class EndedCrossLinkedNetwork {
             }    
         } // end loop over existing links
         // Remove singly bound links as well
-        for (int iSite = 0; iSite < SitesToDelete.size(); iSite++){
+        for (uint iSite = 0; iSite < SitesToDelete.size(); iSite++){
             _FreeLinkBound[SitesToDelete[iSite]]=0;
             _TotalNumberBound[SitesToDelete[iSite]] = 0;
         }

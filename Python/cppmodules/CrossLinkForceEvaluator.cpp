@@ -44,7 +44,7 @@ class CrossLinkForceEvaluator {
         _weights = wtsCheb;
         _NCheb = NChebs;
         _chebStart = intvec(_NCheb.size()+1,0);
-        for (int i = 0; i < _NCheb.size(); i++){
+        for (uint i = 0; i < _NCheb.size(); i++){
             _chebStart[i+1]=_chebStart[i]+_NCheb[i];
         }
         //for (int i = 0; i < _chebStart.size(); i++){
@@ -79,7 +79,7 @@ class CrossLinkForceEvaluator {
         // Pure C++ function
         vec CLForceDensities(pyChebPoints.shape()[0]*3,0.0);
         #pragma omp parallel for num_threads(_nThreads)
-        for (int iL=0; iL < iPts.size(); iL++){
+        for (uint iL=0; iL < iPts.size(); iL++){
             int iPtstar = iPts[iL];
             int jPtstar = jPts[iL];
             int iFib = _FibFromSiteIndex[iPtstar];
@@ -161,7 +161,7 @@ class CrossLinkForceEvaluator {
         int dX = 1;
         int df = 0;
         #pragma omp parallel for num_threads(_nThreads) reduction(+:stress)
-        for (int iL=0; iL < iPts.size(); iL++){
+        for (uint iL=0; iL < iPts.size(); iL++){
             int iPtstar = iPts[iL];
             int jPtstar = jPts[iL];
             int iFib = _FibFromSiteIndex[iPtstar];
