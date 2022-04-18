@@ -4,7 +4,7 @@ CXX=g++
 PYTHON3=python3
 
 SLENDER_ROOT=../../
-LDLIBS=-llapack -lblas -llapacke
+LDLIBS=-llapacke -lcblas
 OPENMP=-fopenmp
 
 
