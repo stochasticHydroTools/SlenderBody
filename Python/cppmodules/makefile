@@ -1,22 +1,21 @@
-all: RPYKernelEvaluator FiberCollection DomainC CrossLinkForceEvaluator EndedCrossLinking
+all: RPYKernelEvaluator.so FiberCollection.so DomainC.so CrossLinkForceEvaluator.so EndedCrossLinking.so
+
+CXX=g++
+PYTHON3=python3
 
 SLENDER_ROOT=../../
-DomainC:
-	c++ -O3 -Wall -shared DomainC.cpp -o DomainC.so -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke  `python3 -m pybind11 --includes`
+LDLIBS=-llapack -lblas -llapacke
+OPENMP=-fopenmp
 
-RPYKernelEvaluator: 
-	c++ -O3 -Wall -shared RPYKernelEvaluator.cpp -o RPYKernelEvaluator.so -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke `python3 -m pybind11 --includes`
 
-FiberCollection: 
-	c++ -O3 -Wall -shared FiberCollection.cpp -o FiberCollection.so -llapack -lblas -llapacke -std=c++11 -fPIC -fopenmp `python3 -m pybind11 --includes` 
+%.so:%.cpp makefile
+	$(CXX) -O3 -Wall -shared $< -o $@ -std=c++11 -fPIC $(OPENMP) $(LDLIBS)  `$(PYTHON3) -m pybind11 --includes`
 
-CrossLinkForceEvaluator: 
-	c++ -O3 -Wall -shared CrossLinkForceEvaluator.cpp -o CrossLinkForceEvaluator.so -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke `python3 -m pybind11 --includes`
+EndedCrossLinking.so: FortranHeap.o EndedCrossLinkers.cpp 
+	$(CXX) -O3 -Wall -shared  -o $@ $^ -std=c++11 -fPIC $(OPENMP) $(LDLIBS) `$(PYTHON3) -m pybind11 --includes`
 
-EndedCrossLinking:
-	gfortran -shared -O3  $(SLENDER_ROOT)/Fortran/MinHeapModule.f90 -o $(SLENDER_ROOT)/Fortran/libFortranHeap.so -fPIC
-	c++ -O3 -Wall -shared EndedCrossLinkers.cpp -o EndedCrossLinkedNetwork.so \
-	    -L $(SLENDER_ROOT)/Fortran/ -lFortranHeap -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke `python3 -m pybind11 --includes`
+FortranHeap.o: $(SLENDER_ROOT)/Fortran/MinHeapModule.f90 makefile
+	$(CXX) -x f95 -O3 -c  $< -o $@ -fPIC
 
 clean:
-	rm *.so
+	rm -f *.so FortranHeap.o
