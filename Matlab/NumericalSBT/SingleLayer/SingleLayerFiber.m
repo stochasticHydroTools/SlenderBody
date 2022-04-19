@@ -123,7 +123,7 @@ for iEr=1:index-2
 end
 end
 if (SBT)
-ks = [2 2.4 2.85 3];
+ks = [2 2.4 2.75 2.88 3];
 UEr = zeros(index-1,length(ks));
 OmEr = zeros(index-1,length(ks));
 normForceEr = zeros(index-1,length(ks));

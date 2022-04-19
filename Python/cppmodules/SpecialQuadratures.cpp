@@ -58,7 +58,8 @@ complex rootfinder_initial_guess(const vec &nodes, const vec &Points, const vec3
     // Find two closest points
     double Rsqmin1 = INFINITY;
     double Rsqmin2 = INFINITY;
-    int imin1, imin2;
+    int imin1 = 0;
+    int imin2 = 0;
     vec3 dvec;
     for (uint i=0; i<nodes.size(); i++) {
         for (int d=0; d < 3; d++){
@@ -419,13 +420,13 @@ void specialWeights(const vec &tnodes, const complex &troot, vec &w1s, vec &w3s,
         char trans = 'T';
         int nrhs = 1;
         LAPACKESafeCall(
-	      LAPACKE_dgetrs(LAPACK_ROW_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I1s.data(), n)
+	      LAPACKE_dgetrs(LAPACK_COL_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I1s.data(), n)
 			);
         LAPACKESafeCall(
-	      LAPACKE_dgetrs(LAPACK_ROW_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I3s.data(), n)
+	      LAPACKE_dgetrs(LAPACK_COL_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I3s.data(), n)
 			);
         LAPACKESafeCall(
-	      LAPACKE_dgetrs(LAPACK_ROW_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I5s.data(), n)
+	      LAPACKE_dgetrs(LAPACK_COL_MAJOR, trans, n, nrhs, SpecialVandermonde.data(), n, ipivVander, I5s.data(), n)
 			);
         for (int i=0; i< n; i++){
             double tdist = std::abs(tnodes[i]-troot);

@@ -144,11 +144,14 @@ class fiberCollection(object):
         self._alphas = np.zeros((2*self._nPolys+3)*self._Nfib);
         self._velocities = np.zeros(self._Npf*self._Nfib*3);         
         # Initialize the spatial database objects
-        self._SpatialCheb = CellLinkedList(self._ptsCheb,Dom,nThr=self._nThreads);
+        if (self._nonLocal==1): # If doing special quad corrections, only cKD tree works
+            self._SpatialCheb = ckDSpatial(self._ptsCheb,Dom);	
+            self._SpatialUni = ckDSpatial(np.zeros((self._Nunifpf*self._Nfib,3)),Dom);
+        else:
+            self._SpatialCheb = CellLinkedList(self._ptsCheb,Dom,nThr=self._nThreads);
+            self._SpatialUni = CellLinkedList(np.zeros((self._Nunifpf*self._Nfib,3)),Dom,nThr=self._nThreads);
         self._SpatialDirectQuad = CellLinkedList(np.zeros((self._totnumDirect,3)),Dom,nThr=self._nThreads);
-        self._SpatialUni = ckDSpatial(np.zeros((self._Nunifpf*self._Nfib,3)),Dom,nThr=self._nThreads);
-    
-   
+
     def fillPointArrays(self):
         """
         Copy the X and Xs arguments from self._fibList (list of fiber
@@ -598,6 +601,8 @@ class fiberCollection(object):
         MF=np.zeros(self._Nfib*3*Ndir, precision);
         gpurpy.computeMdot(np.reshape(Xupsampledg,self._Nfib*3*Ndir), np.reshape(fupsampledg,self._Nfib*3*Ndir), MF,
                        self._Nfib, Ndir,selfMobility, hydrodynamicRadius)
+        if (np.amax(np.abs(MF))==0 and np.amax(np.abs(fupsampledg)) > 0):
+        	raise ValueError('You are getting zero velocity with finite force, your UAMMD precision is wrong!') 
         return np.reshape(MF,(self._Nfib*Ndir,3));
         
     def calcLocalVelocities(self,Xs,forceDsAll):
