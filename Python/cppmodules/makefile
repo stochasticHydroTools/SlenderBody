@@ -3,7 +3,7 @@ all: RPYKernelEvaluator.so FiberCollection.so DomainC.so CrossLinkForceEvaluator
 CXX=g++
 PYTHON3=python3
 
-LDLIBS=-llapacke -lcblas
+LDLIBS=-llapacke -lcblas -lgfortran
 OPENMP=-fopenmp
 PYBINDINCLUDE:=`$(PYTHON3) -m pybind11 --includes`
 

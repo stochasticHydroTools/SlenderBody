@@ -6,7 +6,7 @@ from TemporalIntegrator import CrankNicolson, BackwardEuler
 from DoubleEndedCrossLinkedNetwork import DoubleEndedCrossLinkedNetwork
 from FileIO import prepareOutFile, writeArray
 import numpy as np
-import time, sys
+import time, sys, os
 
 """
 """
@@ -20,6 +20,8 @@ def saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='
     writeArray('BundlingBehavior/FibCurvesF'+OutputFileName,FibCurvatures,wora=wora)
 
 # Inputs for the slender body simulation
+if not os.path.exists('BundlingBehavior'):
+    os.makedirs('BundlingBehavior')
 
 # Fiber parameters
 try:

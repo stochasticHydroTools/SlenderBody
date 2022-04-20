@@ -6,7 +6,7 @@ from TemporalIntegrator import CrankNicolson, BackwardEuler
 from DoubleEndedCrossLinkedNetwork import DoubleEndedCrossLinkedNetwork
 from FileIO import prepareOutFile, writeArray
 import numpy as np
-import time, sys
+import time, sys, os
 from math import pi
 
 """
@@ -19,6 +19,9 @@ def saveCurvaturesAndStrains(allFibers,CLNet,OutputFileName,wora='a'):
     FibCurvatures = allFibers.calcCurvatures(Xf);
     writeArray('DynamicRheo/LinkStrains'+OutputFileName,[LinkStrainSqu],wora=wora)
     writeArray('DynamicRheo/FibCurves'+OutputFileName,FibCurvatures,wora=wora)
+
+if not os.path.exists('DynamicRheo'):
+    os.makedirs('DynamicRheo')
 
 try:
 	Input = open('StrainInputFile.txt','r')
