@@ -1,3 +1,4 @@
+%error('Need to update this temporal integrator to reflect changes in oversampling -including K call')
 % Temporal integrator for fibers that resist bend and twist
 l_m1 = 0*lambdas;
 l_m = lamguess;  % put in the previous lambda as the initial guess
@@ -25,9 +26,9 @@ for iFib=1:nFib
     end
     Theta_ss = D_sp2*theta_s_sp2(np2inds);
     XBC3 = reshape(XBC(np4inds),3,[])';
-    fTwb = twmod*((R4ToDouble*(R2To4*Theta_ss)).*(R4ToDouble*cross(D_sp4*XBC3,D_sp4^2*XBC3))+...
-        (R4ToDouble*(R2To4*theta_s_sp2(np2inds))).*(R4ToDouble*cross(D_sp4*XBC3,D_sp4^3*XBC3)));
-    fTw3=RDoubleToN*fTwb;
+    fTwb = twmod*((R4ToOversamp*(R2To4*Theta_ss)).*(R4ToOversamp*cross(D_sp4*XBC3,D_sp4^2*XBC3))+...
+        (R4ToOversamp*(R2To4*theta_s_sp2(np2inds))).*(R4ToOversamp*cross(D_sp4*XBC3,D_sp4^3*XBC3)));
+    fTw3=ROversampToN*fTwb;
     fTw(inds) = reshape(fTw3',3*N,1);
     nparTw(scinds) = twmod*R2ToN*Theta_ss;
 end
@@ -36,7 +37,7 @@ fEarg = fE;
 Xsarg = Xst;
 Xarg = Xt;
 XBCarg = XBC;
-impcoeff=1;
+impcoeff=1/Temporal_order;
 % Extrapolations that give second order accuracy
 if (Temporal_order==2)
     fEarg = 1.5*fE-0.5*fEprev;
@@ -131,7 +132,8 @@ for iFib=1:nFib % block diagonal solve
     end
     % Solve for fiber evolution
     %[K,Kt,nPolys]=getKMats3DClampedNumer(Xsarg(inds),Lmat,w,N,I,wIt,'U',[clamp0 clampL]);
-    [K,Kt]=getKMats3DOmega(Xst,L,N,I,wIt,IntDdoublest,sDouble,[],wDouble,bDouble,RNToDouble_st,clamp0,[]);
+    [K,Kt]=getKMats3DOmega(Xsarg(inds),L,N,I,wIt,IntDOversamp,...
+            sOversamp,stackMatrix(WOversmap),bOversamp,RNToOversamp_st,clamp0);
     B = K-impcoeff*dt*M*FE*(UpsampleXBCMat*K);
     RHS = Kt*(fE(inds)+fext(inds)+fTw(inds)+M \ (UFromTorq(inds) + U0(inds) + nLvel(inds)));
     %if (clamp0)
@@ -207,7 +209,7 @@ for iFib=1:nFib
     inds = (iFib-1)*3*N+1:3*N*iFib;
     scinds = (iFib-1)*N+1:N*iFib;
     [newX,newXs,OmegaPerp] = updateX(Xt(inds),(Xp1(inds)-Xt(inds))/dt,N,dt,...
-        L,Xst(inds),Xstm1(inds),dU(inds),Temporal_order);
+        L,Xst(inds),Xstm1(inds),dU(inds),Temporal_order,D);
     if (max(abs(Xp1(inds)-newX)) > 1e-3)
         max(abs(Xp1(inds)-newX))
         %keyboard
