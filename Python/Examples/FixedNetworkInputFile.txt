@@ -1,7 +1,7 @@
 # Input file for fixedNetwork
 # Fiber parameters
 nFib = 200;
-N=32                            # number of points per fiber
+N=12                            # number of points per fiber
 Lf=1.0                            # length of each fiber
 Ld=2.0                          # length of the periodic domain
 xi = 0.8*(N*nFib)**(1/3)/Ld;    # Ewald param

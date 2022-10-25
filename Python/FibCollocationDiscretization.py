@@ -295,68 +295,10 @@ class FibCollocationDiscretization(object):
             +(-np.sqrt(self._alpha)+np.sqrt(self._alpha+self._beta))*np.outer(Xs,Xs));
         Nhalf[3:,3:]=np.sqrt(self._gamma/(self._mu*self._L**3))*(np.identity(3)-np.outer(Xs,Xs));
         return Nhalf;
-
-    ## ====================================================
-    ##  METHODS FOR FIBER EVOLUTION (PUBLIC)
-    ## ====================================================
-    def alphaLambdaSolve(self,Xarg,Xsarg,dt,impco,nLvel,exF):
-        """
-        This method solves the linear system for 
-        lambda and alpha for a given RHS. 
-        Specifically, the system we are solving is in block form
-        [-M K-impco*dt*M*L*K; K^T 0]] [lambda; alpha] = ...
-            [M*L*X^n + U_0 + nLvel + M*exF; 0]
-        here impco = 1 for backward Euler, 1/2 for CN, 0 for explicit. 
-        We solve the system using the Schur complement. 
-        The Schur blocks are [M B; C 0] correspdong to the LHS matrix above, and 
-        L is encoded via self._D4BC.
-        Inputs: Xarg and Xsarg = X and Xs to build the matrices for
-        dt = timestep, impco = implicit coefficient (coming from the temporal integrator)
-        nLvel = non-local velocity as a 3N vector, exF = external forces as a 3N vector
-        """
-        tim = time.time();
-        M = self.calcM(Xsarg);
-        K, Kt = self.calcKs(Xsarg);
-        # Schur complement solve
-        B = np.concatenate((K-impco*dt*np.dot(M,np.dot(self._D4BC,K)),\
-         self._I-impco*dt*np.dot(M,np.dot(self._D4BC,self._I))),axis=1);
-        C = np.concatenate((Kt,self._wIt));
-        fE = self.calcfE(Xarg);
-        RHS = np.dot(C,fE+exF)+np.dot(C,np.linalg.solve(M,nLvel));
-        S = np.dot(C,np.linalg.solve(M,B));
-        alphaU,res,rank,s = np.linalg.lstsq(S,RHS,-1);
-        vel = np.dot(K,alphaU[0:2*self._nPolys])+\
-            np.dot(self._I,alphaU[2*self._nPolys:2*self._nPolys+3]);
-        lambdas = np.linalg.solve(M,vel-nLvel)-fE-exF- \
-                impco*dt*np.dot(self._D4BC,vel);
-        return alphaU, vel, lambdas;
-    
-    def KalphProduct(self,Xsarg,alphaU,lambdas):
-        """
-        The products K*alpha and K'*lambda for a given alpha and lambda. 
-        Inputs: Xsarg = tangent vectors along fiber as 3*N one-d array, 
-        alphaU = alphas and lambdas. 
-        Outputs: products K*alpha and K^* *lambda.
-        """
-        K, Kt = self.calcKs(Xsarg);
-        Kalph = np.dot(K,alphaU[0:2*self._nPolys])+\
-            np.dot(self._I,alphaU[2*self._nPolys:2*self._nPolys+3]);
-        Kstlam = np.dot(np.concatenate((Kt,self._wIt)),lambdas);
-        return Kalph,Kstlam;
-    
-    def calcH(self,Xin):
-        """
-        Compute discrete integral of bending force given 3*N vector of point
-        locations Xin
-        """
-        return np.dot(self._wIt, np.dot(self._D4BC,Xin));
     
     def getnPolys(self):
         return self._nPolys;
-    
-    ## ====================================================
-    ##  METHODS FOR NON-LOCAL VELOCITY EVALUATION (PUBLIC)
-    ## ====================================================
+        
     def getFPMatrix(self):
         """
         Finite part matrix
@@ -375,89 +317,7 @@ class FibCollocationDiscretization(object):
     
     def getRless2aResampMat(self):
         return self._RLess2aResamplingMat;
-    
-    def calcLocalVelocity(self,Xsarg,forceDs):
-        """
-        Purely local velocity = M*f. 
-        Inputs: tangent vectors Xs as a 3N one-dimensional vector, and 
-        forceDs as a 3N one-dimensional vector
-        Outputs: 3N one-d vector of local velocities.
-        """
-        M = self.calcM(Xsarg);
-        return np.dot(M,forceDs);
-    
-    ## ====================================================
-    ##  PRIVATE METHODS INVOLVED IN FIBER EVOLUTION
-    ## ====================================================
-    def calcKs(self,Xs):
-        """
-        Computes the matrix K(X). The only input is X_s, which
-        has to be input as a 3N one-dimensional array.
-        From X_s this method computes the normals and then 
-        the matrix K.   
-        """
-        XsUpsampled = np.dot(self._MatfromNto2N,np.reshape(Xs,(self._N,3)));
-        theta, phi, r = FibCollocationDiscretization.cart2sph(XsUpsampled[:,0],XsUpsampled[:,1],XsUpsampled[:,2]);
-        n1x = -np.sin(theta);
-        n1y = np.cos(theta);
-        n1z = np.zeros(2*self._N);
-        n2x = -np.cos(theta)*np.sin(phi);
-        n2y = -np.sin(theta)*np.sin(phi);
-        n2z = np.cos(phi);
-        J = np.zeros((6*self._N,2*self._nPolys));
-        J[0::3,0:self._nPolys]= self.deAliasIntegral(n1x);
-        J[1::3,0:self._nPolys]= self.deAliasIntegral(n1y);
-        J[2::3,0:self._nPolys]= self.deAliasIntegral(n1z);
-        J[0::3,self._nPolys:2*self._nPolys]= self.deAliasIntegral(n2x);
-        J[1::3,self._nPolys:2*self._nPolys]= self.deAliasIntegral(n2y);
-        J[2::3,self._nPolys:2*self._nPolys]= self.deAliasIntegral(n2z);
-        K = np.dot(self._stackMatfrom2NtoN,J);
-        UTWU = np.dot(self._stackMatfromNto2N.T,np.dot(np.diag(np.repeat(self._w2N,3)),self._stackMatfromNto2N));
-        K = np.linalg.solve(UTWU,np.dot(self._stackMatfromNto2N.T,np.dot(np.diag(np.repeat(self._w2N,3)),J)));
-        Kt = np.dot(J.T,np.dot(np.diag(np.repeat(self._w2N,3)),self._stackMatfromNto2N));
-        return K, Kt;
-    
-    def deAliasIntegral(self,f):
-        """
-        Method to dealias the product of f (an N array) with each of the first
-        N-1 polynomials (the type of polynomial depends on the child class).
-        Upsample to a 2N grid, perform multiplication and integration, then 
-        downsample to an N point grid.
-        """
-        # Upsample the multiplication of f with Chebyshev polys for anti-aliasing
-        UpSampMulti = np.reshape(f,(2*self._N,1)) \
-            *np.dot(self._MatfromNto2N,self._Lmat[:,:self._nPolys]);
-        # Integrals on the original grid (integrate on upsampled grid and downsample)
-        OGIntegrals = np.dot(self._Dpinv2N,UpSampMulti);
-        return OGIntegrals;
 
-    def calcM(self,Xs):
-        """
-        Calculates the local drag matrix M. The only input is X_s which
-        has to be input as a 3N one-dimensional array.
-        From X_s this method computes the matrix M (changes for 
-        ellipsoidal vs. cylindrical fibers).
-        """
-        for j in range(self._N):
-            v = Xs[j*3:j*3+3];
-            XsXs = np.outer(v,v);
-            self._matlist[j]=1/(8*np.pi*self._mu)*\
-             (self._leadordercs[j]*(np.identity(3)+XsXs)+ \
-              np.identity(3)-3*XsXs);
-        Mloc =sp.block_diag(*self._matlist);
-        return Mloc;
-        
-    @staticmethod
-    def cart2sph(x,y,z):
-        """
-        Method to convert point(s) (x,y,z) to 
-        spherical coordinates (azimuth, elevation, r)
-        """
-        azimuth = np.arctan2(y,x);
-        elevation = np.arctan2(z,np.sqrt(x**2 + y**2));
-        r = np.sqrt(x**2 + y**2 + z**2);
-        azimuth[(np.abs(np.abs(elevation)-np.pi/2) < 1e-12)] = 0;
-        return azimuth, elevation, r;
 
 # Definitions specific to Chebyshev
 chebGridType = 1; # always use a type 1 grid for fiber discretization
@@ -473,7 +333,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,rigid=False,trueRPYMobility=False):
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
+        rigid=False,trueRPYMobility=False,kinematicOversample=2):
         super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,trueRPYMobility);
 		# Chebyshev grid and weights
         self._s = cf.chebPts(self._N,[0,self._L],chebGridType);
@@ -483,6 +344,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         # Chebyshev initializations
         self._Lmat = cf.CoeffstoValuesMatrix(self._N,self._N,chebGridType);
         self._LUCoeffs = lu_factor(self._Lmat);
+        self._NForK = kinematicOversample*self._N;
         self.initIs();
         self.initFPMatrix();
         self.initLocalcvals(deltaLocal);
@@ -590,6 +452,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self._MatfromNtoDirectN = cf.ResamplingMatrix(self._nptsDirect,self._N,chebGridType,chebGridType);
         self._MatfromDirectNtoN = cf.ResamplingMatrix(self._N,self._nptsDirect,chebGridType,chebGridType);
         self._Matfrom2NtoN = cf.ResamplingMatrix(self._N,2*self._N,chebGridType,chebGridType);
+        self._MatfromKintoN = cf.ResamplingMatrix(self._N,self._NForK ,chebGridType,chebGridType);
+        self._MatfromNtoKin = cf.ResamplingMatrix(self._NForK ,self._N,chebGridType,chebGridType);
         self._stackMatfromNto2N = np.zeros((6*self._N,3*self._N));
         self._stackMatfrom2NtoN = np.zeros((3*self._N,6*self._N));
         for iD in range(3):
@@ -671,6 +535,18 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         #normalizedcurvature = avgcurvature*self._L/(2*np.pi);
         # Obtain energy from avg curvature by kappa*L*avgcurvature**2
         return avgcurvature;
+        
+    def averageTau(self,Xs):
+        avgTau = np.zeros(3);
+        for p in range(self._Ntau):
+            avgTau+= 1/(self._L)*Xs[p,:]*self._w[p];
+        return avgTau
+    
+    def averageXsXs(self,Xs):
+        avgXsXs = np.zeros((3,3));
+        for p in range(self._Ntau):
+            avgXsXs+= 1/(self._L)*np.outer(Xs[p,:],Xs[p,:])*self._w[p];
+        return avgXsXs
 
     def resample(self,Xarg,Nrs,typetarg=chebGridType):
         """

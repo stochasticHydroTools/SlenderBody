@@ -8,7 +8,6 @@
 function [MTT, MTR, MRT, MRR,sNew] = getGrandMloc(N,Xs,Xss,a,L,mu,s0,delta)
     sNew = RegularizeS(s0,delta,L);
     cs = log(sNew.*(L-sNew)./(4*a.^2)); 
-    cprimes = (L-2*sNew)./((L-sNew).*sNew);
     MTT = zeros(3*N); MTR = zeros(3*N,N); MRR = zeros(N);
     MRT = zeros(N,3*N);
     for iPt=1:N
@@ -19,7 +18,8 @@ function [MTT, MTR, MRT, MRR,sNew] = getGrandMloc(N,Xs,Xss,a,L,mu,s0,delta)
         XsXs = tau*tau';
         if (delta==0) % unregularized, use special endpoint formulas and keep O(a^2) terms
             if (s0(iPt) < 2*a)
-                MTT(inds,inds)=(2+4*t/(3*a)-3*t^2/(16*a^2))*eye(3)+(t^2/(16*a^2))*XsXs...
+                MTT(inds,inds)=(2+4*t/(3*a)-3*t^2/(16*a^2)-a^2/(3*(L-t)^2))*eye(3)...
+                    +(t^2/(16*a^2)+a^2/((L-t)^2))*XsXs...
                     +log((L-t)/(2*a))*(eye(3)+XsXs);
                 sbar = t/a;
                 MTR(inds,iPt)=(7/12+1/6*sbar^3-3/64*sbar^4+log((L-t)/(2*a)))*1/2*cross(tau,Xsprime);    
@@ -28,7 +28,8 @@ function [MTT, MTR, MRT, MRR,sNew] = getGrandMloc(N,Xs,Xss,a,L,mu,s0,delta)
                 aTau_MRR = 1/a^2*(3/8+9/64*t^2/a^2 - 3/256*t^4/a^4+3/2*(1/8-a^2/(2*(L-t)^2)));
             elseif (s0(iPt) > L-2*a)
                 sbar = (L-t)/a;
-                MTT(inds,inds)=(2+4/3*sbar-3/16*sbar^2)*eye(3)+1/16*sbar^2*XsXs...
+                MTT(inds,inds)=(2+4/3*sbar-3/16*sbar^2-a^2/(3*t^2))*eye(3)...
+                    +(1/16*sbar^2+a^2/t^2)*XsXs...
                     +log(t/(2*a))*(eye(3)+XsXs);
                 MTR(inds,iPt)=(7/12+1/6*sbar^3-3/64*sbar^4+log(t/(2*a)))*1/2*cross(tau,Xsprime);
                 MRT(iPt,inds)=(7/12+1/6*sbar^3-3/64*sbar^4+log(t/(2*a)))*1/2*cross(tau,Xsprime);

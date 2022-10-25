@@ -9,14 +9,19 @@ function FPMat = StokesletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,Allbs)
     DfPart = zeros(3*N);
     for iPt=1:N
         indsi = 3*iPt-2:3*iPt;
+        nXs = norm(Xs(iPt,:));
+        XsDotXss = dot(Xs(iPt,:),Xss(iPt,:));
+        Xshat = Xs(iPt,:)/nXs;
         for jPt=1:N
             indsj = 3*jPt-2:3*jPt;
             if (iPt==jPt)
                 % Diagonal block
+                DiagPart1 = 0.5*(Xs(iPt,:)'*Xss(iPt,:)+Xss(iPt,:)'*Xs(iPt,:))/nXs^3 ...
+                 - XsDotXss/(2*nXs^3)*eye(3)-3*XsDotXss/(2*nXs^5)*Xs(iPt,:)'*Xs(iPt,:);
                 ActualFPMat(indsi,indsi) =ActualFPMat(indsi,indsi)+...
-                    0.5*(Xs(iPt,:)'*Xss(iPt,:)+Xss(iPt,:)'*Xs(iPt,:))*FPMatrix(iPt,iPt);
+                    DiagPart1*FPMatrix(iPt,iPt);
                 % Derivative part
-                DfPart(indsi,indsi) = (eye(3)+Xs(iPt,:)'*Xs(iPt,:))*FPMatrix(iPt,iPt);
+                DfPart(indsi,indsi) = (eye(3)+Xshat'*Xshat)/nXs*FPMatrix(iPt,iPt);
             else
                 rvec = X(iPt,:)-X(jPt,:);
                 r = norm(rvec);
@@ -26,7 +31,7 @@ function FPMat = StokesletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,Allbs)
                 ActualFPMat(indsi,indsj) = (eye(3) + rvec'*rvec*oneoverr^2)...
                         *oneoverr*abs(ds)*oneoverds*FPMatrix(iPt,jPt);
                 ActualFPMat(indsi,indsi)=ActualFPMat(indsi,indsi)-...
-                    (eye(3)+Xs(iPt,:)'*Xs(iPt,:))*oneoverds*FPMatrix(iPt,jPt);
+                    (eye(3)+Xshat'*Xshat)*oneoverds/nXs*FPMatrix(iPt,jPt);
             end
         end
     end

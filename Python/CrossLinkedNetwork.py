@@ -264,9 +264,10 @@ class CrossLinkedNetwork(object):
             clusterindex = whichBundlePerFib[iFib];
             NPerBundle[clusterindex]+=1;
             Xs = fibCollection._tanvecs;
-            for p in range(self._ChebStartByFib[iFib],self._ChebStartByFib[iFib+1]): 
-                BundleMatrices[clusterindex*3:clusterindex*3+3,:]+=1/(self._allL[iFib])*np.outer(Xs[p,:],Xs[p,:])*self._wCheb[p];
-                averageBundleTangents[clusterindex]+=1/(self._allL[iFib])*Xs[p,:]*self._wCheb[p];
+            Ntau = int(len(Xs)/(self._nFib));
+            iStart = Ntau*iFib;
+            BundleMatrices[clusterindex*3:clusterindex*3+3,:]+=fibCollection._fiberDisc.averageXsXs(Xs[iStart:iStart+Ntau,:]);
+            averageBundleTangents[clusterindex]+=fibCollection._fiberDisc.averageTau(Xs[iStart:iStart+Ntau,:]);
         for clusterindex in range(nBundles):
             B = 1/(NPerBundle[clusterindex])*BundleMatrices[clusterindex*3:clusterindex*3+3,:];
             EigValues = np.linalg.eigvalsh(B);
@@ -303,8 +304,9 @@ class CrossLinkedNetwork(object):
             B = np.zeros((3,3));
             for jFib in CloseFibs:
                 Xs = fibCollection._tanvecs;
-                for p in range(self._ChebStartByFib[jFib],self._ChebStartByFib[jFib+1]): 
-                    B+=1/self._allL[jFib]*np.outer(Xs[p,:],Xs[p,:])*self._wCheb[p];
+                Ntau = int(len(Xs)/(self._nFib));
+                iStart = Ntau*jFib;
+                B+=fibCollection._fiberDisc.averageXsXs(Xs[iStart:iStart+Ntau,:]);
             B*= 1/numCloseBy[iFib];
             EigValues = np.linalg.eigvalsh(B);
             NeighborOrderParams[iFib] = np.amax(np.abs(EigValues))

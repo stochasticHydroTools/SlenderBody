@@ -1,18 +1,19 @@
-% % % Single layer boundary integral for ellipsoidal filament and comparison
-% % % with Johnson
-% % % Discretization on centerline
-% clear;
-for Nthet = [16]
-BI=0;
+% Single layer boundary integral for ellipsoidal filament and comparison
+% with Johnson
+% Discretization on centerline
+addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
+clear;
+for Nthet = [12:4:32]
+BI=1;
 SBT=1;
 trans=0;
 rot=1;
 if (BI)
 index=1;
 L = 2;
-a = 80e-3;
-Ns = [40:20:160];
-for N=Ns
+a = 40e-3;
+Ns = 120:80:520;
+for N= Ns(Nthet/4-3)
 mu = 1;
 dtheta = 2*pi/Nthet;
 [s,w,b]=chebpts(N,[-1 1],1);
@@ -20,7 +21,7 @@ Nc = 500;
 [sc,wc,bc]=chebpts(Nc,[-1 1],1);
 Rcompare = barymat(sc,s,b);
 D=diffmat(N,[0 L],'chebkind1');
-[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,D);
+[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoFloren(s,b,L,D);
 radius = a*sqrt(1-s.^2);
 rho = radius/a;
 Drho = -s./sqrt(1-s.^2);
@@ -40,12 +41,13 @@ for iN=1:N
             U3(iindex,:) = Uhelix(s(iN),L);
         end
         if (rot)
-            U3(iindex,:) =U3(iindex,:)+1/(a^2)*cross(Xs(iN,:),radius(iN)*iRhoHat); % Omega^\parallel = 1
+            U3(iindex,:) = U3(iindex,:)+1/a^2*cross(Xs(iN,:),radius(iN)*iRhoHat); % Omega^\parallel = 1
         end
         TanVecs(iindex,:)=Xs(iN,:);
         RhoHats(iindex,:)=iRhoHat;
         rhohat_s = dn1(iN,:)*cos(itheta)+dn2(iN,:)*sin(itheta);
         Xi = Xic + radius(iN)*iRhoHat;
+        X3(iindex,:)=Xi;
         % Compute effective spheriod
         efflength = 1+a*rho(iN)*dot(Xs(iN,:),rhohat_s);
         %findase = @(cse)([cse(1)*sqrt(1-cse(2)^2)-a*rho(iN) cse(1)*cse(2)/sqrt(1-cse(2)^2)+a*Drho(iN)]);
@@ -123,7 +125,7 @@ for iEr=1:index-2
 end
 end
 if (SBT)
-ks = [2 2.4 2.75 2.88 3];
+ks = [2 2.5 2.7 2.75 2.8 2.85 2.9 2.95 3 3.2];
 UEr = zeros(index-1,length(ks));
 OmEr = zeros(index-1,length(ks));
 normForceEr = zeros(index-1,length(ks));
@@ -141,7 +143,7 @@ Rdowncompare = barymat(s-1,sc,bc);
 %radius = a*sqrt(1-(2*s/L-1).^2);
 aRPY = a;%*exp(3/2)/4;
 D=diffmat(NSBT,[0 L],'chebkind1');
-[X,Xs,Xss,n1,n2,~,~] = fibGeoHelix(s-1,L,D);
+[X,Xs,Xss,n1,n2,~,~] = fibGeoFloren(s-1,b,L,D);
 XSB=X;
 warning('True finite part!')
 Allb = precomputeStokesletInts(s,L,0,NSBT,1);
@@ -168,37 +170,48 @@ end
 UEr(getIndex,ik) = sqrt(wD*sum((RToDouble*UBI).*(RToDouble*UBI),2));
 OmEr(getIndex,ik) = sqrt(wD*((RToDouble*OmBI).*(RToDouble*OmBI)));
 % Rotlet FP matrices column by column
-MTR_FP = zeros(3*NSBT,NSBT);
-for iCol=1:NSBT
-    n = zeros(NSBT,1);
-    n(iCol)=1;
-    MTR_FP(:,iCol) = reshape(UFromNFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,n,D*n,Allb,mu)',3*NSBT,1);
+if (rot)
+    MTR_FP = zeros(3*NSBT,NSBT);
+    for iCol=1:NSBT
+        n = zeros(NSBT,1);
+        n(iCol)=1;
+        MTR_FP(:,iCol) = reshape(UFromNFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,n,D*n,Allb,mu)',3*NSBT,1);
+    end
+    MRT_FP = zeros(NSBT,3*NSBT);
+    for iCol=1:3*NSBT
+        f = zeros(3*NSBT,1);
+        f(iCol)=1;
+        f = reshape(f,3,NSBT)';
+        MRT_FP(:,iCol) = OmFromFFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,f,D*f,Allb,mu);
+    end
+    MSBT = MTT+SletFP;
+    U3 = zeros(NSBT,3);
+    USB = reshape(U3',3*NSBT,1);
+    OmSB = 1/a^2*ones(NSBT,1);
+    % Upsample fsbt to meaasure error
+    GrandMobility = [MTT+SletFP MTR+MTR_FP; MRT+MRT_FP MRR];
+    UOm = [USB; OmSB];
+    fn = GrandMobility \ UOm;
+    fSBT = reshape(fn(1:3*NSBT),3,[])';
+    npar = fn(3*NSBT+1:end);
+    Rup = barymat(sc+1,s,b);
+    fSBT_c = Rup*fSBT;
+    nSBT_c = Rup*npar;
+    % 2 norm difference in force and torque
+    forceEr = fSBT_c-FToCompare{getIndex};
+    normForceEr(getIndex,ik) = sqrt(wc*sum(forceEr.*forceEr,2));
+    TorqEr = nSBT_c-NToCompare{getIndex};
+    normTorqEr(getIndex,ik) = sqrt(wc*(TorqEr.^2));
+else
+    Rup = barymat(sc+1,s,b);
+    U3 = Uhelix(s-1,L);
+    USB = reshape(U3',3*NSBT,1);
+    fn = (MTT+SletFP) \ USB;
+    fSBT = reshape(fn(1:3*NSBT),3,[])';
+    fSBT_c = Rup*fSBT;
+    forceEr = fSBT_c-FToCompare{getIndex};
+    normForceEr(getIndex,ik) = sqrt(wc*sum(forceEr.*forceEr,2));
 end
-MRT_FP = zeros(NSBT,3*NSBT);
-for iCol=1:3*NSBT
-    f = zeros(3*NSBT,1);
-    f(iCol)=1;
-    f = reshape(f,3,NSBT)';
-    MRT_FP(:,iCol) = OmFromFFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,f,D*f,Allb,mu);
-end
-MSBT = MTT+SletFP;
-U3 = zeros(NSBT,3);
-USB = reshape(U3',3*NSBT,1);
-OmSB = ones(NSBT,1)./a^2;
-% Upsample fsbt to meaasure error
-GrandMobility = [MTT+SletFP MTR+MTR_FP; MRT+MRT_FP MRR];
-UOm = [USB; OmSB];
-fn = GrandMobility \ UOm;
-fSBT = reshape(fn(1:3*NSBT),3,[])';
-npar = fn(3*NSBT+1:end);
-Rup = barymat(sc+1,s,b);
-fSBT_c = Rup*fSBT;
-nSBT_c = Rup*npar;
-% 2 norm difference in force and torque
-forceEr = fSBT_c-FToCompare{getIndex};
-normForceEr(getIndex,ik) = sqrt(wc*sum(forceEr.*forceEr,2));
-TorqEr = nSBT_c-NToCompare{getIndex};
-normTorqEr(getIndex,ik) = sqrt(wc*(TorqEr.^2));
 end
 end
 if (rot)
@@ -206,8 +219,9 @@ if (rot)
 end
 end
 clear M
-%save(strcat('ResultsHalfTurn_a20Nt',num2str(Nthet),'.mat'))
+save(strcat('FloreGeo_a',num2str(a*1000),'Nt',num2str(Nthet),'.mat'))
 end
+exit
 % % 
 % % 
 function U3 = Uhelix(s,L)
@@ -218,7 +232,7 @@ function U3 = Uhelix(s,L)
 end
 
 %             
-function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,D)
+function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,b,L,D)
     warning('s matters for a helix!')
     N = length(s);
     nTurns=0.5;
@@ -232,8 +246,25 @@ function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,L,D)
     n2 = cross(Xs,n1);
     dn2 = D*n2;
 end
+
+function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoFloren(s,b,L,D)
+    warning('s matters for Florens fiber!')
+    s=s+1;
+    N = length(s);
+    q=1;
+    syms t
+    XsSym = [cos(q*t.^3 .* (t-L).^3) sin(q*t.^3.*(t - L).^3) 1]/sqrt(2);
+    Xss = double(subs(diff(XsSym,t),s));
+    Xs = [cos(q*s.^3 .* (s-L).^3) sin(q*s.^3.*(s - L).^3) ones(N,1)]/sqrt(2);
+    n1 = [-sin(q*s.^3.*(s- L).^3) cos(q*s.^3 .* (s-L).^3) zeros(N,1)];
+    dn1 = D*n1;
+    n2 = cross(Xs,n1);
+    dn2 = D*n2;
+    X = pinv(D)*Xs;
+    X = X-barymat(0,s,b)*X;
+end
       
-function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeo(s,L,D)
+function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeo(s,b,L,D)
     N = length(s);
     X = [zeros(N,2) s];
     Xs = [zeros(N,2) ones(N,1)];

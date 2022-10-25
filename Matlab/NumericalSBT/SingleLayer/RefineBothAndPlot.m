@@ -1,13 +1,13 @@
 % Find the optimal theta for each N
 %clear;
-aas=[80 40 20 10];
-linestys=["-.o","-s","--d",":o"];
+aas=10;
+linestys=["-.o","-s","--d",":o","-o","-o","-o","-o","-o","-o"];
 rotrot=0;
-rottrans=0;
-transtrans=1;
+rottrans=1;
+transtrans=0;
 %aas = 40;
-for Cindex=1:3%length(aas)
-aa=aas(Cindex);
+for Cindex=[1 2 6 10]
+aa=aas;%(Cindex);
 if (rottrans)
     if (aa==40)
         Ns1 = 120:80:520;
@@ -38,14 +38,14 @@ elseif (rotrot)
     end
 elseif (transtrans)
     if (aa==80)
-        Ns1 = 80:40:280;
-        Nthets=12:4:32;
+        Ns1 = 80:40:240;
+        Nthets=12:4:28;
     elseif (aa==40)
         Ns1 = 160:80:560;
         Nthets = 12:4:32;
     elseif (aa==20)
-        Ns1 = [480:160:960 1280];
-        Nthets = [12:4:24 32];
+        Ns1 = [480:160:1280];
+        Nthets = [12:4:32];
     end
 end
 NtAll=Ns1.*Nthets;
@@ -53,7 +53,7 @@ for jjN=1:length(Ns1)
     Nch = Ns1(jjN);
     iiT= Nthets(jjN);
     if (rottrans)
-        load(strcat('ResultsHalfTurn_a',num2str(aa),'Nt',num2str(iiT),'.mat'))
+        load(strcat('FloreGeo_a',num2str(aa),'Nt',num2str(iiT),'.mat'))
     elseif (rotrot)
         load(strcat('RotResults_a',num2str(aa),'Nt',num2str(iiT),'.mat'))
     elseif (transtrans)
@@ -64,14 +64,14 @@ for jjN=1:length(Ns1)
     fRef{jjN}=FToCompare{ind};
     if (transtrans || rottrans)
         if (rottrans)
-            AllUErs(jjN,Cindex)=UEr(ind,1);
+            AllUErs(jjN,Cindex)=UEr(ind,Cindex);
         else
             AllUErs(jjN,Cindex)=UEr(ind);
         end
     end
     if (rotrot || rottrans)
         if (rottrans)
-            AllOmErs(jjN,Cindex)=OmEr(ind,3);
+            AllOmErs(jjN,Cindex)=OmEr(ind,Cindex);
         else
             AllOmErs(jjN,Cindex)=OmEr(ind);
         end
@@ -112,7 +112,7 @@ set(gca,'ColorOrderIndex',Cindex)
 loglog(NtAll(1:end)*aa*1e-3/2,AllOmErs(1:length(NtAll),Cindex),linestys(Cindex))
 hold on
 xlabel('$\epsilon N_t$')
-ylabel('$a^2||\Omega_\textrm{SB}-\Omega||_{L^2}$')
+ylabel('$a^2||\Psi^\parallel_\textrm{SB}-\Psi^\parallel||_{L^2}$')
 end
 %semilogy(Nthets,ner(2,:),'-.s')
 

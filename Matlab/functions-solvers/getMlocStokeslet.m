@@ -13,7 +13,9 @@ function MTT = getMlocStokeslet(N,Xs,a,L,mu,s0,delta)
         inds = (iPt-1)*3+1:3*iPt;
         t = s(iPt);
         tau = Xs(iPt,:);
-        XsXs = tau'*tau;
+        nXs = norm(tau);
+        Xshat = tau/nXs;
+        XsXs = Xshat'*Xshat;
         if (t < 2*a)
             c(iPt)=log((L-t)/(2*a));
         elseif (t > L-2*a)
@@ -22,7 +24,7 @@ function MTT = getMlocStokeslet(N,Xs,a,L,mu,s0,delta)
             % Trans-Trans
             c(iPt)=log(t*(L-t)/(4*a.^2));
         end
-        MTT(inds,inds)=c(iPt)*(eye(3)+XsXs);
+        MTT(inds,inds)=c(iPt)*(eye(3)+XsXs)/nXs;
     end
     MTT = 1/(8*pi*mu)*MTT;
 end

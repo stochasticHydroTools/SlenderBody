@@ -9,15 +9,21 @@ function FPMat = DoubletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,Allbs)
     DfPart = zeros(3*N);
     for iPt=1:N
         indsi = 3*iPt-2:3*iPt;
-        M1 = Xs(iPt,:)'*Xs(iPt,:);
+        nXs = norm(Xs(iPt,:));
+        XsDotXss = dot(Xs(iPt,:),Xss(iPt,:));
+        Xshat = Xs(iPt,:)/nXs;
+        M1 = Xshat'*Xshat;
         M2 = 1/2*(Xs(iPt,:)'*Xss(iPt,:)+Xss(iPt,:)'*Xs(iPt,:));
         for jPt=1:N
             indsj = 3*jPt-2:3*jPt;
             if (iPt==jPt)
                 % Diagonal block
-                ActualFPMat(indsi,indsi) = ActualFPMat(indsi,indsi)-3*M2*FPMatrix(iPt,iPt);
+                DiagPart1 = -3*M2/nXs^5 - 3*XsDotXss/(2*nXs^5)*eye(3)...
+                    +15*XsDotXss/(2*nXs^7)*Xs(iPt,:)'*Xs(iPt,:);
+                ActualFPMat(indsi,indsi) = ActualFPMat(indsi,indsi)+...
+                    DiagPart1*FPMatrix(iPt,iPt);
                 % Derivative part
-                DfPart(indsi,indsi) = (eye(3)-3*M1)*FPMatrix(iPt,iPt);
+                DfPart(indsi,indsi) = (eye(3)-3*M1)/nXs^3*FPMatrix(iPt,iPt);
             else
                 rvec = X(iPt,:)-X(jPt,:);
                 r = norm(rvec);
@@ -27,7 +33,7 @@ function FPMat = DoubletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,Allbs)
                 ActualFPMat(indsi,indsj) = (eye(3) -3*(rvec'*rvec)*oneoverr^2)...
                         *oneoverr^3*abs(ds)^3*oneoverds*FPMatrix(iPt,jPt);
                 ActualFPMat(indsi,indsi)=ActualFPMat(indsi,indsi)-...
-                    (eye(3)-3*Xs(iPt,:)'*Xs(iPt,:))*oneoverds*FPMatrix(iPt,jPt);
+                    (eye(3)-3*M1)/nXs^3*oneoverds*FPMatrix(iPt,jPt);
             end
         end
     end

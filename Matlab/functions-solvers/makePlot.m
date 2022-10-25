@@ -24,9 +24,14 @@ for iFib=plotfibs
 %     if (length(links) > 0)
 %         plotlinks = [plotlinks; find(links(:,1)==iFib); find(links(:,3)==iFib)];
 %     end
-    inds=(iFib-1)*3*N+1:3:iFib*3*N;
     scinds = (iFib-1)*N+1:iFib*N;
-    fp=[Xt(inds) Xt(inds+1) Xt(inds+2)];
+    try
+        inds=(iFib-1)*3*(N+1)+1:3:iFib*3*(N+1);
+        fp=[Xt(inds) Xt(inds+1) Xt(inds+2)];
+    catch
+        inds=(iFib-1)*3*N+1:3:iFib*3*N;
+        fp=[Xt(inds) Xt(inds+1) Xt(inds+2)];
+    end
     if (newlabels(iFib)==-1)
         line=':';
         fibcolor='k';
@@ -50,8 +55,11 @@ for iFib=plotfibs
     end
 %      fibcolor = Corder(mod(iFib,7)+(mod(iFib,7)==0)*7,:);
 %      line='-';
-    scatter3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3), 12,Rpl*theta_s(scinds),'filled')
-    %plot3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3))
+    try
+    scatter3(RplNp1*fp(:,1),RplNp1*fp(:,2),RplNp1*fp(:,3), 12,RplN*theta_s(scinds),'filled')
+    catch
+    plot3(Rpl*fp(:,1),Rpl*fp(:,2),Rpl*fp(:,3))
+    end
     caxis([-2*pi 2*pi])
     hold on
     indices=count*N+1:(count+1)*N;
@@ -137,7 +145,7 @@ view(3)
 %ylim([-1e-4 1e-4])
 %xlim([-1.05 1.05])
 %PlotAspect
-ylim([-1e-3 1e-3])
+%ylim([-1e-3 1e-3])
 view(2)
 xlabel('$x$','interpreter','latex')
 ylabel('$y$','interpreter','latex')

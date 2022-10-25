@@ -10,18 +10,20 @@ function U = upsampleRPY(Targs,starg,X0,f0,s0,b0,Nup,L,a)
             if (iD==0)
                 dom=[max(t-2*a,0) t];
             end
-            [ssm,wsm,~]=chebpts(Nup,dom,1);
-            Rsm = barymat(ssm, s0, b0);
-            Xsm = Rsm*X0;
-            fsm = Rsm*f0;
-            R = P-Xsm;
-            nR = sqrt(sum(R.*R,2));
-            Rhat = R./nR;
-            Rdotf = sum(R.*fsm,2);
-            K1 = (1-9*nR/(32*a)).*fsm;
-            K2 = 3./(32*a).*Rdotf.*Rhat;
-            small = 4/(3*a)*(K1+K2);
-            smallds=smallds+wsm*small;
+            if (max(dom)-min(dom) > 0)
+                [ssm,wsm,~]=chebpts(Nup,dom,1);
+                Rsm = barymat(ssm, s0, b0);
+                Xsm = Rsm*X0;
+                fsm = Rsm*f0;
+                R = P-Xsm;
+                nR = sqrt(sum(R.*R,2));
+                Rhat = R./nR;
+                Rdotf = sum(R.*fsm,2);
+                K1 = (1-9*nR/(32*a)).*fsm;
+                K2 = 3./(32*a).*Rdotf.*Rhat;
+                small = 4/(3*a)*(K1+K2);
+                smallds=smallds+wsm*small;
+            end
         end
 
         % Two Stokeslet integrals
@@ -37,7 +39,7 @@ function U = upsampleRPY(Targs,starg,X0,f0,s0,b0,Nup,L,a)
             Rdotf = sum(R.*f1,2);
             StokIG = f1./nR + Rdotf.*R./nR.^3;
             DoubIG = f1./nR.^3-3*Rdotf.*R./nR.^5;
-            totIG = (StokIG+2*a^2/3*DoubIG);
+            totIG = StokIG+2*a^2/3*DoubIG;
             int1=w1*totIG;
         end
         
@@ -53,7 +55,7 @@ function U = upsampleRPY(Targs,starg,X0,f0,s0,b0,Nup,L,a)
             Rdotf = sum(R.*f1,2);
             StokIG = f1./nR + Rdotf.*R./nR.^3;
             DoubIG = f1./nR.^3-3*Rdotf.*R./nR.^5;
-            totIG = (StokIG+2*a^2/3*DoubIG);
+            totIG = StokIG+2*a^2/3*DoubIG;
             int2=w1*totIG;
         end
         U(iT,:)=smallds+int1+int2;

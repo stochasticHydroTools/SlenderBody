@@ -15,10 +15,7 @@ void throwLapackeError(int info, std::string functionName){
 //#include <mkl.h>
 #pragma once // only include once
 
-// Some standard vector methods that are helpful in the
-// RPY calculations
-
-
+// Some standard vector methods 
 double dot(const vec3 &a, const vec3 &b){
     return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 }
@@ -81,4 +78,120 @@ void MatVec(int m, int p, int n, const vec &M, const vec &V, int start, vec &res
             }
         }
     }
+}
+
+// Solve Ax = b using pinv(A)*b
+// Only implemented for square matrices at the moment
+void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdtol){
+    vec u(n*n), s(n), vt(n*n);
+    int lda = n, ldu = n, ldvt = n;
+
+    //computing the SVD
+    int info = LAPACKE_dgesdd(LAPACK_ROW_MAJOR, 'A', n, n, &*A.begin(), lda, &*s.begin(),
+                   &*u.begin(), ldu, &*vt.begin(), ldvt);
+    LAPACKESafeCall(info);
+    
+    // Pseudo-inverse calculation
+    for (int i = 0; i < n; i++) {
+        if (s[i]/s[0] > svdtol){// Invert the singular values which are nonzero
+            s[i] = 1.0 / s[i];
+        } else {
+            s[i] = 0;
+        }  
+        answer[i]=0;  
+    }
+    // Mat vec U^T*b
+    vec Ustarb(n);
+    BlasMatrixProduct(n, n, 1,1.0, 0.0,u, true, b, Ustarb);
+    // Overwrite V^T -> S^(-1)*V^T
+    for (int i = 0; i < n; i++) {
+        cblas_dscal(n,s[i],&vt[i*n],1);
+    }
+    // Multiply by U^T*b to get V*S^(-1)*U^T*b
+    BlasMatrixProduct(n, n, 1,1.0, 0.0,vt, true, Ustarb, answer);
+}
+
+// Apply A^(1/2)*b using eigenvalue decomposition
+// Only implemented for square matrices at the moment
+void ApplyMatrixHalfAndMinusHalf(int n, const vec &A, const vec &b, vec &PlusHalf, vec &MinusHalf){
+    vec s(n);
+    vec Acopy(A.size());
+    for (int i =0; i < n; i++){ // make copy of symmetric half of A. Has to be in column major just this once.
+        for (int j = 0; j <= i; j++){
+            Acopy[i*n+j]=A[i*n+j];
+        }
+    }
+    //computing the SVD
+    int info = LAPACKE_dsyev(LAPACK_COL_MAJOR, 'V', 'U',n, &*Acopy.begin(), n, &*s.begin());
+    LAPACKESafeCall(info);
+    
+    vec sminushalf(n);
+    // Halving the eigenvalues
+    for (int i = 0; i < n; i++) {
+        if (s[i] > 0){// square root of nonzero eigenvalues
+            s[i] = sqrt(s[i]);
+            sminushalf[i] = 1.0/s[i];
+        } else {
+            s[i] = 0;
+            sminushalf[i] = 0;
+        }  
+    }
+    // Here A is now overwritten by V^T
+    // Mat vec V^T*b
+    vec Vstarb(n);
+    BlasMatrixProduct(n, n, 1,1.0, 0.0, Acopy, false, b, Vstarb);
+    vec CopyOfV(Acopy.size());
+    std::memcpy(CopyOfV.data(),Acopy.data(),Acopy.size()*sizeof(double));
+    // Overwrite V^T -> S^(1/2)*V^T
+    for (int i = 0; i < n; i++) {
+        cblas_dscal(n,s[i],&Acopy[i*n],1);
+        cblas_dscal(n,sminushalf[i],&CopyOfV[i*n],1);
+    }
+    BlasMatrixProduct(n, n, 1,1.0, 0.0, Acopy, true, Vstarb, PlusHalf);
+    BlasMatrixProduct(n, n, 1,1.0, 0.0, CopyOfV, true, Vstarb, MinusHalf);
+}
+
+// Eig value decomp with adjustment for negative eigs
+void SymmetrizeAndDecomposePositive(int n, const vec &A, double threshold, vec &V, vec &s){
+    for (int i =0; i < n; i++){ // make copy of symmetric half of A. Has to be in column major just this once.
+        for (int j = 0; j <= i; j++){
+            V[i*n+j]=0.5*(A[i*n+j]+A[j*n+i]);
+        }
+    }
+    //computing the SVD
+    int info = LAPACKE_dsyev(LAPACK_COL_MAJOR, 'V', 'U',n, &*V.begin(), n, &*s.begin());
+    LAPACKESafeCall(info);
+    
+    // Filter the eigenvalues
+    for (int i = 0; i < n; i++) {
+        if (s[i] < threshold){// square root of nonzero eigenvalues
+            s[i] = threshold;
+        }  
+    }
+}
+
+// Eig value decomp with adjustment for negative eigs
+void ApplyMatrixPowerFromEigDecomp(int n, double power, const vec &V, const vec &s, const vec &b, vec &result){
+    vec sPow(n);
+    int nb = b.size()/n;
+    // Halving the eigenvalues
+    for (int i = 0; i < n; i++) {
+        if (s[i] <= 0){// square root of nonzero eigenvalues
+            throw std::runtime_error("Eigenvalues should be positive always here!");
+        } else {
+            sPow[i] = pow(s[i],power);
+        }  
+    }
+    // Here A is now overwritten by V^T
+    // Mat vec V^T*b
+    vec Vstarb(n*nb);
+    BlasMatrixProduct(n, n, nb,1.0, 0.0, V, false, b, Vstarb);
+    vec CopyOfV(V.size());
+    std::memcpy(CopyOfV.data(),V.data(),V.size()*sizeof(double));
+    // Overwrite V^T -> S^(pow)*V^T
+    for (int i = 0; i < n; i++) {
+        cblas_dscal(n,sPow[i],&CopyOfV[i*n],1);
+    }
+    // Overwrite V^T -> S^(-1)*V^T
+    BlasMatrixProduct(n, n, nb,1.0, 0.0, CopyOfV, true, Vstarb, result);
 }

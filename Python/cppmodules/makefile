@@ -1,9 +1,9 @@
-all: RPYKernelEvaluator.so FiberCollection.so DomainC.so CrossLinkForceEvaluator.so EndedCrossLinkedNetwork.so
+all: RPYKernelEvaluator.so FiberCollectionNew.so FiberCollection.so DomainC.so CrossLinkForceEvaluator.so EndedCrossLinkedNetwork.so
 
 CXX=g++
 PYTHON3=python3
 
-LDLIBS=-llapacke -lcblas -lgfortran
+LDLIBS=-llapacke -lcblas -lgfortran -llapack
 OPENMP=-fopenmp
 PYBINDINCLUDE:=`$(PYTHON3) -m pybind11 --includes`
 
@@ -21,3 +21,5 @@ FortranHeap.o: $(SLENDER_ROOT)/Fortran/MinHeapModule.f90 makefile
 
 clean:
 	rm -f *.so FortranHeap.o
+
+

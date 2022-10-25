@@ -6,6 +6,10 @@ function [U0,g] = EvalU0(gam0,w,t,X,flowtype)
     elseif (flowtype=='E')
         U0(1:3:end)=gam0*X(1:3:end); % extensional flow
         U0(2:3:end)=-gam0*X(2:3:end);
+    elseif (flowtype=='D')
+        U0(1:3:end)=gam0*X(1:3:end); % extensional flow
+        U0(2:3:end)=-1/2*gam0*X(2:3:end);
+        U0(3:3:end)=-1/2*gam0*X(3:3:end);
     else
         U0(1:3:end)=gam0*cos(w*t)*X(2:3:end);   % shear flow
     end

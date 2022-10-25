@@ -46,7 +46,7 @@ if (Temporal_order==2)
     XBCarg = 1.5*XBC-0.5*XBCprev;
     impcoeff = 0.5;
 end
-nonLocal = interFiberHydro || includeFPonRHS;
+nonLocal = interFiberHydro || (~exactRPY && includeFPonRHS);
 while ((nonLocal || iters==0) && reler > 1e-6 && iters < (1000*(count < Temporal_order)+maxiters))
 if (iters > 0) % use implicit for nonlocal also if doing fixed point
     for iFib = 1:nFib
@@ -131,9 +131,22 @@ for iFib=1:nFib % block diagonal solve
         end
     end
     % Solve for fiber evolution
-    %[K,Kt,nPolys]=getKMats3DClampedNumer(Xsarg(inds),Lmat,w,N,I,wIt,'U',[clamp0 clampL]);
-    [K,Kt]=getKMats3DOmega(Xsarg(inds),L,N,I,wIt,IntDOversamp,...
-            sOversamp,stackMatrix(WOversmap),bOversamp,RNToOversamp_st,clamp0);
+    [K,Kt,nPolys]=getKMats3DClampedNumer(Xsarg(inds),Lmat,w,N,I,wIt,'U',[clamp0 clampL]);
+    %[K,Kt]=getKMats3DOmega(Xsarg(inds),L,N,I,wIt,IntDOversamp,...
+    %        sOversamp,stackMatrix(WOversmap),bOversamp,RNToOversamp_st,clamp0);
+%     BM = stackMatrix(barymat(L/2,s,b));
+%     % Matrix that gives actual linearized update
+%     CMat = zeros(3*N);
+%     for iR=1:N
+%         indsC = (iR-1)*3+1:iR*3;
+%         tau = Xst(indsC);
+%         CMat(indsC,indsC)=CPMatrix(tau);
+%     end
+%     KMod_tau = -CMat*CMat*Ds;
+%     KModifier = (eye(3*N)-repmat(BM,N,1))*stackMatrix(pinv(D))*KMod_tau+repmat(BM,N,1);
+%     K_og = K;
+%     K = KModifier*K;
+%     Kt = K'*WtildeInverse^(-1);
     B = K-impcoeff*dt*M*FE*(UpsampleXBCMat*K);
     RHS = Kt*(fE(inds)+fext(inds)+fTw(inds)+M \ (UFromTorq(inds) + U0(inds) + nLvel(inds)));
     %if (clamp0)
@@ -142,13 +155,13 @@ for iFib=1:nFib % block diagonal solve
     alphaU = lsqminnorm(Kt*M^(-1)*B,RHS);
     %end
     ut = K*alphaU;
-    dU(inds) = Ds*ut;
     Xp1(inds) = Xt(inds)+dt*ut;
     Xsp1(inds) = Ds*Xp1(inds);
     l_m1(inds) = l_m(inds);
-    l_m(inds) = M \ (ut-nLvel(inds)-U0(inds)-UFromTorq(inds))...
+    l_m(inds) = M \ (K*alphaU-nLvel(inds)-U0(inds)-UFromTorq(inds))...
         -FE*(UpsampleXBCMat*(impcoeff*Xp1(inds)+(1-impcoeff)*Xt(inds))+BCShift(np4inds))-fext(inds)-fTw(inds);
     U2 = M*(FE*(UpsampleXBCMat*Xp1(inds)+BCShift(np4inds))+fTw(inds)+l_m(inds)+fext(inds))+UFromTorq(inds);
+    dU(inds) = Ds*K*alphaU;
     % Solve theta ODE 
     force = l_m(inds)+fTw(inds)+FE*(UpsampleXBCMat*Xp1(inds)+BCShift(np4inds));
     f3 = reshape(force,3,N)';
@@ -209,7 +222,7 @@ for iFib=1:nFib
     inds = (iFib-1)*3*N+1:3*N*iFib;
     scinds = (iFib-1)*N+1:N*iFib;
     [newX,newXs,OmegaPerp] = updateX(Xt(inds),(Xp1(inds)-Xt(inds))/dt,N,dt,...
-        L,Xst(inds),Xstm1(inds),dU(inds),Temporal_order,D);
+        L,Xst(inds),Xstm1(inds),dU(inds),Temporal_order,D);%,reshape(alphaU(1:3*N),3,N)');
     if (max(abs(Xp1(inds)-newX)) > 1e-3)
         max(abs(Xp1(inds)-newX))
         %keyboard

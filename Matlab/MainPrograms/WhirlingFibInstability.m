@@ -6,13 +6,14 @@
 % clarify the ones that are new/different. 
 %close all;
 addpath('../functions-solvers')
-newlabels = 1;
+newlabels = 1; 
+PenaltyForceInsteadOfFlow=0; gam0=0;
 Periodic=0; 
 clamp0 = 1;
 clampL = 0;
 TorqBC = 0;
 strongthetaBC = 0;
-exactRPY = 1;
+exactRPY = 0;
 epshat=1e-2;
 bottomwall = 0;
 L=2;   % microns
@@ -26,25 +27,23 @@ xir=32/9*pi*mu*a^2;
 wcrit = 8.9*Eb/(xir*L^2);
 xic = 22.9*Eb*(log(epshat^(-2)/16)+4)/(8*pi*mu*L^4);
 period = 2*pi/xic;
-omegafac = 2.2;
+omegafac = 1;
 TurnFreq = omegafac*wcrit;
 smperiod = 2*pi/TurnFreq;
-deltaLocal = 0; % part of the fiber to make ellipsoidal
-makeMovie = 1;
+deltaLocal = 1; % part of the fiber to make ellipsoidal
+makeMovie = 0;
 nFib=1;
 nCL = 0;%nFib*(nFib-1)/2;
 N = 40;
 interFiberHydro = 0;
-includeFPonRHS = 0;
-includeFPonLHS = 0;
 noRotTransAtAll = 0;
 if (exactRPY)
     deltaLocal=0;
 else
     nonLocal = 0; % whether to do the nonlocal terms 
     includeFPonRHS = 0;
-    includeFPonLHS = 0;
-    nonLocalRotTrans = 0;
+    includeFPonLHS = 1;
+    nonLocalRotTrans = 1;
     doSpecialQuad=0; % no special quad
 end
 %disp('Finite part OFF')
@@ -53,10 +52,10 @@ maxiters = 1;
 Temporal_order=1;
 Ld = 8; % periodic domain size (microns) not relevant here
 xi = 0; % Ewald parameter not relevant here
-dtfactor = 2.5e-5;
+dtfactor = 1e-3;
 dt=dtfactor*period;
 t=0;
-tf=1;%5*period;
+tf=5*period;
 [s,w,b] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE.
 % Fiber initialization
 D = diffmat(N, 1, [0 L], 'chebkind1');

@@ -1,0 +1,36 @@
+# Inputs 
+nFib=200        # number of fibers
+N=12            # number of points per fiber
+Lf=1            # length of each fiber
+nonLocal=4;   # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
+Ld=2          # length of the periodic domain
+mu=0.1            # fluid viscosity
+eps=4e-3/Lf  # slenderness ratio
+eigValThres = 2.2 # cutoff for eigenvalues
+lp = 1;
+kbT = 4e-3
+Eb = lp*kbT        # fiber bending stiffness
+dt=float(sys.argv[2]);        # timestep
+omega=0         # frequency of oscillations
+gam0=0          # base rate of strain
+tf=15      # final time
+saveEvery = max(1,int(2.5e-2/dt+1e-10));
+seed = int(sys.argv[1]);
+nThr = 16;
+truRPYMob = True;
+FluctuatingFibs = True;
+deltaLocal = 1;
+Nuniformsites = 40;
+Kspring = 10                    # cross linker stiffness
+rl = 0.05                        # cross linker rest length (50 nm)
+konCL = 5;                     # first end binding rate
+konSecond = 50;               # second end binding rate
+koffCL = 1;                 # free end unbinding rate
+koffSecond = 1;              # bound CL unbinding rate
+turnovertime = 10;
+bindingSiteWidth = 20e-3;       # Set to 0 for no limit, 20 nm otherwise
+bunddist = 1/4
+FileString = 'Ld'+str(Ld)+'BundLp'+str(lp)+'_'+str(seed)+'.txt'
+updateNet = True;
+turnover = False;
+

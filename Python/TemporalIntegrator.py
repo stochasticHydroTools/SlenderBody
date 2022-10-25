@@ -96,7 +96,7 @@ class TemporalIntegrator(object):
             Dom.setg(fixedg);       
         self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
 
-    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald,gravden=0.0,outfile=None,write=1,updateNet=False,turnoverFibs=False,\
+    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,updateNet=False,turnoverFibs=False,\
         BrownianUpdate=False,kBt=0,fixedg=None,stress=False):
         """
         The main update method. 
@@ -174,6 +174,9 @@ class TemporalIntegrator(object):
         
         # Set answer = block diagonal or proceed with GMRES
         giters = self.getMaxIters(iT)-1; # subtract the first application of mobility/preconditioner
+        giters = 0; 
+        from warnings import warn
+        warn('Bypassing GMRES iterations for now to test new discretization. Return later')
         if (giters==0):
             # Block diagonal acceptable 
             lamalph = BlockDiagAnswer;
@@ -209,7 +212,7 @@ class TemporalIntegrator(object):
                 
         # Update alpha and lambda and fiber positions
         self._allFibers.updateLambdaAlpha(lamalph,XsforNL);
-        maxX = self._allFibers.updateAllFibers(dt,XsforNL,exactinex=1);
+        maxX = self._allFibers.updateAllFibers(dt,XsforNL);
         if (verbose > 0):
             print('Update fiber time %f' %(time.time()-thist))
             thist = time.time()

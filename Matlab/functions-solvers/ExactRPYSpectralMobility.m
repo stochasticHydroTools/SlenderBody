@@ -8,9 +8,9 @@
 % nodes on (s-2a,s) and (s,s+2a). If NForSmall=-1, it will assume a straight
 % segement from (-2a,2a), and if NForSmall=0 it will us the asymptotic
 % representation of the integral from -2a to 2a
-function Mtt = ExactRPYSpectralMobility(N,X,Xs,Xss,Xsss,a,L,mu,s,b,D,AllbS,AllbD,NForSmall)
+function Mtt = ExactRPYSpectralMobility(N,X,Xs,Xss,a,L,mu,s,b,D,AllbS,AllbD,NForSmall)
     Loc_Slt = getMlocStokeslet(N,Xs,a,L,mu,s,0);
-    Loc_Dblt = getMlocDoublet(N,Xs,Xss,Xsss,stackMatrix(D),a,L,mu,s,0,0);
+    Loc_Dblt = getMlocDoublet(N,Xs,a,L,mu,s);
     if (NForSmall==0)
         SmallExact = getMlocSmallParts(N,Xs,a,L,mu,s,stackMatrix(D),D*Xs,0,0);
     elseif (NForSmall==-1)

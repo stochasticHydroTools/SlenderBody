@@ -1,5 +1,5 @@
 % Inextensible update by rotating tangent vectors and integrating
-function [Xnp1,Xsp1,Omega] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU,solver)
+function [Xnp1,Xsp1,Omega] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU,solver,D,Omega)
     % Resampling matrices
     th=flipud(((2*(0:N-1)+1)*pi/(2*N))');
     Lmat = (cos((0:N-1).*th));
@@ -23,14 +23,10 @@ function [Xnp1,Xsp1,Omega] = updateX(Xt,ut2,N,dt,Lf,Xsin,Xsm1,dU,solver)
     nOm = sqrt(sum(Omega.*Omega,2));
     % Have to truncate somewhere to avoid instabilities
     k = Omega./nOm;
-    k(nOm < 1e-8,:) = 0;
+    k(nOm < 1e-12,:) = 0;
     % Rodriguez formula on the N grid. 
     Xsp1 = Xsin.*cos(nOm*dt)+cross(k,Xsin).*sin(nOm*dt)+k.*sum(k.*Xsin,2).*(1-cos(nOm*dt));
-    % Integrate Xsp1 by going to Chebyshev space
-    Xshat = Lmat \ Xsp1;
-    Xhat = Lf/2*FIMatrix(N)*[Xshat; zeros(2,3)];
-    % Go back to real space
-    Xnp1 = Lmat*Xhat;
+    Xnp1 = pinv(D)*Xsp1;
     % Make the velocity at s = the first s equal to the original solver
     Xnp1=Xnp1-Xnp1(1,:)+(Xt(1:3)'+dt*ut2(1:3)');
 %     [s,~,b]=chebpts(N,[0 Lf],1);
