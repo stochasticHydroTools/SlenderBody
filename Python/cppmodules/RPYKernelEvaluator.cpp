@@ -173,7 +173,22 @@ class RPYKernelEvaluator {
         for (int d=0; d < 3; d++){
             utot[d] = mu_inv*(F*force[d]+co2*rvec[d]);
         }
-    }      
+    } 
+    
+    void PairRPYMatrix(vec3 &rvec, vec &M3){
+        /**
+        Total RPY kernel M_ij
+        **/
+        double r = normalize(rvec);
+        double F = FtotRPY(r);
+        double G = GtotRPY(r);
+        for (int iD=0; iD < 3; iD++){
+            M3[3*iD+iD] = mu_inv*F;  
+            for (int jD = 0; jD < 3; jD++){
+                M3[3*iD+jD]+= mu_inv*((G-F)*rvec[iD]*rvec[jD]);  
+            }
+        }
+    }     
     
     private:
     double a, mu, mu_inv, outFront; // hydrodynamic radius
@@ -279,7 +294,7 @@ class RPYKernelEvaluator {
     //================================================
     // PLAIN UNSPLIT RPY KERNEL EVALUATION
     //================================================
-    //The RPY kernel can be written as M = Ft(r,a)*I+Gt(r,a)*(I-RR)
+    //The RPY kernel can be written as M_RPY = F*(I-RR^T) + G*RR^T
     //The next 2 functions are those Ft and Gt functions.
     double FtotRPY(double r){
         /**
@@ -295,7 +310,6 @@ class RPYKernelEvaluator {
 
     double GtotRPY(double r){
         /**
-        Part of the RPY kernel that multiplies I. 
         @param r = distance between points 
         @return value of G, so that M_RPY = F*(I-RR^T) + G*RR^T
         **/

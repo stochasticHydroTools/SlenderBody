@@ -33,11 +33,11 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     ##    METHODS FOR INITIALIZATION
     ## =============================== ##
-    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,kT=0,nThreads=1,bindingSiteWidth=0):
+    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,kT=0,nThreads=1,bindingSiteWidth=0,smoothForce=True):
         """
         Constructor
         """
-        super().__init__(nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,nThreads);
+        super().__init__(nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,smoothForce,nThreads);
         self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # number of free-ended links bound to each site
         self._kon = kon*self._ds;
         self._konSecond = konsecond*self._ds;
@@ -46,13 +46,17 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._kDoubleOn = 0; # half the real value because we schedule link binding as separate events
         self._kDoubleOff = 0;
         MaxLinks = max(2*int(konsecond/koffsecond*kon/koff*self._TotNumSites),100)
+        if (koffsecond < 1e-5):
+            MaxLinks = 10;
         self._HeadsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._TailsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._PrimedShifts = np.zeros((MaxLinks,3));
         allRates = [self._kon,self._konSecond,self._koff,self._koffSecond,self._kDoubleOn,self._kDoubleOff];
         if (kT > 0):
-            self._deltaL = min(2*np.sqrt(kT/self._kCL),self._rl); # Strain-dependent rate, modify self._deltaL to be 2 or 1/2 rest length
+            self._deltaL = 2*np.sqrt(kT/self._kCL); # Strain-dependent rate, modify self._deltaL to be 2 or 1/2 rest length
         CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
+        if (self._deltaL > self._rl):
+            CLBounds = [0,self._rl+self._deltaL];    
         print(CLBounds)
         if (CLseed is None):
             CLseed = int(time.time());
@@ -115,12 +119,12 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self.syncPythonAndCpp()
     
     def setLinks(self,iPts,jPts,Shifts,FreelyBound=None):
-        warn('Set links in EndedCLNet not tested')
         super().setLinks(iPts,jPts,Shifts);
         # Update C++ class
         if (FreelyBound is None):
             FreelyBound = int(self._kon/self._koff)*np.ones(self._TotNumSites);
-            warn('You did not set the number of free bound links - will all be set to %d' %int(self._kon/self._koff))
+            warn('You did not set the number of free bound links - will all be set to')
+            print((int(self._kon/self._koff)))
         self._FreeLinkBound = FreelyBound;
         self._cppNet.setLinks(self._HeadsOfLinks, self._TailsOfLinks, self._PrimedShifts, self._FreeLinkBound) 
         self.syncPythonAndCpp();    

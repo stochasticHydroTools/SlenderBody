@@ -30,6 +30,7 @@ for iLine in Input:
 copyInput.write('COMMAND LINE ARGS \n')
 copyInput.write('CLseed = '+str(seed)+'\n')
 copyInput.write('dt = '+str(dt)+'\n')
+copyInput.write('lp = '+str(lp)+'\n')
 copyInput.close();
 Input.close();
     
@@ -38,13 +39,14 @@ Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
-    trueRPYMobility=truRPYMob,UseEnergyDisc=True,nptsUniform=Nuniformsites);
+    NupsampleForDirect=NupsampleForDirect,RPYSpecialQuad=RPYQuad,RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,
+    UseEnergyDisc=True,nptsUniform=Nuniformsites);
 
 # Initialize the master list of fibers
 if (FluctuatingFibs):
     allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,nThreads=nThr);
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidDetFibs);
 
 # Initialize the fiber list (straight fibers)
 np.random.seed(seed);
@@ -58,7 +60,7 @@ np.random.seed(seed);
 print('Number uniform sites %d' %fibDisc._nptsUniform)
 CLNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring,\
     rl,konCL,koffCL,konSecond,koffSecond,seed,Dom,fibDisc,nThreads=nThr,\
-    bindingSiteWidth=bindingSiteWidth,kT=kbT);
+    bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce);
 CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSecond)) # just to load up CLs
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
 
@@ -77,7 +79,7 @@ allFibers.writeFiberLocations(LocsFileName,'w');
 #if (seed==1):
 #    ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
 #    CLNet.writeLinks(ofCL)
-#    ofCL.close()
+#   ofCL.close()
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -99,6 +101,7 @@ avgBundleAlignment_Sep[0] = CLNet.avgBundleAlignment(AllOrders_Sep,NPerBundleAll
 LocalAlignment,numCloseBy = CLNet.LocalOrientations(1,allFibers)
 NumFibsConnected[0,:] = numCloseBy;
 AllLocalAlignment[0,:] = LocalAlignment;
+saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
         
 # Simulate 
 for iT in range(stopcount): 
@@ -106,7 +109,8 @@ for iT in range(stopcount):
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
         mythist = time.time()
-    maxX, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,updateNet=updateNet);
+    maxX, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+        updateNet=updateNet,BrownianUpdate=RigidDiffusion);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
         print('MAIN Time step time %f ' %(time.time()-mythist));
@@ -119,7 +123,7 @@ for iT in range(stopcount):
         #if (seed==1):
         #    ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
         #    CLNet.writeLinks(ofCL)
-        #    ofCL.close()
+        #   ofCL.close()
                
         # Bundles where connections are 2 links separated by 2*restlen
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);

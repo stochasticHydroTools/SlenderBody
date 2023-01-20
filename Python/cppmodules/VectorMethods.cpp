@@ -80,25 +80,43 @@ void MatVec(int m, int p, int n, const vec &M, const vec &V, int start, vec &res
     }
 }
 
-// Solve Ax = b using pinv(A)*b
+// Solve Ax = b using pinv(A)^(power)*b
 // Only implemented for square matrices at the moment
-void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdtol){
+void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdtol, bool normalize,bool half, int maxModes){
     vec u(n*n), s(n), vt(n*n);
     int lda = n, ldu = n, ldvt = n;
 
     //computing the SVD
+    vec Acopy(n*n);
+    std::memcpy(Acopy.data(),A.data(),A.size()*sizeof(double));
     int info = LAPACKE_dgesdd(LAPACK_ROW_MAJOR, 'A', n, n, &*A.begin(), lda, &*s.begin(),
                    &*u.begin(), ldu, &*vt.begin(), ldvt);
+    if (info > 0){ 
+         std::cout << "LAPACK SVD DID NOT CONVERGE" << std::endl;
+         for (int i = 0; i < Acopy.size(); i++){
+                 std::cout << Acopy[i] << std::endl;
+         }
+    }
     LAPACKESafeCall(info);
-    
+    double sZero = 1.0;
+    if (normalize){
+        sZero= s[0];
+    }
     // Pseudo-inverse calculation
     for (int i = 0; i < n; i++) {
-        if (s[i]/s[0] > svdtol){// Invert the singular values which are nonzero
-            s[i] = 1.0 / s[i];
+        if (s[i]/sZero > svdtol && i < maxModes){// Invert the singular values which are nonzero
+            if (half){
+                s[i] = 1.0 / sqrt(s[i]);
+            } else {
+                s[i] = 1.0 / s[i];
+            }
         } else {
+            if (i < maxModes && maxModes > 6){
+                std::cout << "Mode " << i << " has singular value below threshold " << svdtol << std::endl;
+            }
             s[i] = 0;
         }  
-        answer[i]=0;  
+        answer[i]=0;
     }
     // Mat vec U^T*b
     vec Ustarb(n);

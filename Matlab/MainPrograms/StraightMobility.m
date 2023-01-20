@@ -1,6 +1,6 @@
 % Compute  6 x 6 mobility matrix forfiber
-mu=1;
-L = 1;
+mu =1;
+L = 2;
 eps=1e-2*4/exp(3/2);
 a=exp(3/2)/4*eps*L;
 N = 32;
@@ -24,12 +24,7 @@ AllbS = precomputeStokesletInts(s,L,a,N,1);
 AllbD = precomputeDoubletInts(s,L,a,N,1);
 MFP = StokesletFinitePartMatrix(X,reshape(Xs,3,N)',zeros(N,3),D,s,L,N,mu,Allb_trueFP);
 NForSmall = 8;
-MRPY = ExactRPYSpectralMobility(N,X,reshape(Xs,3,N)',zeros(N,3),zeros(N,3),a,L,mu,s,b,D,AllbS,AllbD,NForSmall);
-reg=0.1;
-if (reg > 0)
-    Sm = MobilitySmoother(s,w,reg*L);
-    MRPY = stackMatrix(Sm)*MRPY*stackMatrix(Sm)+0.03*stackMatrix(eye(N)-Sm*Sm);
-end
+MRPY = ExactRPYSpectralMobility(N,X,reshape(Xs,3,N)',zeros(N,3),a,L,mu,s,b,D,AllbS,AllbD,NForSmall);
 for doFp=[0,1,2]
 M = Mloc+doFp*MFP;
 if (doFp==2)

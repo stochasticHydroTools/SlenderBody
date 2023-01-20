@@ -24,7 +24,7 @@ class FibCollocationDiscretization(object):
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16,rigid=False,\
-        trueRPYMobility=False,UseEnergyDisc=True):
+        RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True):
         """
         Constructor. 
         L = fiber length, epsilon = fiber aspect ratio, Eb = bending stiffness, mu = fluid viscosity. 
@@ -41,10 +41,12 @@ class FibCollocationDiscretization(object):
         self._Nx = N+1;
         self._nptsUniform = nptsUniform;
         self._nptsDirect = NupsampleForDirect;
-        self._truRPYMob = trueRPYMobility;
+        self._RPYSpecialQuad = RPYSpecialQuad;
+        self._RPYDirectQuad = RPYDirectQuad;
+        self._RPYOversample = RPYOversample;
         self._Nsmall = 0;
         self._BendMatX0 = np.zeros(3*self._Nx)
-        if (self._truRPYMob):
+        if (self._RPYSpecialQuad):
             self._Nsmall = 4;
             if (self._epsilon > 1e-3):
                 self._Nsmall = 8;
@@ -120,8 +122,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
-        rigid=False,trueRPYMobility=False,UseEnergyDisc=True,penaltyParam=0):
-        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,trueRPYMobility,UseEnergyDisc);
+        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True,penaltyParam=0):
+        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc);
 		# Chebyshev grid and weights
         self._sTau = cf.chebPts(self._Ntau,[0,self._L],chebGridType);
         self._wTau = cf.chebWts(self._Ntau,[0,self._L],chebGridType);
@@ -130,18 +132,17 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             self._XGridType = 2;
         self._sX = cf.chebPts(self._Nx,[0,self._L],self._XGridType);
         self._wX = cf.chebWts(self._Nx,[0,self._L],self._XGridType);
-        self._wForDirect = cf.chebWts(self._nptsDirect, [0,self._L],chebGridType);
         self.initIs();
         self.calcXFromXsMap();
         self.initLocalcvals(deltaLocal);
         self.initD4BC(UseEnergyDisc,penaltyParam);
         self.initFPMatrix();
+        self.initUpsamplingMatricesForDirectQuad();
         MatfromNtoUniform = cf.ResamplingMatrix(self._nptsUniform,self._Nx,'u',self._XGridType);
         self._MatfromNtoUniform = np.zeros((3*self._nptsUniform,3*self._Nx));
         for iD in range(3):
             self._MatfromNtoUniform[iD::3,iD::3]=MatfromNtoUniform;
     
-        
     def calcXFromXsMap(self):
         MidpointMat = cf.ResamplingMatrix(3,self._Nx,self._XGridType,self._XGridType);
         MidpointMat = MidpointMat[1,:];
@@ -159,6 +160,14 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             self._XsFromX[iD::3,iD::3]=XsFromXOne;
         self._XonNp1Mat = np.concatenate((self._XonNp1MatNoMP, self._I),axis=1);
     
+    def initUpsamplingMatricesForDirectQuad(self):
+        self._wForDirect = cf.chebWts(self._nptsDirect, [0,self._L],self._XGridType);   
+        self._EUpsample =  cf.ResamplingMatrix(self._nptsDirect, self._Nx,self._XGridType,self._XGridType);
+        OneDResamp = np.dot(np.diag(self._wForDirect),np.dot(self._EUpsample,np.linalg.inv(self._WtildeNx)));
+        self._OversamplingWtsMat = np.zeros((3*self._nptsDirect,3*self._Nx));
+        for iD in range(3):
+            self._OversamplingWtsMat[iD::3,iD::3]=OneDResamp; 
+    
     def calcXFromXsAndMP(self,Xs,XMP):
         return np.dot(self._XonNp1Mat,np.concatenate((Xs,XMP)));     
     
@@ -174,16 +183,15 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         the bending forces. The constant -E_bend is included in 
         this operator
         """
-        
         sDouble = cf.chebPts(2*self._Nx,[0,self._L],self._XGridType);
         wDouble = cf.chebWts(2*self._Nx,[0,self._L],self._XGridType);
         R_Nx_To_2x = cf.ResamplingMatrix(2*self._Nx,self._Nx,self._XGridType,self._XGridType);
         DSq = cf.diffMat(2,[0,self._L],self._Nx,self._Nx,self._XGridType,self._XGridType);
-        WtildeNx = np.dot(R_Nx_To_2x.T,np.dot(np.diag(wDouble),R_Nx_To_2x));
+        self._WtildeNx = np.dot(R_Nx_To_2x.T,np.dot(np.diag(wDouble),R_Nx_To_2x));
         if (UseEnergyDisc):
-            OneD4BCForce = -self._Eb*np.dot(DSq.T,np.dot(WtildeNx,DSq));
+            OneD4BCForce = -self._Eb*np.dot(DSq.T,np.dot(self._WtildeNx,DSq));
             # Convert to force density by inverting by Wtilde
-            OneD4BC = np.linalg.solve(WtildeNx,OneD4BCForce);
+            OneD4BC = np.linalg.solve(self._WtildeNx,OneD4BCForce);
         else:
             DownsamplingMat = cf.ResamplingMatrix(self._Nx,self._Nx+numBCs,chebGridType,D4BCgridType);
             SecDMat_upgrid = cf.diffMat(2,[0,self._L],2,self._Nx+numBCs,D4BCgridType,D4BCgridType);
@@ -194,12 +202,12 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             TildeConfigMatrix = np.linalg.solve(TotalBCMatrix,RHS);
             FourDMat_fromUptoDwn = cf.diffMat(4,[0,self._L],self._Nx,self._Nx+numBCs,chebGridType,D4BCgridType);
             OneD4BC = -self._Eb*np.dot(FourDMat_fromUptoDwn,TildeConfigMatrix);
-            OneD4BCForce = np.dot(WtildeNx, OneD4BC);
+            OneD4BCForce = np.dot(self._WtildeNx, OneD4BC);
             # Convert to force by multipying by Wtilde
-            # OneD4BC = np.dot(WtildeNx,OneD4BC);
+            # OneD4BC = np.dot(self._WtildeNx,OneD4BC);
         if (penaltyParam > 0):
             OneD4BC = OneD4BC - penaltyParam*np.eye(self._Nx); 
-            OneD4BCForce = OneD4BCForce - penaltyParam*WtildeNx;
+            OneD4BCForce = OneD4BCForce - penaltyParam*self._WtildeNx;
         # Fill in the block stacked matrix
         OneD4BCForceHalf = sqrtm(-1.0*OneD4BCForce);
         self._D4BC = np.zeros((3*self._Nx,3*self._Nx));
@@ -211,8 +219,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             self._D4BC[iD::3,iD::3]=OneD4BC; 
             self._D4BCForce[iD::3,iD::3]=OneD4BCForce; 
             self._D4BCForceHalf[iD::3,iD::3]=OneD4BCForceHalf; 
-            self._stackWTilde_Nx[iD::3,iD::3] =  WtildeNx;    
-            self._stackWTildeInverse_Nx[iD::3,iD::3] =  np.linalg.inv(WtildeNx);   
+            self._stackWTilde_Nx[iD::3,iD::3] =  self._WtildeNx;    
+            self._stackWTildeInverse_Nx[iD::3,iD::3] =  np.linalg.inv(self._WtildeNx);   
     
     def calcBendMatX0(self,X0,penaltyParam):
         self._BendMatX0 = np.dot(self._D4BCForce,X0);
@@ -235,7 +243,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self._RLess2aResamplingMat = np.zeros((self._Nx*self._Nsmall,self._Nx));
         self._RLess2aWts = np.zeros(self._Nx*self._Nsmall);
         a = 0;
-        if (self._truRPYMob):
+        if (self._RPYSpecialQuad):
             a = self._a;
         for iPt in range(self._Nx):
             s = self._sX[iPt];
@@ -264,7 +272,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             AllQs[iPt,:]=q;
             AllDs[iPt,:]=qd;
         self._FPMatrix =  1.0/(8.0*np.pi*self._mu)*0.5*self._L*np.linalg.solve(ChebCoeffsToVals.T,AllQs.T);
-        if (self._truRPYMob):
+        if (self._RPYSpecialQuad):
             self._DoubletFPMatrix =  1.0/(8.0*np.pi*self._mu)*0.5*self._L*np.linalg.solve(ChebCoeffsToVals.T,AllDs.T);
             # Initialize the resampling matrices for R < 2a
             # The only thing that can be precomputed are the matrices on [s-a, s] and [s,s+a] for resampling the

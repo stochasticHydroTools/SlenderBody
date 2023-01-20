@@ -20,7 +20,7 @@ class CrossLinkedNetwork(object):
     collection
     """
     
-    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,nThreads=1):
+    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,smoothForce,nThreads=1):
         """
         Initialize the CrossLinkedNetwork. 
         Input variables: nFib = number of fibers, N = number of points per
@@ -36,6 +36,7 @@ class CrossLinkedNetwork(object):
         self._nFib = nFib;
         self._kCL = kCL;
         self._rl = rl;
+        self._smoothForce = smoothForce;
         
         self._nDoubleBoundLinks = 0;             # number of links taken
         self._TotNumSites = self._NsitesPerf*self._nFib;
@@ -65,7 +66,8 @@ class CrossLinkedNetwork(object):
                 self._DLens[iD] = 1e99;
         FibFromSiteIndex = np.repeat(np.arange(nFib,dtype=np.int64),self._NsitesPerf);
         NChebs = self._Npf*np.ones(nFib,dtype=np.int64);
-        self._CForceEvaluator = CForceEvalCpp(np.tile(self._su,nFib),FibFromSiteIndex,NChebs,np.tile(fibDisc.gets(),nFib),\
+        self._CForceEvaluator = CForceEvalCpp(self._NsitesPerf,np.tile(self._su,nFib),fibDisc._MatfromNtoUniform[0::3,0::3],\
+            fibDisc._stackWTildeInverse_Nx,FibFromSiteIndex,NChebs,np.tile(fibDisc.gets(),nFib),\
             self._wCheb,self._sigma*np.ones(nFib),self._kCL,self._rl,nThreads);
     
     def sigmaFromNL(self,N,L):
@@ -104,8 +106,12 @@ class CrossLinkedNetwork(object):
         # Call the C++ function to compute forces
         shifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
         #thist=time.time();
-        Clforces = self._CForceEvaluator.calcCLForces(self._HeadsOfLinks[:self._nDoubleBoundLinks], \
-            self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPoints,chebPoints);
+        if (self._smoothForce):
+            Clforces = self._CForceEvaluator.calcCLForces(self._HeadsOfLinks[:self._nDoubleBoundLinks], \
+                self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPoints,chebPoints);
+        else:
+            Clforces = self._CForceEvaluator.calcCLForcesEnergy(self._HeadsOfLinks[:self._nDoubleBoundLinks], \
+                    self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPoints,chebPoints);
         #print('First method time %f' %(time.time()-thist))
         return Clforces;
         

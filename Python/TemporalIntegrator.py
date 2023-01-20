@@ -5,7 +5,6 @@ from scipy.sparse.linalg import LinearOperator
 from functools import partial
 from mykrypy.linsys import LinearSystem, Gmres # mykrypy is krypy with modified linsys.py
 from mykrypy.utils import ConvergenceError     # mykrypy is krypy with modified linsys.py
-from fiberCollection import fiberCollection
 from warnings import warn
 
 # Definitions 
@@ -97,7 +96,7 @@ class TemporalIntegrator(object):
         self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
 
     def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,updateNet=False,turnoverFibs=False,\
-        BrownianUpdate=False,kBt=0,fixedg=None,stress=False):
+        BrownianUpdate=False,fixedg=None,stress=False):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the maximum number of steps numSteps,
@@ -107,16 +106,6 @@ class TemporalIntegrator(object):
         to the output object. updateNet = whether to update the cross-linked network. TurnoverFibs = whether
         to turnover fibers. 
         """   
-        # Brownian update (always first order)
-        thist = time.time() 
-        if (BrownianUpdate):
-            if not (isinstance(self,BackwardEuler)):
-                raise ValueError('Must use backward Euler with Brownian fluctuations!')
-            Randoms = np.random.randn(6*self._allFibers._Nfib);
-            self._allFibers.BrownianUpdate(dt/2,kBt,Randoms);
-            if (verbose > 0):
-                print('Time to do Brownian update %f' %(time.time()-thist))
-                thist = time.time()    
         # Birth / death fibers
         thist = time.time() 
         if (turnoverFibs):
@@ -131,6 +120,16 @@ class TemporalIntegrator(object):
             if (verbose > 0):
                 print('Time to update network (first time) %f' %(time.time()-thist))
                 thist = time.time()
+        # Brownian update (always first order)
+        thist = time.time() 
+        if (BrownianUpdate):
+            if not (isinstance(self,BackwardEuler)):
+                raise ValueError('Must use backward Euler with Brownian fluctuations!')
+            Randoms = np.random.randn(6*self._allFibers._Nfib);
+            self._allFibers.BrownianUpdate(dt,Randoms);
+            if (verbose > 0):
+                print('Time to do Brownian update %f' %(time.time()-thist))
+                thist = time.time()  
         
         # Set domain strain and fill up the arrays of points
         tvalSolve = self.gettval(iT,dt);
@@ -151,7 +150,7 @@ class TemporalIntegrator(object):
             if (verbose > 0):
                 print('Time to calc CL force %f' %(time.time()-thist))
                 thist = time.time()
-
+        
         # Block diagonal solve
         thist = time.time()
         # Solve the block diagonal way
@@ -167,7 +166,7 @@ class TemporalIntegrator(object):
             thist = time.time()
             
         # Apply preconditioner to get (delta lambda,delta alpha) from the block diagonal solver
-        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(RHS,XsforNL,dt,self._impco,XforNL,doFP=self._FPimplicit)
+        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(XsforNL,dt,self._impco,XforNL,doFP=self._FPimplicit)
         if (verbose > 0):
             print('Time to apply preconditioner %f' %(time.time()-thist))
             thist = time.time()
@@ -217,7 +216,6 @@ class TemporalIntegrator(object):
             print('Update fiber time %f' %(time.time()-thist))
             thist = time.time()
         
-        # MOVE THE STRESS CALCULATION ROUTINE HERE!
         stressArray = np.zeros(3);
         if (stress):
             lamStress, ElasticStress = self._allFibers.FiberStress(XforNL,self._allFibers.getLambdas(),Dom)
@@ -241,12 +239,6 @@ class TemporalIntegrator(object):
             #lBorn+=len(bornFibs);
             if (verbose > 0):
                 print('Time to turnover fibers (second time) %f' %(time.time()-thist))
-                thist = time.time() 
-        if (BrownianUpdate):
-            Randoms = np.random.randn(6*self._allFibers._Nfib);
-            self._allFibers.BrownianUpdate(dt/2,kBt,Randoms);
-            if (verbose > 0):
-                print('Time to do Brownian update %f' %(time.time()-thist))
                 thist = time.time() 
                    
         if (write):

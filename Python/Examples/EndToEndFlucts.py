@@ -10,64 +10,82 @@ from math import exp
 import sys
 
 """
-This file performs the three sheared fiber test in Section 5.1.2
+End to end fluctuations
 """
 
-def makeStraightFib(Lf,N,fibDisc):
+def makeStraightFibs(nFib,Lf,N,fibDisc):
     """
     Initialize the three fibers for the shear simulation for a given N and fiber length Lf. 
     fibDisc = the collocation discretization of the fiber
     """
-    q=1;
-    s=fibDisc._sTau;
     # Falling fibers
     Xs = (np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T);
     Xs = np.reshape(Xs,3*N);
     XMP = np.zeros(3);
-    fibList = [None];
-    fibList[0] = DiscretizedFiber(fibDisc,Xs,XMP);
-    #fibList[1] = DiscretizedFiber(fibDisc,Xs,XMP);
+    fibList = [None]*nFib
+    for iFib in range(nFib):
+        fibList[iFib] = DiscretizedFiber(fibDisc,Xs,XMP);
     return fibList;
 
 # Inputs 
-dtnum = int(sys.argv[2]);
-nFib=1         # number of fibers
-N=int(sys.argv[1]);            # number of points per fiber
+nFib=1          # number of fibers
+N=120          # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=4;   # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
-Ld=2.4          # length of the periodic domain
-xi=3            # Ewald parameter
+nonLocal=4   # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
+nThr = 8;
+MobStr='CC';
+RPYQuad = False;
+RPYDirect = True;
+RPYOversample = False;
+NupsampleForDirect = 20;
+FluctuatingFibs = True;
+RigidDiffusion = False;
+rigidDetFibs = False;
+Ld=10        # length of the periodic domain
 mu=1            # fluid viscosity
-eps=1e-3*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3)
-Eb=1         # fiber bending stiffness
-dt=10.0**(-dtnum);         # timestep
-omega=0         # frequency of oscillations
-gam0=0          # base rate of strain
-tf=20      # final time
-kbT = float(sys.argv[3]);
-penaltyParam = 0*kbT;
-saveEvery = max(1,int(1e-3/dt+1e-10));
-seed = int(sys.argv[4]);
-lp = Eb/kbT;
-lpstar = int(lp/Lf+1e-10);
-eigvalThres =5.0/Lf 
-if (N==12):
-    eigvalThres = 3.2/Lf; 
-FileString = 'SemiflexFlucts/Eps3EndToEnd_N'+str(N)+'_Lp'+str(lpstar)\
-    +'_dt'+str(dtnum)+'_'+str(seed)+'.txt'
+logeps = float(sys.argv[1]);
+eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3)
+print(eps)
+lpstar = 1;
+dt = float(sys.argv[2]);
+eigvalThres = 0.0;
+if (eps < 5e-3):
+    if (N==12):
+        eigvalThres = 3.2/Lf; 
+    elif (N==24):
+        eigvalThres = 5.0/Lf; 
+    elif (N==36):
+        eigvalThres = 6.7/Lf; 
+else:
+    if (N==12):
+        eigvalThres = 1.6/Lf; 
+    elif (N==24):
+        eigvalThres = 1.0/Lf; 
+    elif (N==36):
+        eigvalThres = 0.34/Lf; 
+    
+kbT = 4.1e-3;
+Eb=lpstar*kbT*Lf;         # fiber bending stiffness
+tf = 0.01*mu*Lf**4/(np.log(10**logeps)*Eb)
+penaltyParam = 0;
+seed = int(sys.argv[3]);
+nSaves = 100; # target number
+saveEvery = int(tf/(nSaves*dt));
+
+FileString = 'SemiflexFlucts/Eps'+str(logeps)+'EndToEnd'+MobStr+'_N'+str(N)+'_Lp'+str(lpstar)\
+    +'_dt'+str(dt)+'_'+str(seed)+'.txt'
     
 # Initialize the domain
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,trueRPYMobility=True,\
-    UseEnergyDisc=True,penaltyParam=penaltyParam);
-
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,deltaLocal=1,\
+    RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,NupsampleForDirect=NupsampleForDirect);
+    
 # Initialize the master list of fibers
-allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigvalThres);
-fibList = makeStraightFib(Lf,N,fibDisc);
+allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,eigvalThres,nThreads=nThr);
+fibList = makeStraightFibs(nFib,Lf,N,fibDisc);
 allFibers.initFibList(fibList,Dom);
-allFibers._fiberDisc.calcBendMatX0(fibList[0]._X,penaltyParam);
 
 # Initialize the temporal integrator
 TIntegrator = BackwardEuler(allFibers,FPimp=(nonLocal > 0));
@@ -78,26 +96,16 @@ TIntegrator.setMaxIters(1);
 
 # Prepare the output file and write initial locations
 np.random.seed(seed);
-# Barymat for the quarter points
-#allFibers.writeFiberLocations(FileString,'w');
-if (True):
-    QuarterMat = cf.ResamplingMatrix(5,allFibers._fiberDisc._Nx,'u',allFibers._fiberDisc._XGridType);
-    XLocs = allFibers._ptsCheb.copy();
-    f=open(FileString,'w')
-    np.savetxt(f, np.dot(QuarterMat,XLocs));#, fmt='%1.13f')
-    f.close()
+allFibers.writeFiberLocations(FileString,'w');
         
 # Time loop
 stopcount = int(tf/dt+1e-10);
+print(stopcount)
 for iT in range(stopcount): 
+    print(iT)
     wr = 0;
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
-    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,write=0,outfile=FileString);
-    if (True and wr):
-        #print('Time %1.2E' %(float(iT+1)*dt));
-        XLocs = allFibers._ptsCheb.copy();
-        f=open(FileString,'a')
-        np.savetxt(f, np.dot(QuarterMat,XLocs));#, fmt='%1.13f')
-        f.close()
+        print((iT+1)/stopcount)
+    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,write=wr,outfile=FileString);
         

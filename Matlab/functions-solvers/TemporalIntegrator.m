@@ -90,7 +90,7 @@ for iFib=1:nFib % block diagonal solve
     Xsss3 = reshape(Xsss,3,N)';
     if (exactRPY)
         %disp('Matlab: using D*Xs in RPY mobility')
-        M = ExactRPYSpectralMobility(N,X3,Xs3,Xss3,Xsss3,a,L,mu,s,b,D,AllbS,AllbD,NForSmall);
+        M = ExactRPYSpectralMobility(N,X3,Xs3,Xss3,a,L,mu,s,b,D,AllbS,AllbD,NForSmall);
         if (min(real(eig(M))) < 0)
             warning('Negative eigenvalues in M; refine discretization or check fiber shape!')
         end
@@ -131,29 +131,12 @@ for iFib=1:nFib % block diagonal solve
         end
     end
     % Solve for fiber evolution
-    [K,Kt,nPolys]=getKMats3DClampedNumer(Xsarg(inds),Lmat,w,N,I,wIt,'U',[clamp0 clampL]);
-    %[K,Kt]=getKMats3DOmega(Xsarg(inds),L,N,I,wIt,IntDOversamp,...
-    %        sOversamp,stackMatrix(WOversmap),bOversamp,RNToOversamp_st,clamp0);
-%     BM = stackMatrix(barymat(L/2,s,b));
-%     % Matrix that gives actual linearized update
-%     CMat = zeros(3*N);
-%     for iR=1:N
-%         indsC = (iR-1)*3+1:iR*3;
-%         tau = Xst(indsC);
-%         CMat(indsC,indsC)=CPMatrix(tau);
-%     end
-%     KMod_tau = -CMat*CMat*Ds;
-%     KModifier = (eye(3*N)-repmat(BM,N,1))*stackMatrix(pinv(D))*KMod_tau+repmat(BM,N,1);
-%     K_og = K;
-%     K = KModifier*K;
-%     Kt = K'*WtildeInverse^(-1);
+    %[K,Kt,nPolys]=getKMats3DClampedNumer(Xsarg(inds),Lmat,w,N,I,wIt,'U',[clamp0 clampL]);
+    [K,Kt]=getKMats3DOmega(Xsarg(inds),L,N,I,wIt,IntDOversamp,...
+           sOversamp,stackMatrix(WOversmap),bOversamp,RNToOversamp_st,clamp0);
     B = K-impcoeff*dt*M*FE*(UpsampleXBCMat*K);
     RHS = Kt*(fE(inds)+fext(inds)+fTw(inds)+M \ (UFromTorq(inds) + U0(inds) + nLvel(inds)));
-    %if (clamp0)
-    %    alphaU = lsqminnorm(Kt*M^(-1)*B,RHS,1e-6);
-    %else
     alphaU = lsqminnorm(Kt*M^(-1)*B,RHS);
-    %end
     ut = K*alphaU;
     Xp1(inds) = Xt(inds)+dt*ut;
     Xsp1(inds) = Ds*Xp1(inds);
@@ -233,22 +216,22 @@ end
 lambdas=l_m;
 % Compute material frame (start of next time step)
 % Update first material frame vector (at 0)
-for iFib=1:nFib
-    inds = (iFib-1)*3*N+1:3*N*iFib;
-    scinds = (iFib-1)*N+1:N*iFib;
-    np2inds = (iFib-1)*(N+2)+1:(N+2)*iFib;
-    np4inds = (iFib-1)*3*(N+4)+1:3*(N+4)*iFib;
-    nparTw((iFib-1)*N+1:N*iFib) = twmod*R2ToN*D_sp2*theta_s_sp2(np2inds);
-    OmegaPar = RotFromTrans+Mrr*nparTw(scinds);
-    OmegaTot = OmegaPerp+OmegaPar.*reshape(Xsp1(inds),3,N)';
-    OmegaPar0_re = barymat(0,s,b)*OmegaPar;
-    OmegaMid_re = barymat(L/2,s,b)*OmegaTot;
-    Xsmid = barymat(L/2,s,b)*reshape(Xsp1(inds),3,N)';
-    D1mid(iFib,:) = rotate(D1mid(iFib,:),dt*OmegaMid_re);
-    % 1) Compute Bishop frame and rotate it
-    XBCNext =  UpsampleXBCMat*Xt(inds) + BCShift(np4inds);
-    XssNext = reshape(stackMatrix(R4ToN*D_sp4^2)*XBC(np4inds),3,N)';
-    theta = (eye(N)-barymat(L/2,s,b))*pinv(D)*theta_sp1(scinds);
-    [bishA(scinds,:),bishB(scinds,:),D1next(scinds,:),D2next(scinds,:)] = ...
-        computeBishopFrame(N,reshape(Xsp1(inds),3,N)',XssNext,s,b,L,theta,D1mid(iFib,:)');
-end
+% for iFib=1:nFib
+%     inds = (iFib-1)*3*N+1:3*N*iFib;
+%     scinds = (iFib-1)*N+1:N*iFib;
+%     np2inds = (iFib-1)*(N+2)+1:(N+2)*iFib;
+%     np4inds = (iFib-1)*3*(N+4)+1:3*(N+4)*iFib;
+%     nparTw((iFib-1)*N+1:N*iFib) = twmod*R2ToN*D_sp2*theta_s_sp2(np2inds);
+%     OmegaPar = RotFromTrans+Mrr*nparTw(scinds);
+%     OmegaTot = OmegaPerp+OmegaPar.*reshape(Xsp1(inds),3,N)';
+%     OmegaPar0_re = barymat(0,s,b)*OmegaPar;
+%     OmegaMid_re = barymat(L/2,s,b)*OmegaTot;
+%     Xsmid = barymat(L/2,s,b)*reshape(Xsp1(inds),3,N)';
+%     D1mid(iFib,:) = rotate(D1mid(iFib,:),dt*OmegaMid_re);
+%     % 1) Compute Bishop frame and rotate it
+%     XBCNext =  UpsampleXBCMat*Xt(inds) + BCShift(np4inds);
+%     XssNext = reshape(stackMatrix(R4ToN*D_sp4^2)*XBC(np4inds),3,N)';
+%     theta = (eye(N)-barymat(L/2,s,b))*pinv(D)*theta_sp1(scinds);
+%     [bishA(scinds,:),bishB(scinds,:),D1next(scinds,:),D2next(scinds,:)] = ...
+%         computeBishopFrame(N,reshape(Xsp1(inds),3,N)',XssNext,s,b,L,theta,D1mid(iFib,:)');
+% end

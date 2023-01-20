@@ -6,32 +6,37 @@
 % on the fiber, w = Chebyshev wts, L=fiber length, K = spring constant,
 % rl = rest length of the cross linkers, 
 % Outputs - force per length on the fibers. 
-function Clf = getCLforce(links,X,N,s,w,L, K, rl,g,Ld)
+function [Clf,X1stars,X2stars] = getCLforce(links,X,Runi,s,w,L, K, rls,g,Ld)
     [nLink,~]=size(links);
     Clf=zeros(size(X));
-    % Uniform points on [0, Lf]
-    Nu =16;
-    hu = L/(Nu-1);
-    th=flipud(((2*(0:N-1)+1)*pi/(2*N))');
-    Lmatn = (cos((0:N-1).*th));
+    X1stars = zeros(nLink,3);
+    X2stars = zeros(nLink,3);
+    [Nu,N]=size(Runi);
+    hu=L/(Nu-1);
     for iL=1:nLink
-        fib1 = links(iL,1);
-        s1star = links(iL,2);
-        fib2 = links(iL,3);
-        s2star = links(iL,4);
-        shift = links(iL,5:7);
+        rl = rls(iL);
+        u1Pt = links(iL,1);
+        fib1 = floor((u1Pt-1)/Nu)+1;
+        fib1pt = mod(u1Pt,Nu);
+        fib1pt = fib1pt+Nu*(fib1pt==0);
+        u2Pt = links(iL,2);
+        fib2 = floor((u2Pt-1)/Nu)+1;
+        fib2pt = mod(u2Pt,Nu);
+        fib2pt = fib2pt+Nu*(fib2pt==0);
+        shift = links(iL,3:5);
         % Calculate the force density on fiber 1
         inds1 = (fib1-1)*N+1:fib1*N;
         inds2 = (fib2-1)*N+1:fib2*N;
         X1=X(inds1,:);
-        th1 = acos(2*s1star/L-1)';
-        U1 = (cos((0:N-1).*th1));
-        X1star = U1*(Lmatn \ X1);
+        X1star = Runi(fib1pt,:)*X1;
+        X1stars(iL,:)=X1star;
+        s1star = (fib1pt-1)*hu;
         X2=X(inds2,:)-[shift(1)+g*shift(2) shift(2) shift(3)]*Ld;
-        th2 = acos(2*s2star/L-1)';
-        U2 = (cos((0:N-1).*th2));
-        X2star = U2*(Lmatn \ X2);
+        X2star = Runi(fib2pt,:)*X2;
+        X2stars(iL,:)=X2star;
+        s2star = (fib2pt-1)*hu;
         renorm = w*deltah(s-s1star,N,L)*w*deltah(s-s2star,N,L);
+        f1 = zeros(N,3);
         for iPt=1:N
             ds = X1(iPt,:)-X2;
             ig = ds*(1-rl/norm(X1star-X2star));
@@ -42,6 +47,7 @@ function Clf = getCLforce(links,X,N,s,w,L, K, rl,g,Ld)
         f1=f1./renorm;
         Clf(inds1,:)=Clf(inds1,:)+f1;
          % Calculate the force density on fiber 2
+        f2 = zeros(N,3);
         for iPt=1:N
             ds = X2(iPt,:)-X1;
             ig = ds*(1-rl/norm(X1star-X2star));

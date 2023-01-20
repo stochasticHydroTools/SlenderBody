@@ -2,10 +2,21 @@
 This folder contains the main python files to run the examples
 in the papers: 
 * [1] "An integral-based spectral method for inextensible slender fibers in
-Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev, Jan. 2021.
-See [arxiv](https://arxiv.org/abs/2007.11728) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published version
-* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions" by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, submitted to PLOS Comp. Bio., June 2021. See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v1) for text
-* [3] "Interplay between Brownian motion and cross-linking kinetics controls bundling dynamics in actin networks" by O. Maxian, A. Donev, and A. Mogilner. submitted to Biophysical Journal, September 2021. See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v1) for text
+Stokes flow," by O. Maxian, A. Mogilner, and A. Donev, Jan. 2021.
+See [arxiv](https://arxiv.org/abs/2007.11728) for text and 
+[Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published
+version.
+* [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions," 
+by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, Dec. 2021. 
+See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v3) for text and 
+[PLoS Comp. Bio](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009240)
+for published version.
+* [3] "Interplay between Brownian motion and cross-linking kinetics controls bundling dynamics in actin networks," 
+by O. Maxian, A. Donev, and A. Mogilner. Biophysical Journal, April 2022. 
+See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v2) for text and [BJ](https://www.cell.com/biophysj/fulltext/S0006-3495(22)00154-0) for 
+published version.
+* [6] "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2022. See [arxiv](link) for text. 
+
 
 # Tests from [1]:
 1) ThreeShearedFibs.py corresponds to the 3 fibers being sheared in Section 5.1.2.

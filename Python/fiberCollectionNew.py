@@ -14,6 +14,8 @@ from math import sqrt, exp, pi
 
 # Definitions (for special quadrature)
 verbose = -1;               # debug / timings
+svdTolerance = 1e-12;
+svdRigid = 0.25; # Exp[||Omega|| dt ] < svdRigid for rigid Brownian fibers
 
 class fiberCollection(object):
 
@@ -25,7 +27,7 @@ class fiberCollection(object):
     ## ====================================================
     ##              METHODS FOR INITIALIZATION
     ## ====================================================
-    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, nThreads=1):
+    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=1,rigidFibs=False):
         """
         Constructor for the fiberCollection class. 
         Inputs: Nfibs = number of fibers, turnover time = mean time for each fiber to turnover,
@@ -49,6 +51,8 @@ class fiberCollection(object):
         self._nThreads = nThreads;
         self._deathrate = 1/turnovertime; # 1/s
         self.initPointForceVelocityArrays(Dom);
+        self._kbT = kbT;
+        self._rigid = rigidFibs;
         if (self._nonLocal==1):
             raise ValueError('Correction quad not supported anymore');
         
@@ -58,17 +62,18 @@ class fiberCollection(object):
                 DLens[iD] = 1e99;
         
         # Initialize C++ class 
-        self._FibColCpp = FiberCollectionNew(nFibs,self._NXpf,self._NTaupf,\
-            self._fiberDisc._L,self._fiberDisc._a,self._mu,nThreads);
+        self._FibColCpp = FiberCollectionNew(nFibs,self._NXpf,self._NTaupf,nThreads,
+            self._fiberDisc._a,self._fiberDisc._L,self._mu,self._kbT,svdTolerance,svdRigid,self._fiberDisc._RPYSpecialQuad,\
+            self._fiberDisc._RPYDirectQuad,self._fiberDisc._RPYOversample);
         self._FibColCpp.initMatricesForPreconditioner(self._fiberDisc._D4BC, self._fiberDisc._D4BCForce,  \
-            self._fiberDisc._D4BCForceHalf,\
-            self._fiberDisc._XonNp1MatNoMP,self._fiberDisc._XsFromX,self._fiberDisc._MidpointMat,\
-            self._fiberDisc._stackWTilde_Nx, self._fiberDisc._stackWTildeInverse_Nx);
+            self._fiberDisc._D4BCForceHalf,self._fiberDisc._XonNp1MatNoMP,self._fiberDisc._XsFromX,\
+            self._fiberDisc._MidpointMat,self._fiberDisc._BendMatX0);
         self._FibColCpp.initResamplingMatrices(self._fiberDisc._nptsUniform,self._fiberDisc._MatfromNtoUniform);
         self._FibColCpp.initMobilityMatrices(self._fiberDisc._sX, fibDisc._leadordercs,\
             self._fiberDisc._FPMatrix.T,self._fiberDisc._DoubletFPMatrix.T,\
             self._fiberDisc._RLess2aResamplingMat,self._fiberDisc._RLess2aWts,\
-            self._fiberDisc._DXGrid,self._fiberDisc._truRPYMob);
+            self._fiberDisc._DXGrid,self._fiberDisc._stackWTilde_Nx, self._fiberDisc._stackWTildeInverse_Nx,\
+            self._fiberDisc._OversamplingWtsMat,self._fiberDisc._EUpsample,eigValThres);
     
     def initFibList(self,fibListIn, Dom,tanvecfileName=None,midpointfileName=None):
         """
@@ -158,22 +163,9 @@ class fiberCollection(object):
         M^Local is the part that is being treated explicitly, and M^NonLocal is the part that is being treated
         implicitly
         """
-        fnBend = self.evalBendForceDensity(self._ptsCheb); 
-        TotalForceDen = exForceDen+fnBend; 
-        # Multiply by Wtilde to get force density
-        Local = self.calcLocalVelocities(X_nonLoc,TotalForceDen);
-        if (FPimplicit==1 and self._nonLocal > 0): # do the finite part separetely if it's to be treated implicitly
-            Local+= self._FibColCpp.FinitePartVelocity(X_nonLoc, TotalForceDen,self._fiberDisc._truRPYMob)
-            #print('Doing FP separate, it''s being treated implicitly')
-        U0 = self.evalU0(X_nonLoc,t);
-        fNLBend = self.evalBendForceDensity(X_nonLoc);
-        totForce = lamstar+exForceDen+fNLBend;
-        # Compute upsampled points once and for all iterations
-        if (self._nonLocal == 3):
-            self._Xupsampled = self.getPointsForUpsampledQuad(X_nonLoc);
-            self._SpatialDirectQuad.updateSpatialStructures(self._Xupsampled,Dom);   
-        nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,totForce,Dom,RPYEval,1-FPimplicit);
-        return Local+nonLocal+U0;
+        self._exForceDen = exForceDen;
+        return np.zeros(3*self._Nfib*self._NXpf);
+
     
     def calcNewRHS(self,BlockDiagAnswer,X_nonLoc,Xs_nonLoc,dtimpco,lamstar, Dom, RPYEval,FPimplicit=0,returnForce=False):
         """
@@ -224,7 +216,7 @@ class fiberCollection(object):
             return np.concatenate((FirstBlock,SecondBlock)), forceDs;   
         return np.concatenate((FirstBlock,SecondBlock));
        
-    def BlockDiagPrecond(self,b,Xs_nonLoc,dt,implic_coeff,X_nonLoc,doFP=0):
+    def BlockDiagPrecond(self,Xs_nonLoc,dt,implic_coeff,X_nonLoc,doFP=0):
         """
         Block diagonal preconditioner for GMRES. 
         b = RHS vector. Xs_nonLoc = tangent vectors as an Npts x 3 array. 
@@ -233,15 +225,16 @@ class fiberCollection(object):
         The preconditioner is 
         [-M^Local K-impco*dt*M^Local*F*K; K^* 0]
         """
-        b1D = np.reshape(b,len(b));
-        return self._FibColCpp.applyPreconditioner(X_nonLoc,Xs_nonLoc,b1D,implic_coeff*dt,\
-            doFP,self._fiberDisc._truRPYMob,1e-10);
+        return self._FibColCpp.applyPreconditioner(X_nonLoc,Xs_nonLoc,self._exForceDen,implic_coeff,dt,\
+            doFP,self._rigid);
     
-    def BrownianUpdate(self,dt,kbT,Randoms):
+    def BrownianUpdate(self,dt,Randoms):
         # Compute the average X and Xs
-        wRs = np.reshape(self._fiberDisc._w,(self._Npf,1));
-        self._ptsCheb, self._tanvecs= NumbaColloc.BrownianVelocities(self._ptsCheb,self._tanvecs,wRs,\
-            np.array([self._fiberDisc._alpha,self._fiberDisc._beta,self._fiberDisc._gamma]),self._Nfib,self._Npf,self._mu,self._Lf,kbT,dt,Randoms);
+        RandAlphas = self._FibColCpp.ThermalTranslateAndDiffuse(self._ptsCheb,self._tanvecs,Randoms, (self._nonLocal > 0),dt);
+        CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,RandAlphas,dt);   
+        self._tanvecs = CppXsMPX[:self._Nfib*self._NTaupf,:];
+        self._Midpoints = CppXsMPX[self._Nfib*self._NTaupf:self._Nfib*self._NXpf,:];
+        self._ptsCheb = CppXsMPX[self._Nfib*self._NXpf:,:];
         
     def nonLocalVelocity(self,X_nonLoc,Xs_nonLoc,forceDs, Dom, RPYEval,doFinitePart=1):
         """
@@ -341,7 +334,7 @@ class fiberCollection(object):
         Inputs: dt = timestep
         XsforNL = unnecessary legacy argument
         """
-        CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,self._alphas,dt,1e-10);   
+        CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,self._alphas,dt);   
         self._tanvecs = CppXsMPX[:self._Nfib*self._NTaupf,:];
         self._Midpoints = CppXsMPX[self._Nfib*self._NTaupf:self._Nfib*self._NXpf,:];
         self._ptsCheb = CppXsMPX[self._Nfib*self._NXpf:,:];
@@ -589,10 +582,8 @@ class fiberCollection(object):
 class SemiflexiblefiberCollection(fiberCollection):
 
     def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, kbT,eigValThres,nThreads=1):
-        super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, nThreads);
-        self._kbT = kbT;
+        super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads);
         self._iT = 0;
-        self._eigValThres = eigValThres;
         
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY
@@ -602,8 +593,12 @@ class SemiflexiblefiberCollection(fiberCollection):
         """
         self._exForceDen = exForceDen;
         return np.zeros(3*self._Nfib*self._NXpf);
+        
+    def BrownianUpdate(self,dt,kbT,Randoms):
+        # Do nothing for semiflexible filaments
+        raise ValueError('The Brownian update is implemented as part of the solve, not a separate split step!') 
     
-    def BlockDiagPrecond(self,b,Xs_nonLoc,dt,implic_coeff,X_nonLoc,ModifyBE=1,doFP=0):
+    def BlockDiagPrecond(self,Xs_nonLoc,dt,implic_coeff,X_nonLoc,ModifyBE=1,doFP=0):
         """
         Block diagonal preconditioner for GMRES. 
         b = RHS vector. Xs_nonLoc = tangent vectors as an Npts x 3 array. 
@@ -613,17 +608,12 @@ class SemiflexiblefiberCollection(fiberCollection):
         [-M^Local K-impco*dt*M^Local*F*K; K^* 0]
         """
         self._iT+=1;
-        b1D = np.reshape(b,len(b));
         RandVec1 = np.random.randn(3*self._Nfib*self._NXpf);
         RandVec2 = np.random.randn(3*self._Nfib*self._NXpf);
         #np.savetxt('RandVec1_'+str(self._iT)+'.txt',RandVec1);
         #np.savetxt('RandVec2_'+str(self._iT)+'.txt',RandVec2);
-        #np.savetxt('ExForceDen_'+str(self._iT)+'.txt',self._exForceDen);
         U0 = np.zeros(3*self._Nfib*self._NXpf);
-        #np.savetxt('X_'+str(self._iT)+'.txt',X_nonLoc);
-        #np.savetxt('Xs_'+str(self._iT)+'.txt',Xs_nonLoc);
         return self._FibColCpp.applyThermalPreconditioner(X_nonLoc,Xs_nonLoc,self._Midpoints,\
-            U0,self._exForceDen,self._fiberDisc._BendMatX0,RandVec1,RandVec2, dt,implic_coeff, \
-            ModifyBE,doFP,self._fiberDisc._truRPYMob,self._kbT,1e-10,self._eigValThres);
+            U0,self._exForceDen,RandVec1,RandVec2, implic_coeff, dt,ModifyBE,doFP);
         
     
