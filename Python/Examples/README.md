@@ -23,7 +23,7 @@ published version.
 2) CheckStability.py gives the stability test of Section 5.2 (for a specific domain length Ld)
 3) HexagonalRPYTest.py reproduces the results in Appendix B for the same set of particles viewed in
 a rectangular and parallelepiped way. 
-4) *We have removed files associated with the cross linked networks of [1], as they were not compatible with the updates made
+*We have removed files associated with the cross linked networks of [1], as they were not compatible with the updates made
 in [2] and [3]. For instructions on running cross linked networks, see below.
 
 # Simulations from [2] and [3]:
@@ -43,3 +43,10 @@ The simulations will output files prefixed with the user-specified outFile strin
 * AvgBundleTangents = the average tangent vector in each bundle 
 * AvgTangentVectors = the average tangent vectors for all fibers
 * LamStress, ElStress, CLStress = the stress in the suspension due to the inextensibility forces, elastic (bending) forces, and CL forces
+
+# Simulations from [6]:
+There are three dynamic tests we consider in [6]: 
+* Simulations of free fibers relaxing to equilibrium fluctuations from a straight state
+* Equilibrium fluctuations of a curved fiber held in place by a penalty force
+* Networks of semiflexible bundled fibers
+
