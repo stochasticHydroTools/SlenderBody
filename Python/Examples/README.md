@@ -23,7 +23,7 @@ published version.
 2) CheckStability.py gives the stability test of Section 5.2 (for a specific domain length Ld)
 3) HexagonalRPYTest.py reproduces the results in Appendix B for the same set of particles viewed in
 a rectangular and parallelepiped way. 
-*We have removed files associated with the cross linked networks of [1], as they were not compatible with the updates made
+4) *We have removed files associated with the cross linked networks of [1], as they were not compatible with the updates made
 in [2] and [3]. For instructions on running cross linked networks, see below.
 
 # Simulations from [2] and [3]:
