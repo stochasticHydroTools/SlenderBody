@@ -7,7 +7,7 @@
 #include <chrono>
 #include "DomainC.cpp"
 #include "types.h"
-
+#include<iostream>
 /**
 Documentation last updated: 03/12/2021
 C++ class for a cross-linked network where we track each end separately
@@ -38,16 +38,16 @@ extern "C"{ // functions from fortran MinHeapModule.f90 for the heap that manage
 }
 
 namespace py=pybind11;
-typedef py::array_t<int, py::array::c_style | py::array::forcecast> npInt; 
-typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub; 
+typedef py::array_t<int, py::array::c_style | py::array::forcecast> npInt;
+typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub;
 
 class EndedCrossLinkedNetwork {
-    
+
     public:
-       
-    EndedCrossLinkedNetwork(int TotSites, int maxLinksPerSite, vec rates, vec3 DomLengths, vec CLBounds,double kT, 
+
+    EndedCrossLinkedNetwork(int TotSites, int maxLinksPerSite, vec rates, vec3 DomLengths, vec CLBounds,double kT,
         double restlen, double KStiffness,double CLseed):_Dom(DomLengths){
-        _TotSites = TotSites; 
+        _TotSites = TotSites;
         _kon = rates[0];
         _konSecond = rates[1];
         _koff = rates[2];
@@ -73,18 +73,18 @@ class EndedCrossLinkedNetwork {
         _KStiffness = KStiffness;
 
      }
-     
+
      ~EndedCrossLinkedNetwork(){
         deleteHeap();
      }
-     
-        
+
+
      void updateNetwork(double tstep, npInt pyMaybeBindingPairs, npDoub pyuniPts, double g){
         /*
         Update the network using Kinetic MC.
         Inputs: tstep = time step. pyMaybeBindingPairs = 2D numpy array, where the first
         column is the bound end and the second column is the unbound end, of possible
-        link binding site pairs. 
+        link binding site pairs.
         pyuniPts = 2D numpy array of uniform points. g = strain in coordinate system
         */
         // Convert numpy to C++ vector and reset heap for the beginning of the step
@@ -92,7 +92,7 @@ class EndedCrossLinkedNetwork {
         std::memcpy(MaybeBindingPairs.data(),pyMaybeBindingPairs.data(),pyMaybeBindingPairs.size()*sizeof(int));
         vec uniPts(pyuniPts.size());
         std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
-        
+
         // Determine pairs that can actually bind
         int nPotentialLinks = MaybeBindingPairs.size()/2;
         vec PrimedShifts(6*nPotentialLinks,0);
@@ -117,7 +117,7 @@ class EndedCrossLinkedNetwork {
         intvec SortedLinks(2*nTruePairs,-1);
         vec BaseSortedRates(nTruePairs,0), SortedShifts(3*nTruePairs,0);
         for (int iPair=0; iPair < nTruePairs; iPair++){
-            int BoundEnd = BindingPairs[2*iPair]; 
+            int BoundEnd = BindingPairs[2*iPair];
             int index = startPair[BoundEnd];
             int isOccupied = SortedLinks[2*index];
             while (isOccupied > -1){
@@ -138,12 +138,12 @@ class EndedCrossLinkedNetwork {
             }
             TimeAwareHeapInsert(index+1, BaseSortedRates[index]*_FreeLinkBound[BoundEnd],0,tstep);// notice we start indexing from 1, this is how fortran is written
         }
-        
+
         // Single binding to a site
         double RateFreeBind = _kon*_TotSites;
         int indexFreeBinding = nTruePairs+1;
         TimeAwareHeapInsert(indexFreeBinding, RateFreeBind,0,tstep);
-        
+
         // Single unbinding from a site
         vec RatesFreeUnbind(_TotSites);
         int indexFreeUnbinding = indexFreeBinding+1;
@@ -151,23 +151,23 @@ class EndedCrossLinkedNetwork {
             RatesFreeUnbind[iSite] = _koff*_FreeLinkBound[iSite];
             TimeAwareHeapInsert(indexFreeUnbinding+iSite, RatesFreeUnbind[iSite],0,tstep);
         }
-        
+
         // One end of CL unbinding
         double RateSecondUnbind = 2*_koffSecond*_nDoubleBoundLinks;
         int indexSecondUnbind = indexFreeUnbinding+_TotSites;
         TimeAwareHeapInsert(indexSecondUnbind,RateSecondUnbind,0,tstep);
-        
+
         // Events for double binding and unbinding
         double RateDoubleBind = _kDoubleOn*nTruePairs;
         int indexDoubleBind = indexSecondUnbind+1;
         TimeAwareHeapInsert(indexDoubleBind,RateDoubleBind,0,tstep);
-        
+
         double RateDoubleUnbind = _kDoubleOff*_nDoubleBoundLinks;
         int indexDoubleUnbind = indexSecondUnbind+2;
         TimeAwareHeapInsert(indexDoubleUnbind,RateDoubleUnbind,0,tstep);
-        
+
         double systime;
-        int eventindex, BoundEnd, UnboundEnd; 
+        int eventindex, BoundEnd, UnboundEnd;
         topOfHeap(eventindex,systime);
         //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
         while (eventindex > 0) {
@@ -189,13 +189,13 @@ class EndedCrossLinkedNetwork {
             } else if (eventindex == indexSecondUnbind || eventindex==indexDoubleUnbind){ // CL unbinding
                 int linkNum = int(unif(rng)*_nDoubleBoundLinks);
                 BoundEnd = _LinkHeads[linkNum];
-                UnboundEnd = _LinkTails[linkNum];  
+                UnboundEnd = _LinkTails[linkNum];
                 if (unif(rng) < 0.5){
-                    BoundEnd = _LinkTails[linkNum];  
+                    BoundEnd = _LinkTails[linkNum];
                     UnboundEnd = _LinkHeads[linkNum];
                 }
                 deleteLink(linkNum);
-                _TotalNumberBound[UnboundEnd]--; // Only the unbound end loses a link 
+                _TotalNumberBound[UnboundEnd]--; // Only the unbound end loses a link
                 linkChange = true;
                 if (eventindex == indexSecondUnbind){
                     // Add a free end at the other site. Always assume the remaining bound end is at the left
@@ -207,7 +207,7 @@ class EndedCrossLinkedNetwork {
                 }
             } else { // CL binding
                 // The index now determines which pair of sites the CL is binding to
-                // In addition, we always assume the bound end is the one at the left 
+                // In addition, we always assume the bound end is the one at the left
                 int pairToBind;
                 if (eventindex == indexDoubleBind){
                     //std::cout << "Index " << eventindex << ", CL both ends bind at time " << systime << std::endl;
@@ -218,7 +218,7 @@ class EndedCrossLinkedNetwork {
                     //std::cout << "Index " << eventindex << ", CL link " << linkIndex << " both ends bind at time " << systime << std::endl;
                 }
                 BoundEnd = SortedLinks[2*pairToBind];
-                UnboundEnd = SortedLinks[2*pairToBind+1]; 
+                UnboundEnd = SortedLinks[2*pairToBind+1];
                 // Link can only bind if the unbound end is available
                 if (_TotalNumberBound[UnboundEnd] < _MaxNumberPerSite){
                     _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
@@ -236,9 +236,9 @@ class EndedCrossLinkedNetwork {
                     _nDoubleBoundLinks+=1;
                     linkChange = true;
                 } // otherwise nothing happens
-            }   
+            }
             if (_nDoubleBoundLinks == _maxLinks){ // double size of link arrays if necessary
-                _maxLinks*=2;    
+                _maxLinks*=2;
                 _LinkHeads.resize(_maxLinks);
                 _LinkTails.resize(_maxLinks);
                 _LinkShiftsPrime.resize(3*_maxLinks);
@@ -246,12 +246,12 @@ class EndedCrossLinkedNetwork {
             }
             // Rates of CL binding change based on number of bound ends
             updateSecondBindingRate(BoundEnd, BaseSortedRates, startPair[BoundEnd], numLinksPerSite[BoundEnd], systime, tstep);
-             
+
             // Update unbinding event at BoundEnd (the end whose state has changed)
             RatesFreeUnbind[BoundEnd] = _koff*_FreeLinkBound[BoundEnd];
             //std::cout << "About to insert unbinding single end in heap with index " << BoundEnd+indexFreeUnbinding <<  std::endl;
-            TimeAwareHeapInsert(BoundEnd+indexFreeUnbinding,RatesFreeUnbind[BoundEnd],systime,tstep);     
-            
+            TimeAwareHeapInsert(BoundEnd+indexFreeUnbinding,RatesFreeUnbind[BoundEnd],systime,tstep);
+
             // Update unbinding events (links)
             if (linkChange){
                 RateSecondUnbind = 2*_koffSecond*_nDoubleBoundLinks;
@@ -261,7 +261,7 @@ class EndedCrossLinkedNetwork {
             }
             topOfHeap(eventindex,systime);
             //std::cout << "[" << eventindex << " , " << systime << "]" << std::endl;
-            // Debugging check 
+            // Debugging check
             /*intvec TotNum2(_TotSites, 0);
             for (int iSite = 0; iSite < _TotSites; iSite++){
                 TotNum2[iSite] = _FreeLinkBound[iSite];
@@ -282,7 +282,7 @@ class EndedCrossLinkedNetwork {
             }*/
         }
     }
-    
+
     void deleteLinksFromSites(npInt pySiteNumbers){
         // Traverse the lists in reverse order
         intvec SitesToDelete(pySiteNumbers.size());
@@ -296,7 +296,7 @@ class EndedCrossLinkedNetwork {
                     deleteLink(iLink);
                     break; // out of loop over sites
                 }
-            }    
+            }
         } // end loop over existing links
         // Remove singly bound links as well
         for (uint iSite = 0; iSite < SitesToDelete.size(); iSite++){
@@ -304,7 +304,7 @@ class EndedCrossLinkedNetwork {
             _TotalNumberBound[SitesToDelete[iSite]] = 0;
         }
     }
-            
+
     npInt getNBoundEnds(){
         // Copy _FreeLinkBound to numpy array
         // return 1-D NumPy array
@@ -316,7 +316,7 @@ class EndedCrossLinkedNetwork {
         std::memcpy(result_ptr,_FreeLinkBound.data(),_TotSites*sizeof(int));
         return pyNBoundEnds;
     }
-    
+
     npInt getLinkHeadsOrTails(bool Head){
         // Copy heads or tails to numpy array
         // return 1-D NumPy array
@@ -332,10 +332,10 @@ class EndedCrossLinkedNetwork {
         }
         return pyArray;
     }
-    
+
     npDoub getLinkShifts(){
         // Copy _LinkShifts to numpy array (2D)
-    
+
         ssize_t              ndim    = 2;
         std::vector<ssize_t> shape   = { _nDoubleBoundLinks , 3 };
         std::vector<ssize_t> strides = { sizeof(double)*3 , sizeof(double) };
@@ -350,7 +350,7 @@ class EndedCrossLinkedNetwork {
             strides                                  /* strides for each axis     */
         ));
     }
-    
+
     void setLinks(npInt pyHeads, npInt pyTails, npDoub pyShifts, npInt pyFreelyBoundPerSite){
         /*
         Set the link heads, tails, shifts, and freely bound (singly bound) links at each site from
@@ -370,7 +370,7 @@ class EndedCrossLinkedNetwork {
         std::memcpy(_LinkShiftsPrime.data(),pyShifts.data(),pyShifts.size()*sizeof(double));
         std::memcpy(_FreeLinkBound.data(),pyFreelyBoundPerSite.data(),pyFreelyBoundPerSite.size()*sizeof(int));
     }
-                     
+
     private:
         int _TotSites, _nDoubleBoundLinks, _maxLinks, _MaxNumberPerSite;
         double _kon, _konSecond, _koff, _koffSecond, _kDoubleOn, _kDoubleOff;// rates
@@ -381,16 +381,16 @@ class EndedCrossLinkedNetwork {
         vec _LinkShiftsPrime;
         std::uniform_real_distribution<double> unif;
         std::mt19937_64 rng;
-        
+
         double logrand(){
             return -log(1.0-unif(rng));
         }
-        
+
         void updateSecondBindingRate(int BoundEnd, vec &BaseSortedRates, int startPair, int numLinks,double systime, double tstep){
             /*
             Update the binding rate of every link with left end = BoundEnd.
-            SecondEndRates = new rates for binding the second end, startPair = first index of sorted pairs of links that 
-            has left end BoundEnd.  
+            SecondEndRates = new rates for binding the second end, startPair = first index of sorted pairs of links that
+            has left end BoundEnd.
             */
             for (int ThisLink = startPair; ThisLink < startPair+numLinks; ThisLink++){
                 //std::cout << "About to insert CL second bind in heap with index " << ThisLink+1 << std::endl;
@@ -415,11 +415,11 @@ class EndedCrossLinkedNetwork {
                 deleteFromHeap(index);
             }
         }
-        
+
         int EliminateLinksOutsideRange(const intvec &newLinkSites, const vec &uniPts, double g, vec &PrimedShifts, intvec &ActualPossibleLinks, vec &distances){
             /*
-            From the list of potential links (newLinkSites) and the uniform points (uniPts), and the strain in the coordinate system, calculate 
-            the actual displacement vector of each link (including the relevant shift from the array PrimedShifits, and add it 
+            From the list of potential links (newLinkSites) and the uniform points (uniPts), and the strain in the coordinate system, calculate
+            the actual displacement vector of each link (including the relevant shift from the array PrimedShifits, and add it
             to the array ActualPossibleLinks
             */
             int nPotentialLinks = newLinkSites.size()/2;
@@ -457,13 +457,13 @@ class EndedCrossLinkedNetwork {
                     }
                     nLPoss+=2;
                 }
-            } 
+            }
             PrimedShifts.resize(3*nLPoss);
             ActualPossibleLinks.resize(2*nLPoss);
             distances.resize(nLPoss);
             return nLPoss;
         }
-       
+
         void deleteLink(int linkNum){
             // Unbind it (remove from lists)
             _LinkHeads[linkNum] = _LinkHeads[_nDoubleBoundLinks-1];
@@ -471,11 +471,11 @@ class EndedCrossLinkedNetwork {
             for (int d=0; d < 3; d++){
                 _LinkShiftsPrime[3*linkNum+d] = _LinkShiftsPrime[3*(_nDoubleBoundLinks-1)+d];
             }
-            _nDoubleBoundLinks-=1;   
-        } 
-       
- 
-};   
+            _nDoubleBoundLinks-=1;
+        }
+
+
+};
 
 
 PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
@@ -487,4 +487,4 @@ PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
         .def("getLinkShifts", &EndedCrossLinkedNetwork::getLinkShifts)
         .def("setLinks",&EndedCrossLinkedNetwork::setLinks)
         .def("deleteLinksFromSites", &EndedCrossLinkedNetwork::deleteLinksFromSites);
-} 
+}
