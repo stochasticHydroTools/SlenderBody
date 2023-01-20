@@ -3,7 +3,7 @@ Slender-body hydrodynamics
 
 This repository contains the Python/C++ and Matlab codes for the publications:
 * [1] "An integral-based spectral method for inextensible slender fibers in
-Stokes flow," by Ondrej Maxian, Alex Mogilner, and Aleksandar Donev, Jan. 2021.
+Stokes flow," by O. Maxian, A. Mogilner, and A. Donev, Jan. 2021.
 See [arxiv](https://arxiv.org/abs/2007.11728) for text and 
 [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102) for published
 version.
@@ -17,15 +17,18 @@ by O. Maxian, A. Donev, and A. Mogilner. Biophysical Journal, April 2022.
 See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v2) for text and [BJ](https://www.cell.com/biophysj/fulltext/S0006-3495(22)00154-0) for 
 published version.
 * [4] "The hydrodynamics of a twisting, bending, inextensible fiber in Stokes flow," 
-by O. Maxian, B. Sprinkle, C.S. Peskin, and A. Donev. Submitted to Phys. Rev. Fluids, Jan. 2022. 
-See [arxiv](https://arxiv.org/abs/2201.04187) for text. 
+by O. Maxian, B. Sprinkle, C.S. Peskin, and A. Donev, July 2022. 
+See [arxiv](https://arxiv.org/abs/2201.04187) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.7.074101) for published
+version.
+* [5] "Slender body theories for rotating filaments," by O. Maxian and A. Donev, Nov. 2022. See [JFM](https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/slender-body-theories-for-rotating-filaments/0A9E1AB691DC4AFDB57C6471928745AE) for published version, which is open access. This is primarily a theoretical study which has some numerical calculations. The relevant files are under Matlab/Matlab/NumericalSBT/SingleLayer/
+* [6] "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2022. See [arxiv](link) for text. 
 
 Organization is as follows:
 * Python: directory with python codes
 * Python/cppmodules: directory with C++ modules linked to python using pybind11 (compile with included makefile)
-* Python/Examples: python scripts to reproduce the tests and examples in the paper. See the README there for more information. 
+* Python/Examples: python scripts to reproduce the tests and examples [1-3] and [6]. See the README there for more information. 
 * Python/Dependencies: contains all dependencies for the python codes. Some are submodules, while some are modified copies of the libraries. 
-* Matlab: directory with matlab codes. These are the only codes used in [4]. 
+* Matlab: directory with matlab codes. These are the only codes used in [4] and [5]. 
 
 # External dependencies:
 * [FINUFFT](https://github.com/flatironinstitute/finufft). I have modified some of the v 1.0 code and included the raw code in Python/Dependencies. 
