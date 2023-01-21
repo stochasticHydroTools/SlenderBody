@@ -104,7 +104,8 @@ class TemporalIntegrator(object):
         we need to do the nonlocal RPY calculations, gravden = graviational force density (in the z direction), 
         outfile = handle to the output file to write to, write = whether to write the positions of the fibers
         to the output object. updateNet = whether to update the cross-linked network. TurnoverFibs = whether
-        to turnover fibers. 
+        to turnover fibers, BrownianUpdate = whether to do a rigid body rotation and translation as a separate
+        splitting step, fixedg = the value of strain if fixed, stress = whether to output stress
         """   
         # Birth / death fibers
         thist = time.time() 

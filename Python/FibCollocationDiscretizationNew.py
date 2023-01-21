@@ -5,7 +5,7 @@ import time
 from math import sqrt, exp
 from scipy.linalg import lu_factor, lu_solve, sqrtm
 
-# Documentation last updated: 03/12/2021
+# Documentation last updated: 01/21/2023
 
 aRPYFac = exp(1.5)/4        # equivalent RPY blob radius a = aRPYFac*epsilon*L;
 # Some definitions that are not specific to any particular discretization
@@ -27,10 +27,19 @@ class FibCollocationDiscretization(object):
         RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True):
         """
         Constructor. 
-        L = fiber length, epsilon = fiber aspect ratio, Eb = bending stiffness, mu = fluid viscosity. 
+        L = fiber length, epsilon = fiber aspect ratio (IMPORTANT: this is the actual aspect ratio,
+        NOT the aspect ratio of the RPY tensor. The RPY radius can be computed from the actual radius
+        by multiplying by aRPYFac, as is done below).      
+        Eb = bending stiffness, mu = fluid viscosity. 
         N = number of points on discretized fiber.
         NupsampleForDirect = how much to upsample by for direct quad, nptsUniform = number of uniform 
-        points (for cross-linking / checking distances between fibers)
+        points (for cross-linking / checking distances between fibers), rigid = whether fiber is rigid.
+        There are then a series of options for the mobility and discretization:
+        RPYSpecialQuad = whether to use special quadrature for the mobility
+        RPYDirectQuad = whether to use direct quadrature for the mobility
+        RPYOversample = whether to use oversampled quadrature for the mobility
+        UseEnergyDisc = whether to use an energy discretization for the elastic force. If false, uses 
+        rectangular spectral collocation. 
         """
         self._L = L;
         self._epsilon = epsilon;
@@ -123,6 +132,9 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
         rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True,penaltyParam=0):
+        """
+        Initialize Chebyshev grids for x and tau
+        """
         super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc);
 		# Chebyshev grid and weights
         self._sTau = cf.chebPts(self._Ntau,[0,self._L],chebGridType);
@@ -144,6 +156,10 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             self._MatfromNtoUniform[iD::3,iD::3]=MatfromNtoUniform;
     
     def calcXFromXsMap(self):
+        """
+        Initialize the mapping _XonNp1Mat, which takes in the tangent vectors and
+        fiber midpoint and returns the positions of the fiber collocation points. 
+        """
         MidpointMat = cf.ResamplingMatrix(3,self._Nx,self._XGridType,self._XGridType);
         MidpointMat = MidpointMat[1,:];
         self._DXGrid =  cf.diffMat(1,[0,self._L],self._Nx,self._Nx,self._XGridType,self._XGridType);
@@ -161,6 +177,14 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self._XonNp1Mat = np.concatenate((self._XonNp1MatNoMP, self._I),axis=1);
     
     def initUpsamplingMatricesForDirectQuad(self):
+        """ 
+        Initialize the up and downsampling matrices used when we do upsampled direct
+        quadrature. There are two matrices here. There is the matrix EUpsample (not interesting)
+        which takes the points and upsamples them, but then there is the _OversamplingWtsMat
+        which is W_up*E*Wtilde^(-1). See Eq. (23) in (ARXIV link) 
+        Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization
+        for more information on this. 
+        """
         self._wForDirect = cf.chebWts(self._nptsDirect, [0,self._L],self._XGridType);   
         self._EUpsample =  cf.ResamplingMatrix(self._nptsDirect, self._Nx,self._XGridType,self._XGridType);
         OneDResamp = np.dot(np.diag(self._wForDirect),np.dot(self._EUpsample,np.linalg.inv(self._WtildeNx)));
@@ -180,8 +204,11 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     def initD4BC(self,UseEnergyDisc,penaltyParam):
         """
         Compute the operator D_4^BC that is necessary when computing 
-        the bending forces. The constant -E_bend is included in 
-        this operator
+        the bending forces. The constant E_bend is included in 
+        this operator. There are two matrices here. First is the matrix that computes
+        FORCE (self._D4BCForce), and second is the force DENSITY matrix (self._D4BC). 
+        Depending on the discretization, one is computed first, and the other is obtained
+        by multiplying by the (invserse of) Wtilde
         """
         sDouble = cf.chebPts(2*self._Nx,[0,self._L],self._XGridType);
         wDouble = cf.chebWts(2*self._Nx,[0,self._L],self._XGridType);
@@ -223,6 +250,9 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             self._stackWTildeInverse_Nx[iD::3,iD::3] =  np.linalg.inv(self._WtildeNx);   
     
     def calcBendMatX0(self,X0,penaltyParam):
+        """
+        For penalty forced fibers
+        """
         self._BendMatX0 = np.dot(self._D4BCForce,X0);
         if (abs(penaltyParam) < 1e-10):
             self._BendMatX0 = 0*self._BendMatX0;    
@@ -231,9 +261,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         """
         Initialize the matrix for the finite part integral. 
         Uses the adjoint method of Anna Karin Tornberg. 
-        This method is distinct from the one in the parent class because it uses 
-        numerical integration of Chebyshev polynomials instead of exact integration
-        of monomials
+        This method uses numerical integration of Chebyshev polynomials 
+        instead of exact integration of monomials
         """
         sscale=-1+2*self._sX/self._L;
         ChebCoeffsToVals = cf.CoeffstoValuesMatrix(self._Nx,self._Nx,self._XGridType);

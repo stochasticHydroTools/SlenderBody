@@ -153,6 +153,9 @@ class CrossLinkForceEvaluator {
         @param pyuniPoints = 2D numpy array of uniform fiber points 
         @param py chebPoints = 2D numpy array of Chebyshev fiber points
         @return CLForces = force densities on all fibers (row stacked) due to CLs
+        
+        This method is distinct from the one above it because it uses a well-defined energy functional
+        that is a spring energy between the points iPt and jPt that are linked. 
         **/
         
         // Copying input

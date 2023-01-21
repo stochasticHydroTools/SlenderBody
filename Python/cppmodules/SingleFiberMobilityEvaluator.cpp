@@ -11,6 +11,13 @@
 
 /**
     SingleFiberMobilityEvaluator.cpp
+    The purpose of this class is to evaluate the mobility matrix
+    M[X] on a single fiber. This mobility can be calculated in a number of ways
+    based on the booleans RPYQuad, DirectRPY, and OversampledRPY in the constructor. 
+    If all are false, it will do SBT. 
+    If RPYQuad, then the method will do special quadrature for the RPY kernel. 
+    If DirectRPY, then the method will do direct quadrature (just summing over the Nx points)
+    If OversampledRPY, the method will do oversampled RPY quadrature. 
 **/
 
 namespace py=pybind11;
@@ -30,6 +37,7 @@ class SingleFiberMobilityEvaluator {
         _exactRPY = RPYQuad;
         _directRPY = DirectRPY;
         _oversampledRPY = OversampledRPY;
+        // Check that only one of the inputs is true
         bool goodInput = true;
         if (_exactRPY){
             if (_directRPY || _oversampledRPY){
@@ -57,11 +65,6 @@ class SingleFiberMobilityEvaluator {
     void initMobilitySubmatrices(npDoub pyXNodes,npDoub &pyCs,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
         npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyXDiffMatrix, npDoub pyWTildeXInverse,
         npDoub pyOversampleWtsForDirectQuad,npDoub pyUpsamplingMatrix, double eigValThres){    
-        /**
-        Python wrapper to initialize variables for finite part integration in C++. 
-        @param pyFPMatrix = matrix that maps g function coefficients to velocity values on the N point Cheb grid (2D numpy array)
-        @param pyDiffMatrix = Chebyshev differentiation matrix on the N point Chebyshev grid (2D numpy aray)
-        **/
 
         // allocate std::vector (to pass to the C++ function)
         _eigValThres = eigValThres;
@@ -107,6 +110,10 @@ class SingleFiberMobilityEvaluator {
     }
     
     void MobilityForceMatrix(const vec &LocalPoints, bool nonLocalParts,vec &MForce, vec &EigVecs, vec &EigVals){
+        /*
+        Main method to compute the mobility M[X]
+        This is the matrix that acts on FORCES to give velocities
+        */
         if (_directRPY || _oversampledRPY){
             RPYDirectMobility(LocalPoints,MForce);
             SymmetrizeAndDecomposePositive(3*_nXPerFib, MForce, 0, EigVecs, EigVals);
@@ -120,6 +127,10 @@ class SingleFiberMobilityEvaluator {
     
     
     void MobilityMatrix(const vec &LocalPoints, bool AddLocal, bool AddNonLocal, vec &M){
+        /*
+        This is the matrix that acts on force DENSITIES to give velocities. It's only
+        included if we use SBT or special RPY quadrature
+        */
         if (AddLocal){
             calcMLocal(LocalPoints, M);
         }
@@ -343,6 +354,10 @@ class SingleFiberMobilityEvaluator {
     } // end method
     
     void addNumericalRLess2a(const vec &ChebPoints, vec &M){
+        /*
+        Adds the parts of the RPY kernel that are done directly (R < 2a) doing
+        Gauss-Legendre quad
+        */
         vec Tangents(3*_nXPerFib,0.0);
         BlasMatrixProduct(_nXPerFib, _nXPerFib, 3,1.0,0.0,_XDiffMatrix,false,ChebPoints,Tangents);
         double viscInv = 1.0/(8.0*M_PI*_mu);
@@ -414,6 +429,10 @@ class SingleFiberMobilityEvaluator {
     }
     
     void RPYDirectMobility(const vec &LocalPoints, vec &MForce){
+        /*
+        This forms the matrix M when we use direct RPY. The flow of the method is the same, 
+        but extra matrices have to be added when we do oversampling
+        */
         int Npts = _nXPerFib;
         vec XForRPY(LocalPoints.begin(),LocalPoints.end());
         if (_oversampledRPY){ 

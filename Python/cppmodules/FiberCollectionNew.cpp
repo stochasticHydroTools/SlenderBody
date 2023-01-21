@@ -14,12 +14,9 @@
 /**
     FiberCollection.cpp
     C++ class that updates arrays of many fiber positions, etc.
-    5 main public methods
-    1) CorrectNonLocalVelocity - correct the velocity from Ewald
-    2) FinitePartVelocity - get the velocity due to the finite part integral
-    3) SubtractAllRPY - subtract the free space RPY kernel (from the Ewald result)
-    4) RodriguesRotations - return the rotated X and Xs
-    5) ApplyPreconditioner 
+    2 main public methods :
+    1) RodriguesRotations - return the rotated X and Xs
+    2) ApplyPreconditioner  - block diagonal solver
 **/
 
 namespace py=pybind11;
@@ -38,17 +35,12 @@ class FiberCollectionNew {
         :_MobilityEvaluator(nXPerFib,a,L,mu,quadRPY,directRPY,oversampleRPY){
         /**
         Initialize variables relating to each fiber
-        @param muin = viscosity of fluid
-        @param Lengths = 3 array of periodic lengths
-        @param epsIn = fiber epsilon
-        @param Lin = fiber length
-        @param aRPYFacIn = hydrodynamic RPY radius is aRPYFacIn*eps*L
-        @param NFibIn = number of fibers
-        @param NChebIn = number of Chebyshev points on each fiber
-        @param NuniIn = number of uniform points on each fiber 
-        @param NForDirectQyad =  number of points for upsampled direct quadrature
-        @param deltain = fraction of fiber with ellipsoidal tapering
-        @param nThreads = # of OpenMP threads for parallel calculations
+        nFib = number of fibers
+        nXPerFib = number of collocation points per fiber
+        nTauPerFib = number of tangent vectors on each fiber
+        nThreads = number of OMP threads,  svdtol = tolerance for SVD of 
+        semiflexible fibers, svdrigid = tolerance for SVD of rigid fibers, 
+        kbT = thermal energy. Other parameters: see SingleFiberMobilityEvaluator class
         **/ 
         _NFib = nFib;
         _nXPerFib = nXPerFib;
@@ -62,11 +54,7 @@ class FiberCollectionNew {
     void initMobilityMatrices(npDoub pyXNodes,npDoub &pyCs,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
         npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyXDiffMatrix,npDoub pyWTildeX, 
         npDoub pyWTildeXInverse, npDoub pyOversampleForDirectQuad, npDoub pyUpsamplingMatrix, double eigValThres){  
-        /**
-        Python wrapper to initialize variables for finite part integration in C++. 
-        @param pyFPMatrix = matrix that maps g function coefficients to velocity values on the N point Cheb grid (2D numpy array)
-        @param pyDiffMatrix = Chebyshev differentiation matrix on the N point Chebyshev grid (2D numpy aray)
-        **/
+
         _MobilityEvaluator.initMobilitySubmatrices(pyXNodes,pyCs,pyFPMatrix,pyDoubFPMatrix,pyRL2aResampMatrix,
             pyRLess2aWts,pyXDiffMatrix,pyWTildeXInverse,pyOversampleForDirectQuad,pyUpsamplingMatrix,eigValThres);
         _WTildeX = vec(pyWTildeX.size());
@@ -76,12 +64,6 @@ class FiberCollectionNew {
     }
     
     void initResamplingMatrices(int Nuniform, npDoub pyMatfromNtoUniform){    
-        /**
-        Python wrapper to initialize variables for finite part integration in C++. 
-        @param pyFPMatrix = matrix that maps g function coefficients to velocity values on the N point Cheb grid (2D numpy array)
-        @param pyDiffMatrix = Chebyshev differentiation matrix on the N point Chebyshev grid (2D numpy aray)
-        **/
-
         // allocate std::vector (to pass to the C++ function)
         _nUni = Nuniform;
         _UnifRSMat = vec(pyMatfromNtoUniform.size());
@@ -90,16 +72,7 @@ class FiberCollectionNew {
     
     void initMatricesForPreconditioner(npDoub pyD4BC, npDoub pyD4BCForce, npDoub pyD4BCForceHalf,
         npDoub pyXFromTau, npDoub pyTauFromX,npDoub pyMP,npDoub pyBendMatX0){
-        /*
-        @param pyUpsampMat = upsampling matrix from N to 2N
-        @param pyUpsampledchebPolys = Chebyshev polynomials of degree 0, ..., N-2 sampled on the 2N grid
-        @param pyLeastSquaresDownsampler = matrix that takes 2N grid points to N grid points using least squares (see paper)
-        @param pyDpInv = pseudo-inverse of cheb differentiation matrix on 2N grid
-        @param pyweightedUpsampler = upsampling matrix (with weights) for calculating K^*, 
-        @param pyD4BC = matrix that calculates the bending force
-        @param pyCs = local drag coefficients (1D)
-        All of the matrices are passed as 2D numpy arrays which are then converted to matrices in C (row major) order
-        */
+
         _D4BC = vec(pyD4BC.size());
         _D4BCForce = vec(pyD4BCForce.size());
         _BendForceMatHalf = vec(pyD4BCForceHalf.size());
@@ -158,8 +131,9 @@ class FiberCollectionNew {
     py::array evalLocalVelocities(npDoub pyPositions, npDoub pyForceDensities, bool ExactRPY){
         /*
         Evaluate the local velocities M_local*f on the fiber.
-        @param pyTangents = tangent vectors
-        @param pyForceDensities = force densites on the fiber
+        pyPositions = collocation points
+        pyForceDensities = force densites on the fiber
+        Exact RPY = whether we're doing exact RPY hydro or SBT
         @return 1D numpy array of local velocities
         */
         vec Positions(pyPositions.size());
@@ -230,12 +204,10 @@ class FiberCollectionNew {
     py::array ThermalTranslateAndDiffuse(npDoub pyPoints, npDoub pyTangents,npDoub pyRandVec1,bool implicitFP, double dt){
 
         /*
-        Apply preconditioner to obtain lambda and alpha. 
-        @param pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
-        @param pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
-        @param pyb = RHS vector b 
-        @param impcodt = implicit factor * dt (usually dt/2)
-        @return a vector (lambda,alpha) with the values on all fibers in a collection
+        Random Brownian translation and rotation, assuming the fiber is rigid
+        Inputs: pyPoints = Chebyshev points, pyTangents = tangent vectors, 
+        pyRandVec1 = nFib*6 random vector, implicitFP = whether the mobility includes the finite
+        part integral (intra-fiber hydro) or not, dt = time step size
         */
 
         // allocate std::vector (to pass to the C++ function)
@@ -300,10 +272,13 @@ class FiberCollectionNew {
         double impco, double dt, bool implicitFP,bool rigid){
         /*
         Apply preconditioner to obtain lambda and alpha. 
-        @param pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
-        @param pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
-        @param pyb = RHS vector b 
-        @param impcodt = implicit factor * dt (usually dt/2)
+        pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
+        pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
+        pyExForceDens = external force density on the fibers
+        impco = implicit coefficient (1 for backward Euler, 1/2 for Crank-Nicolson)
+        dt = time step size
+        implicitFP = whether to include intra-fiber hydro in mobility or not
+        rigid = whether fibers are rigid (obviously)
         @return a vector (lambda,alpha) with the values on all fibers in a collection
         */
 
@@ -364,12 +339,21 @@ class FiberCollectionNew {
     py::array applyThermalPreconditioner(npDoub pyPoints, npDoub pyTangents, npDoub pyMidpoints, npDoub pyU0, npDoub pyExForceDen,
         npDoub pyRandVec1, npDoub pyRandVec2, double impco, double dt, bool ModifiedBE, bool implicitFP){
         /*
-        Apply preconditioner to obtain lambda and alpha. 
-        @param pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
-        @param pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
-        @param impcodt = implicit factor * dt (usually dt/2)
+        Apply preconditioner to obtain lambda and alpha for SEMIFLEXIBLE FLUCTUATING FIBERS.  
+        pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
+        pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
+        pyMidpoints = midpoints of the fibers
+        pyU0 = background velocity
+        pyExForceDens = external force density on the fibers
+        pyRandVec1 and pyRandVec2 = nFib*3*Nx vectors of random standard Gaussian variables
+        impco = implicit coefficient (1 for backward Euler, 1/2 for Crank-Nicolson)
+        dt = time step size
+        ModifiedBE = whether to add the extra terms to get increased accuracy of backward Euler.
+        implicitFP = whether to include intra-fiber hydro in mobility or not
+        rigid = whether fibers are rigid (obviously)
         @return a vector (lambda,alpha) with the values on all fibers in a collection
         */
+
 
         // allocate std::vector (to pass to the C++ function)
         vec chebPoints(pyPoints.size());
@@ -485,10 +469,10 @@ class FiberCollectionNew {
         /*
         Method to update the tangent vectors and positions using Rodriguez rotation and Chebyshev integration
         for many fibers in parallel. 
-        @param pyXn = 2D numpy array of current Chebyshev points (time n) on the fiber, 
-        @param pyXsn = 2D numpy array of current tangent vectors (time n)
-        @param pyAllAlphas = rotation rates and midpoint velocities
-        @param dt = timestep
+        pyXsn = 2D numpy array of current tangent vectors (time n)
+        pyMidpoints = the midpoints at the current time
+        pyAllAlphas = rotation rates and midpoint velocities
+        dt = timestep
         @return TransformedXsAndX = all of the new tangent vectors and positions (2D numpy array)
         */
   
@@ -558,6 +542,9 @@ class FiberCollectionNew {
     
     
     void calcK(const vec &TanVecs, vec &K){
+        /*
+        Kinematic matrix for semiflexible fibers
+        */
         // First calculate cross product matrix
         vec XMatTimesCPMat(3*_nTauPerFib*3*_nXPerFib);
         vec CPMatrix(9*_nTauPerFib*_nTauPerFib);
@@ -590,6 +577,9 @@ class FiberCollectionNew {
     }
        
     void calcKRigid(const vec &TanVecs, vec &K){
+        /*
+        Kinematic matrix for rigid fibers
+        */
         // First calculate cross product matrix
         vec XMatTimesCPMat(9*_nXPerFib);
         vec CPMatrix(9*_nTauPerFib);
@@ -713,6 +703,8 @@ class FiberCollectionNew {
 
     void OneFibRotationUpdate(const vec &Xsn, const vec3 &Midpoint, const vec &AllAlphas, vec &RotatedTaus,
         vec3 &NewMidpoint, vec &NewX,double dt, double nOmTol){
+        // Rotate tangent vectors for a single fiber.
+        // Uses Rodrigues rotation formula. 
         for (int iPt=0; iPt < _nTauPerFib; iPt++){
             vec3 XsToRotate, Omega;
             for (int d =0; d < 3; d++){

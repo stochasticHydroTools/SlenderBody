@@ -129,7 +129,7 @@ void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdt
     BlasMatrixProduct(n, n, 1,1.0, 0.0,vt, true, Ustarb, answer);
 }
 
-// Apply A^(1/2)*b using eigenvalue decomposition
+// Apply A^(1/2)*b and A^(-1/2)*b using eigenvalue decomposition
 // Only implemented for square matrices at the moment
 void ApplyMatrixHalfAndMinusHalf(int n, const vec &A, const vec &b, vec &PlusHalf, vec &MinusHalf){
     vec s(n);
@@ -188,7 +188,7 @@ void SymmetrizeAndDecomposePositive(int n, const vec &A, double threshold, vec &
     }
 }
 
-// Eig value decomp with adjustment for negative eigs
+// Apply a power of a matrix from the eigenvalue decomposition. 
 void ApplyMatrixPowerFromEigDecomp(int n, double power, const vec &V, const vec &s, const vec &b, vec &result){
     vec sPow(n);
     int nb = b.size()/n;

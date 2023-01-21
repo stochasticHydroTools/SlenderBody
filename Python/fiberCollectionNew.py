@@ -2,7 +2,6 @@ import numpy as np
 from DiscretizedFiberNew import DiscretizedFiber
 from SpatialDatabase import SpatialDatabase, ckDSpatial, CellLinkedList
 from FiberCollectionNew import FiberCollectionNew
-#import FiberUpdateNumba as NumbaColloc
 import copy
 import numba as nb
 import scipy.sparse as sp
@@ -10,18 +9,20 @@ import time
 from math import sqrt, exp, pi
 #import BatchedNBodyRPY as gpurpy
 
-# Documentation last updated 03/12/2021
+# Documentation last updated 01/21/2023
 
 # Definitions (for special quadrature)
 verbose = -1;               # debug / timings
-svdTolerance = 1e-12;
+svdTolerance = 1e-12;       # tolerance for pseudo-inverse
 svdRigid = 0.25; # Exp[||Omega|| dt ] < svdRigid for rigid Brownian fibers
 
 class fiberCollection(object):
 
     """
-    This is a class that operates on a list of fibers together. Its main role
-    is to compute the nonlocal hydrodynamics between fibers. 
+    This is a class that operates on a list of fibers together. 
+    This python class is basically a wrapper for the C++ class
+    FiberCollectionNew.cpp, where every function is just calling the 
+    corresponding (fast) C++ function
     """
 
     ## ====================================================
@@ -32,12 +33,11 @@ class fiberCollection(object):
         Constructor for the fiberCollection class. 
         Inputs: Nfibs = number of fibers, turnover time = mean time for each fiber to turnover,
         fibDisc = discretization object that each fiber will get a copy of, 
-        nonLocal = are we doing nonlocal hydro? (0 = local drag, 1 = full hydrodynamics, 
-        2 = hydrodynamics without finite part, 3 = hydrodynamics without special quad, 4 = 
-        hydrodynamics without other fibers (only finite part))
+        nonLocal = are we doing nonlocal hydro? (TEMP: 0 for local drag, >0 for intra-fiber hydro))
         mu = fluid viscosity,omega = frequency of background flow oscillations, 
         gam0 = base strain rate of the background flow, Dom = Domain object to initialize the SpatialDatabase objects, 
-        nThreads = number of OMP threads for parallel calculations
+        kbT = thermal energy, eigValThres = eigenvalue threshold for intra-fiber mobility, 
+        nThreads = number of OMP threads for parallel calculations, rigidFibs = whether the fibers are rigid
         """
         self._Nfib = nFibs;
         self._fiberDisc = fibDisc;
@@ -130,7 +130,6 @@ class fiberCollection(object):
         Copy the X and Xs arguments from self._fibList (list of fiber
         objects) into large (tot#pts x 3) arrays that are stored in memory
         """
-        print('Calling fill point arrays')
         for iFib in range(self._Nfib):
             fib = self._fibList[iFib];
             self._ptsCheb[self._NXpf*iFib:self._NXpf*(iFib+1),:] = np.reshape(fib._X.copy(),(self._NXpf,3));
@@ -151,6 +150,7 @@ class fiberCollection(object):
     ## ====================================================   
     def formBlockDiagRHS(self, X_nonLoc,Xs_nonLoc,t,exForceDen,lamstar,Dom,RPYEval,FPimplicit=0,returnForce=False):
         """
+        THIS METHOD NOT COMPLETE 
         RHS for the block diagonal GMRES system. 
         Inputs: X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
         tangent vectors, t = system time, exForceDen = external force density (treated explicitly), 
@@ -159,7 +159,7 @@ class fiberCollection(object):
         returnForce = whether we need the force (we do if this collection is part of a collection of species and 
         the hydro for the species collection is still outstanding) 
         The block diagonal RHS is 
-        [M^Local*(F*X^n+f^ext) + M^NonLocal * (F*X^(n+1/2,*)+lambda*+f^ext)+u_0; 0]
+        [M^Local*(F*X^n+f^ext) + M^NonLocal * (F*X^(n+1/2,*)+lambda*+f^ext)+u_0]
         M^Local is the part that is being treated explicitly, and M^NonLocal is the part that is being treated
         implicitly
         """
@@ -169,6 +169,7 @@ class fiberCollection(object):
     
     def calcNewRHS(self,BlockDiagAnswer,X_nonLoc,Xs_nonLoc,dtimpco,lamstar, Dom, RPYEval,FPimplicit=0,returnForce=False):
         """
+        THIS METHOD NOT COMPLETE
         New RHS (after block diag solve). This is the residual form of the system that gets 
         passed to GMRES. 
         Inputs: BlockDiagAnswer = the answer for lambda and alpha from the block diagonal solver, 
@@ -193,6 +194,7 @@ class fiberCollection(object):
         
     def Mobility(self,lamalph,impcodt,X_nonLoc,Xs_nonLoc,Dom,RPYEval,returnForce=False):
         """
+        THIS METHOD NOT COMPLETE
         Mobility calculation for GMRES
         Inputs: lamalph = the input lambdas and alphas impcodt = delta t * implicit coefficient,
         X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
@@ -218,18 +220,29 @@ class fiberCollection(object):
        
     def BlockDiagPrecond(self,Xs_nonLoc,dt,implic_coeff,X_nonLoc,doFP=0):
         """
-        Block diagonal preconditioner for GMRES. 
-        b = RHS vector. Xs_nonLoc = tangent vectors as an Npts x 3 array. 
-        dt = timestep, implic_coeff = implicit coefficient, X_nonLoc = fiber positions as 
-        an Npts x 3 array, doFP = whether to do finite part implicitly. 
-        The preconditioner is 
-        [-M^Local K-impco*dt*M^Local*F*K; K^* 0]
+        Block diagonal solver. This solver takes inputs Xs_nonLoc (tangent vectors),, 
+        dt (time step size), implic_coeff (implicit coefficient for temporal integrator), 
+        X_nonLoc (locations of points), and doFP (whether to include finite part), and solves
+        the saddle point system. 
+        K*alpha = M(F*((1-impco)*X^n+impco*X^(n+1)) + Lambda)
+        K^T*Lambda = 0
+        for Lambda, and alpha. This corresponds to the matrix solve
+        [-M^L K-impco*dt*M^L*F*K; K^T 0]*[Lambda; alpha]=[M^L*F*X^n; 0]
+        where M^L is the local mobility on each fiber separately. If doFP=1, this 
+        matrix describes the hydrodynamics fiber-by-fiber. Otherwise, it is just
+        a local drag matrix
         """
         return self._FibColCpp.applyPreconditioner(X_nonLoc,Xs_nonLoc,self._exForceDen,implic_coeff,dt,\
             doFP,self._rigid);
     
     def BrownianUpdate(self,dt,Randoms):
-        # Compute the average X and Xs
+        """
+        Random rotational and translational diffusion (assuming a rigid body) over time step dt. 
+        This function calls the corresponding python function, which computes 
+        alpha = sqrt(2*kbT/dt)*N_rig^(1/2)*randn,
+        where N_rig = pinv(K_r^T M^(-1)*K_r)
+        Then rotates and translates by alpha*dt = (Omega*dt, U*dt)
+        """
         RandAlphas = self._FibColCpp.ThermalTranslateAndDiffuse(self._ptsCheb,self._tanvecs,Randoms, (self._nonLocal > 0),dt);
         CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,RandAlphas,dt);   
         self._tanvecs = CppXsMPX[:self._Nfib*self._NTaupf,:];
@@ -238,6 +251,7 @@ class fiberCollection(object):
         
     def nonLocalVelocity(self,X_nonLoc,Xs_nonLoc,forceDs, Dom, RPYEval,doFinitePart=1):
         """
+        THIS METHOD NOT COMPLETE
         Compute the non-local velocity due to the fibers.
         Inputs: Arguments X_nonLoc, Xs_nonLoc = fiber positions and tangent vectors as Npts x 3 arrays, 
         forceDs = force densities as an 3*npts 1D numpy array
@@ -323,7 +337,8 @@ class fiberCollection(object):
          
     def updateLambdaAlpha(self,lamalph,Xsarg):
         """
-        Update the lambda and alphas after the solve is complete
+        Update the lambda and alphas after the solve is complete. 
+        Xsarg = legacy argument. To remove. 
         """
         self._lambdas = lamalph[:3*self._Nfib*self._NXpf];
         self._alphas = lamalph[3*self._Nfib*self._NXpf:];
@@ -332,7 +347,7 @@ class fiberCollection(object):
         """
         Update the fiber configurations, assuming self._alphas has been computed above. 
         Inputs: dt = timestep
-        XsforNL = unnecessary legacy argument
+        XsforNL = unnecessary legacy argument. Remove later. 
         """
         CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,self._alphas,dt);   
         self._tanvecs = CppXsMPX[:self._Nfib*self._NTaupf,:];
@@ -350,6 +365,9 @@ class fiberCollection(object):
         return self._lambdas; 
     
     def FiberStress(self,XforNL,Lambdas,Dom):
+        """
+        Compute fiber stress. This method not complete. 
+        """
         return NumbaColloc.FiberStressNumba(XforNL,self.evalBendForceDensity(XforNL),Lambdas,\
             1.0*Dom.getLens(),self._Nfib,self._Npf,self._fiberDisc._w);
               
@@ -402,9 +420,6 @@ class fiberCollection(object):
     
     def getFiberDisc(self):
         return self._fiberDisc;
-      
-    def getaRPY(self):
-        return aRPYFac;
     
     def averageTangentVectors(self):
         """
@@ -417,12 +432,6 @@ class fiberCollection(object):
             fiberTans = self._tanvecs[self.getRowInds(iFib),:];
             avgfibTans[iFib,:]=np.sum(wts*fiberTans,axis=0)/self._Lf;
         return avgfibTans;
-        
-    def getSysDimension(self):
-        """
-        Dimension of (lambda,alpha) sysyem for GMRES
-        """
-        return self._Nfib*(self._Npf*3+2*self._nPolys+3);
     
     def updateFiberObjects(self):
         for iFib in range(self._Nfib): # pass to fiber object
@@ -431,6 +440,7 @@ class fiberCollection(object):
     
     def initializeLambdaForNewFibers(self,newfibs,exForceDen,t,dt,implic_coeff,other=None):
         """
+        THIS METHOD NOT COMPLETE
         Solve local problem to initialize values of lambda on the fibers
         Inputs: newfibs = list of replaced fiber indicies, 
         exForceDen = external (gravity/CL) force density on those fibers, 
@@ -538,18 +548,6 @@ class fiberCollection(object):
         """
         return self._FibColCpp.evalLocalVelocities(X,forceDsAll,self._fiberDisc._truRPYMob)
         
-    def KProductsAllFibers(self,Xsarg,alphas,lambdas):
-        """
-        Compute the products K*alpha and K^T*lambda.
-        Inputs: Xsarg = tangent vectors as a totnum x 3 array, 
-        alphas as a 1D array, lambdas as a 1D array
-        Outputs: products Kalpha, K^*lambda
-        """
-        fD = self._fiberDisc;
-        Kalphs2, Kstlam2 = NumbaColloc.calcKAlphasAndKstarLambda(self._Nfib,self._Npf,self._nPolys,Xsarg, fD._MatfromNto2N, fD._UpsampledChebPolys,\
-            fD._LeastSquaresDownsampler,fD._WeightedUpsamplingMat, fD._Dpinv2N, fD._I, fD._wIt,alphas,lambdas)
-        return Kalphs2, Kstlam2;
-           
     def evalU0(self,Xin,t):
         """
         Compute the background flow on input array Xin at time t.
@@ -563,10 +561,11 @@ class fiberCollection(object):
     
     def evalBendForceDensity(self,X_nonLoc):
         """
-        Evaluate the bending FORCE (not density)
+        Evaluate the bending force density
         Inputs: X to evaluate at
         Outputs: the forceDensities -EX_ssss also as a (tot#ofpts) x 3 array
         """
+        print('Check this is density')
         return self._FibColCpp.evalBendForces(X_nonLoc);
         
     def calcCurvatures(self,X):
@@ -580,6 +579,10 @@ class fiberCollection(object):
         return Curvatures;
 
 class SemiflexiblefiberCollection(fiberCollection):
+
+    """
+    This class is a child of fiberCollection which implements BENDING FLUCTUATIONS
+    """
 
     def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, kbT,eigValThres,nThreads=1):
         super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads);
@@ -600,12 +603,13 @@ class SemiflexiblefiberCollection(fiberCollection):
     
     def BlockDiagPrecond(self,Xs_nonLoc,dt,implic_coeff,X_nonLoc,ModifyBE=1,doFP=0):
         """
-        Block diagonal preconditioner for GMRES. 
-        b = RHS vector. Xs_nonLoc = tangent vectors as an Npts x 3 array. 
-        dt = timestep, implic_coeff = implicit coefficient, X_nonLoc = fiber positions as 
-        an Npts x 3 array, doFP = whether to do finite part implicitly. 
-        The preconditioner is 
-        [-M^Local K-impco*dt*M^Local*F*K; K^* 0]
+        Block diagonal solver. This solver takes inputs Xs_nonLoc (tangent vectors),, 
+        dt (time step size), implic_coeff (implicit coefficient for temporal integrator), 
+        X_nonLoc (locations of points), doFP (whether to include finite part), and
+        and ModifyBE (whether to do modified backward Euler) and implements a step of the 
+        midpoint temporal integrator described in Section 3 of the paper
+        "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
+        by Maxian, Sprinkle, and Donev. See the documentation in the C++ code and the paper. 
         """
         self._iT+=1;
         RandVec1 = np.random.randn(3*self._Nfib*self._NXpf);
