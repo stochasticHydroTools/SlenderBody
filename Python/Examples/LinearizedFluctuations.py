@@ -3,24 +3,27 @@ from FibCollocationDiscretizationNew import ChebyshevDiscretization
 from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler
 from DiscretizedFiberNew import DiscretizedFiber
-from FileIO import prepareOutFile
 import numpy as np
-import chebfcns as cf
 from math import exp
 import sys
 
 """
-This file performs the three sheared fiber test in Section 5.1.2
+This file runs trajectories of linearized fluctuations around a curved base state. See Appendix D in 
+"Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
+by O. Maxian, B. Sprinkle, and A. Donev. 
+
+As written right now, this function takes two command line arguments: l_pstar (dimensionless persistence length = l_p/L), 
+and the random seed. So it can be called by typing
+python LinearizedFluctuations.py 10 1
+which would simulate persistence length l_p = 10*L with seed =1. 
 """
 
 def makeCurvedFib(Lf,N,fibDisc):
     """
-    Initialize the three fibers for the shear simulation for a given N and fiber length Lf. 
-    fibDisc = the collocation discretization of the fiber
+    Initialize the curved fiber in its equilibrium state
     """
     q=1;
     s=fibDisc._sTau;
-    # Falling fibers
     Xs = (np.concatenate(([np.cos(q*s**3 * (s-Lf)**3)],[np.sin(q*s**3*(s - Lf)**3)],[np.ones(N)]),axis=0).T)/np.sqrt(2);
     Xs = np.reshape(Xs,3*N);
     XMP = np.zeros(3);
@@ -32,12 +35,11 @@ def makeCurvedFib(Lf,N,fibDisc):
 nFib=1          # number of fibers
 N=24          # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=4     # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
-Ld=2.4          # length of the periodic domain
-xi=3            # Ewald parameter
+nonLocal=4     # doing nonlocal solves? 0 = local drag, >0 = nonlocal hydro.
+Ld=2.4          # length of the periodic domain (not relevant here because no nonlocal hydro)
 mu=1            # fluid viscosity
 eps=1e-3*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3)
-lpstar = float(sys.argv[1]);
+lpstar = float(sys.argv[1]); 
 tf = 0.5;
 dt = 5e-4;
 omega=0         # frequency of oscillations
@@ -47,13 +49,14 @@ Eb=lpstar*kbT*Lf;         # fiber bending stiffness
 penaltyParam = 1.6e4*kbT/Lf**3;
 saveEvery = 1;
 seed = int(sys.argv[2]);
-eigvalThres =5.0/Lf 
 RPYQuad = True;
 RPYDirect = False;
 RPYOversample = False;
 NupsampleForDirect = 20;
+# Eigenvalue truncation point. Assumes eps=1e-3 for now. 
+eigvalThres =5.0/Lf 
 if (N==12):
-    eigvalThres = 3.2/Lf;
+    eigvalThres = 3.2/Lf; 
 FileString = 'TESTCurved.txt';#'SemiflexFlucts/Penalty_N'+str(N)+'_Lp'+str(lpstar)+'_dt'+str(dtnum)+'_'+str(seed)+'.txt'
 
 # Initialize the domain
@@ -68,7 +71,6 @@ fibDisc.calcBendMatX0(fibList[0]._X,penaltyParam);
 # Initialize the master list of fibers
 allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigvalThres);
 allFibers.initFibList(fibList,Dom);
-
 
 # Initialize the temporal integrator
 TIntegrator = BackwardEuler(allFibers,FPimp=1);

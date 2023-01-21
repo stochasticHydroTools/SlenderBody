@@ -46,7 +46,7 @@ The simulations will output files prefixed with the user-specified outFile strin
 
 # Simulations from [6]:
 There are three dynamic tests we consider in [6]: 
-* Simulations of free fibers relaxing to equilibrium fluctuations from a straight state
-* Equilibrium fluctuations of a curved fiber held in place by a penalty force
-* Networks of semiflexible bundled fibers
+1) Simulations of free fibers relaxing to equilibrium fluctuations from a straight state. These use the file EndToEndFlucts.py. See the documentation there for options for this example. 
+2) Equilibrium fluctuations of a curved fiber held in place by a penalty force. These use the file LinearizedFluctuations.py, which is similar to example 1. Again, see documentation there. 
+3) Networks of semiflexible bundled fibers. The main file for this is BundlingNew.py. There is an input file, SemiflexBundleInputFile.txt, which is read by the main file BundlingNew.py. See the documentation in both of those files, paying close attention to which arguments are in the input file and which must be passed on the command line (this can be modified to make the input file pass in all arguments). 
 

@@ -11,6 +11,22 @@ from math import exp
 import sys, time
 from warnings import warn
 
+"""
+This file runs the dynamics of a network of bundling fibers. 
+See Section 6 in 
+"Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
+by O. Maxian, B. Sprinkle, and A. Donev. 
+
+The first thing this script does is read the input file (SemiflexBundleInputFile.txt) and write a copy in
+the folder BundlingBehavior (create such a folder if you do not have one). In the input file, there is a list of inputs
+to the simulation. It is currently set up to take 3 command line arguments in this order: the seed, the time step size, and 
+the persistence length. So, for example, running
+python BundlingNew.py 1 0.0001 10
+will simulate fibers with persistence length 10 using a time step 0.0001 and a seed of 1. 
+There are a number of outputs which are detailed in the README file. 
+"""
+
+
 def saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='a'):
     Xf = allFibers.getX();
     LinkStrains = CLNet.calcLinkStrains(allFibers.getUniformPoints(Xf), Dom);

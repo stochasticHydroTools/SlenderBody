@@ -3,20 +3,26 @@ from FibCollocationDiscretizationNew import ChebyshevDiscretization
 from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler
 from DiscretizedFiberNew import DiscretizedFiber
-from FileIO import prepareOutFile
 import numpy as np
-import chebfcns as cf
 from math import exp
 import sys
 
 """
-End to end fluctuations
+This file runs trajectories of free fibers which go from straight to fluctuating in their equilibrium state. 
+See Sections 4 and 5 in 
+"Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
+by O. Maxian, B. Sprinkle, and A. Donev. 
+
+As written right now, this function takes three command line arguments: 
+the -log of epsilonRPY (so 2 for epsRPY = 1e-2, 3 for epsRPY=1e-3), the time step size dt,
+and the random seed. So calling
+python EndToEndFlucts.py 2 0.0001 3
+would simulate fibers with aRPY/L = 1e-2, dt = 0.0001, and seed = 3. 
 """
 
 def makeStraightFibs(nFib,Lf,N,fibDisc):
     """
-    Initialize the three fibers for the shear simulation for a given N and fiber length Lf. 
-    fibDisc = the collocation discretization of the fiber
+    Initialize a list of straight fibers that we will simulate 
     """
     # Falling fibers
     Xs = (np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T);
@@ -28,35 +34,35 @@ def makeStraightFibs(nFib,Lf,N,fibDisc):
     return fibList;
 
 # Inputs 
-nFib=1          # number of fibers
-N=120          # number of points per fiber
+nFib=10          # number of fibers
+N=12          # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=4   # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
-nThr = 8;
+nonLocal=4   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
+nThr = 8;   # Number of OpenMP threads
+# Mobility options (can do SBT if all are set to false, otherwise some variant of RPY as described below)
 MobStr='CC';
-RPYQuad = False;
-RPYDirect = True;
-RPYOversample = False;
-NupsampleForDirect = 20;
+RPYQuad = False;        # Special quadrature
+RPYDirect = True;       # Direct Clenshaw-Curtis quadrature
+RPYOversample = False;  # Oversampled quad
+NupsampleForDirect = 20; # Number of pts for oversampled quad
 FluctuatingFibs = True;
 RigidDiffusion = False;
 rigidDetFibs = False;
-Ld=10        # length of the periodic domain
+Ld=10        # length of the periodic domain (not relevant here)
 mu=1            # fluid viscosity
 logeps = float(sys.argv[1]);
-eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3)
-print(eps)
+eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3). The factor 4/exp(1.5) converts to actual fiber slenderness. 
 lpstar = 1;
 dt = float(sys.argv[2]);
 eigvalThres = 0.0;
-if (eps < 5e-3):
+if (eps < 5e-3): # Only used for special quad
     if (N==12):
         eigvalThres = 3.2/Lf; 
     elif (N==24):
         eigvalThres = 5.0/Lf; 
     elif (N==36):
         eigvalThres = 6.7/Lf; 
-else:
+else:   # Only used for special quad
     if (N==12):
         eigvalThres = 1.6/Lf; 
     elif (N==24):
@@ -66,14 +72,14 @@ else:
     
 kbT = 4.1e-3;
 Eb=lpstar*kbT*Lf;         # fiber bending stiffness
-tf = 0.01*mu*Lf**4/(np.log(10**logeps)*Eb)
+tf = 0.01*mu*Lf**4/(np.log(10**logeps)*Eb) # extent longer if you want to simulate eq fluctuations
 penaltyParam = 0;
 seed = int(sys.argv[3]);
 nSaves = 100; # target number
 saveEvery = int(tf/(nSaves*dt));
 
-FileString = 'SemiflexFlucts/Eps'+str(logeps)+'EndToEnd'+MobStr+'_N'+str(N)+'_Lp'+str(lpstar)\
-    +'_dt'+str(dt)+'_'+str(seed)+'.txt'
+FileString = 'FreeFib.txt'#'SemiflexFlucts/Eps'+str(logeps)+'EndToEnd'+MobStr+'_N'+str(N)+'_Lp'+str(lpstar)\
+    #+'_dt'+str(dt)+'_'+str(seed)+'.txt'
     
 # Initialize the domain
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
@@ -102,7 +108,6 @@ allFibers.writeFiberLocations(FileString,'w');
 stopcount = int(tf/dt+1e-10);
 print(stopcount)
 for iT in range(stopcount): 
-    print(iT)
     wr = 0;
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;

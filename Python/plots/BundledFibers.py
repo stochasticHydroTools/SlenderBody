@@ -48,7 +48,7 @@ def main():
     Dom = PeriodicShearedDomain(Lp,Lp,Lp);
     Dom.setg(g);
     U = cf.ResamplingMatrix(Nuniform,N,'u',ChebGridKind)
-    name = 'SFRBDLd2_Lp1.0_Dt0.0001';
+    name = 'SFBendLd2_Lp1.0_Dt0.0001';
     Chebpts = np.loadtxt('BundlingPaperPlots/Lp1/'+name+'_'+str(iT+1)+'.txt');
     Bundles = np.loadtxt('BundlingPaperPlots/Lp1/NewLabels_'+name+'.txt');
     Labels = Bundles[iT,:];
