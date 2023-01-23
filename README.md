@@ -21,7 +21,7 @@ by O. Maxian, B. Sprinkle, C.S. Peskin, and A. Donev, July 2022.
 See [arxiv](https://arxiv.org/abs/2201.04187) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.7.074101) for published
 version.
 * [5] "Slender body theories for rotating filaments," by O. Maxian and A. Donev, Nov. 2022. See [JFM](https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/slender-body-theories-for-rotating-filaments/0A9E1AB691DC4AFDB57C6471928745AE) for published version, which is open access. This is primarily a theoretical study which has some numerical calculations. The relevant files are under Matlab/Matlab/NumericalSBT/SingleLayer/
-* [6] "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2022. See [arxiv](link) for text. 
+* [6] "Bending fluctuations in semiflexible, inextensible, slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2023. See [arxiv](link) for text. 
 
 Organization is as follows:
 * Python: directory with python codes
