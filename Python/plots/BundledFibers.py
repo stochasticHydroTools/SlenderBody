@@ -24,7 +24,7 @@ import sys
 sys.path.append("/Configs/")  
 
 def save_image(rt,iT,name):
-    rt.save_image("BundlingPaperPlots/Lp1/"+name+"_"+str(iT)+".png")
+    rt.save_image("BundlingPaperPlots/Lp100/"+name+"_"+str(iT)+".png")
     #rt.save_image("StrainedTop.png")
     print("rt completed!")
     rt.close()  
@@ -48,9 +48,9 @@ def main():
     Dom = PeriodicShearedDomain(Lp,Lp,Lp);
     Dom.setg(g);
     U = cf.ResamplingMatrix(Nuniform,N,'u',ChebGridKind)
-    name = 'SFBendLd2_Lp1.0_Dt0.0001';
-    Chebpts = np.loadtxt('BundlingPaperPlots/Lp1/'+name+'_'+str(iT+1)+'.txt');
-    Bundles = np.loadtxt('BundlingPaperPlots/Lp1/NewLabels_'+name+'.txt');
+    name = 'SFBendLd2_Lp100.0_Dt0.0001';
+    Chebpts = np.loadtxt('BundlingPaperPlots/Lp100/'+name+'_'+str(iT+1)+'.txt');
+    Bundles = np.loadtxt('BundlingPaperPlots/Lp100/NewLabels_'+name+'.txt');
     Labels = Bundles[iT,:];
     NumBundles = np.amax(Labels);
     print('Number of bundles %d' %(NumBundles))
@@ -148,7 +148,7 @@ def main():
         CBindingSites = np.zeros((nFib*NCLuniform,3));
         for jFib in range(nFib):
              CBindingSites[jFib*NCLuniform:(jFib+1)*NCLuniform,:]=np.dot(U,Chebpts[jFib*N:(jFib+1)*N,:])
-        Links = np.loadtxt('BundlingPaperPlots/Lp1/Step'+str(iT)+'Links'+name+'_1.txt')
+        Links = np.loadtxt('BundlingPaperPlots/Lp100/Step'+str(iT)+'Links'+name+'_1.txt')
         nLinks = int(Links[0,0]);
         print(nLinks)
         PlotLinks = Links[1:,:];
