@@ -41,11 +41,10 @@ class RPYVelocityEvaluator(object):
         Ouputs: Npts x 3 array of the velocities at the Npts by calling the Numba function
         to do the free space computation
         """
-        DLens = Dom.getPeriodicLens();
-        for iL in DLens: # make sure there is no periodicity in the domain
-            if iL is not None:
-                raise NotImplementedError('Doing a free space velocity sum with periodicity in a direction');
         return RPYVelocityEvaluator.RPYKernel(self._Npts,ptsxyz,self._Npts,ptsxyz,forces,self._mu,self._a);
+    
+    def NeedsGPU(self):
+        return False;
     
     @staticmethod
     @nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.int64,nb.float64[:,:],\
@@ -141,6 +140,9 @@ class EwaldSplitter(RPYVelocityEvaluator):
         if (verbose>=0):
             print ('Near field Ewald time %f' %(time.time()-t));
         return Ewaldfar+Ewaldnear; 
+    
+    def NeedsGPU(self):
+        return False;
 
     ## =========================================
     ##  PRIVATE METHODS ONLY CALLED WITHIN CLASS
@@ -308,6 +310,9 @@ class GPUEwaldSplitter(EwaldSplitter):
         
         # Calculate the truncation distance for Ewald
         print('%.2E GPU tolerance' %GPUtol)
+    
+    def NeedsGPU(self):
+        return True;
         
     ## =========================================
     ##    PUBLIC METHODS CALLED OUTSIDE CLASS

@@ -2,12 +2,12 @@ addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
 % Generate initial chain
 L = 2;
 kbT = 4.1e-3; % pN * um
-lp = 10*L;
+lp = 1*L;
 K_b = lp*kbT;
 a = 1e-2;
-nSamp = 1e2;
+nSamp = 1e6;
 nSaveSamples = 0.8*nSamp;
-nTrial = 1000;
+nTrial = 10;
 OversampCheb = 1;
 N = 12;
 UConst = 7.5e-3*L;
@@ -46,21 +46,7 @@ nBins = 1000;
 
 
 % The energy matrix and expected covariance
-K0 =KonN(Xst,N,IntMat_st,I,B0,eye(3*N),Ds,0);
-EMat = -BendMat;
-C = kbT*K0*pinv(K0'*EMat*K0)*K0';
 EMatParams = XonNp1Mat'*EMat_Np1*XonNp1Mat;
-
-Ctilde = Wtilde^(1/2)*C*Wtilde^(1/2);
-[DiscV,DiscL]=eig(1/2*(Ctilde'+Ctilde));
-% Sort columns of V based on eigenvalues
-[~,inds]=sort(diag(DiscL),'descend');
-eigVL = diag(DiscL);
-eigVL = eigVL(inds);
-DiscV = DiscV(:,inds);
-Vtrue = Wtilde^(-1/2)*DiscV;
-max(max(abs(Vtrue'*Wtilde*Vtrue-eye(3*N))))
-max(max(abs(Vtrue*diag(eigVL)*Vtrue'-C)))
 
 % Propose a move around the state and evaluate its energy
 EPrev = 0;

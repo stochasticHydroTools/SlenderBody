@@ -10,6 +10,7 @@ elseif (~IdForM)
     if (upsamp==1)
         Xup = reshape(ExtRef*Xt,3,[])';
         MRPY=getGrandMBlobs(Nref,Xup,a,mu);
+        warning('Update oversampled code to reflect precomputations')
         MWsym = WTilde_Np1_Inverse*ExtRef'*WRef*MRPY*WRef*ExtRef*WTilde_Np1_Inverse;
     elseif (upsamp==-1)
         MWsym = getGrandMBlobs(Nx,reshape(Xt,3,Nx)',a,mu);

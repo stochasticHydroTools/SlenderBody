@@ -25,7 +25,7 @@ class CrossLinkForceEvaluator {
 
     public: 
     
-    CrossLinkForceEvaluator(int Nuni,vec sUni, npDoub pyRuni,npDoub pyWInv, intvec FibFromSite, intvec NChebs, vec sCheby, 
+    CrossLinkForceEvaluator(int Nuni,vec sUni, npDoub pyRuni,npDoub pyWTilde, intvec FibFromSite, intvec NChebs, vec sCheby, 
         vec wtsCheb, vec sigin, double Kin, double rl, int nThr){
         /**
         Initialize variables related to force density calculations in CLs
@@ -42,9 +42,9 @@ class CrossLinkForceEvaluator {
         _sUniform = sUni;
         _Nuniform = Nuni;
         _RUniform = vec(pyRuni.size());
-        _WTildeInverse = vec(pyWInv.size());
+        _WTilde = vec(pyWTilde.size());
         std::memcpy(_RUniform.data(),pyRuni.data(),pyRuni.size()*sizeof(double));
-        std::memcpy(_WTildeInverse.data(),pyWInv.data(),pyWInv.size()*sizeof(double));
+        std::memcpy(_WTilde.data(),pyWTilde.data(),pyWTilde.size()*sizeof(double));
         _FibFromSiteIndex = FibFromSite;
         _sChebyshev = sCheby;
         _weights = wtsCheb;
@@ -64,7 +64,7 @@ class CrossLinkForceEvaluator {
  
     py::array calcCLForces(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints){
         /**
-        Compute force densities on the fibers from the list of links. 
+        Compute forces (not density) on the fibers from the list of links. 
         @param iPts = nLinks vector of uniform point numbers where one CL end is
         @param jPts = nLinks vector of uniform point numbers where the other end is
         @param pyShifts = 2D numpy array of shifts in link displacements due to periodicity
@@ -141,12 +141,15 @@ class CrossLinkForceEvaluator {
             //std::cout << "Total force due to link " << iL << "(" << totForce[0] << " , " << totForce[1] << " , " << totForce[2] << std::endl;
             //std::cout << "Total torque due to link " << iL << "(" << totTorq[0] << " , " << totTorq[1] << " , " << totTorq[2] << std::endl;
         }
-        return make1DPyArray(CLForceDensities);
+        // Convert to force
+        vec CLForces(pyChebPoints.shape()[0]*3,0.0);
+        ForceDensityToForce(CLForceDensities,CLForces);
+        return make1DPyArray(CLForces);
     }
     
     py::array calcCLForcesEnergy(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints){
         /**
-        Compute force densities on the fibers from the list of links. 
+        Compute forces on the fibers from the list of links. 
         @param iPts = nLinks vector of uniform point numbers where one CL end is
         @param jPts = nLinks vector of uniform point numbers where the other end is
         @param pyShifts = 2D numpy array of shifts in link displacements due to periodicity
@@ -169,7 +172,6 @@ class CrossLinkForceEvaluator {
         std::memcpy(chebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
 
         // Pure C++ function
-        vec CLForceDensities(pyChebPoints.shape()[0]*3,0.0);
         vec CLForces(pyChebPoints.shape()[0]*3,0.0);
         #pragma omp parallel for num_threads(_nThreads)
         for (uint iL=0; iL < iPts.size(); iL++){
@@ -204,9 +206,7 @@ class CrossLinkForceEvaluator {
                 }
             }
         }
-        // Convert to density
-        ForceToForceDensity(CLForces,CLForceDensities);
-        return make1DPyArray(CLForceDensities);
+        return make1DPyArray(CLForces);
     }
     
     double calcCLStress(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints){
@@ -276,7 +276,7 @@ class CrossLinkForceEvaluator {
     private:
     
     vec _sUniform, _sChebyshev, _weights, _sigma;
-    vec _RUniform, _WTildeInverse;
+    vec _RUniform, _WTilde;
     intvec _NCheb, _chebStart, _FibFromSiteIndex;
     int _Nuniform, _nThreads;
     double _Kspring, _restlen;
@@ -316,17 +316,17 @@ class CrossLinkForceEvaluator {
         return pyArray;
     }
     
-    void ForceToForceDensity(const vec &Forces, vec &ForceDensity){
+    void ForceDensityToForce(const vec &ForceDensity, vec &Forces){
         #pragma omp parallel for num_threads(_nThreads)
         for (int iFib = 0; iFib < _NCheb.size(); iFib++){
             vec LocalForces(3*_NCheb[iFib]);
             vec LocalForceDen(3*_NCheb[iFib]);
             for (int i=0; i < 3*_NCheb[iFib]; i++){
-                LocalForces[i] = Forces[3*_chebStart[iFib]+i];
+                LocalForceDen[i] = ForceDensity[3*_chebStart[iFib]+i];
             }
-            BlasMatrixProduct(3*_NCheb[iFib],3*_NCheb[iFib],1,1.0,0.0,_WTildeInverse,false,LocalForces,LocalForceDen);
+            BlasMatrixProduct(3*_NCheb[iFib],3*_NCheb[iFib],1,1.0,0.0,_WTilde,false,LocalForceDen,LocalForces);
             for (int i=0; i < 3*_NCheb[iFib]; i++){
-                ForceDensity[3*_chebStart[iFib]+i] = LocalForceDen[i];
+                Forces[3*_chebStart[iFib]+i] = LocalForces[i];
             }
         }
     }

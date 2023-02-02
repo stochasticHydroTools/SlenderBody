@@ -84,9 +84,6 @@ class SingleFiberMobilityEvaluator {
         std::memcpy(_OverSamplingWtsMatrix.data(),pyOversampleWtsForDirectQuad.data(),pyOversampleWtsForDirectQuad.size()*sizeof(double));
         std::memcpy(_UpsamplingMatrix.data(),pyUpsamplingMatrix.data(),pyUpsamplingMatrix.size()*sizeof(double));
         _Nupsample = _OverSamplingWtsMatrix.size()/(9*_nXPerFib);
-        if (_oversampledRPY){
-            std::cout << "Number of oversampling points " << _Nupsample << std::endl;
-        }
         
         _stackedXDiffMatrix = vec(9*_XDiffMatrix.size());
         for (int i = 0; i < _nXPerFib; i++){
@@ -141,7 +138,72 @@ class SingleFiberMobilityEvaluator {
                 addNumericalRLess2a(LocalPoints,M);
             }
         }
-    }    
+    }  
+    
+    void UpsampledPoints(const vec &LocalPoints, vec &UpsampledPoints){
+        int Npts = _nXPerFib;
+        if (_directRPY){ 
+            UpsampledPoints.resize(3*Npts);
+            std::memcpy(UpsampledPoints.data(),LocalPoints.data(),LocalPoints.size()*sizeof(double));
+        } else { 
+            Npts = _Nupsample;
+            UpsampledPoints.resize(3*Npts);
+            BlasMatrixProduct(Npts, _nXPerFib, 3,1.0,0.0,_UpsamplingMatrix,false,LocalPoints,UpsampledPoints); 
+        }
+    }
+    
+    void UpsampledForces(const vec &LocalForces, vec &UpsampledForces){
+        int Npts = _nXPerFib;
+        if (_directRPY){ 
+            UpsampledForces.resize(3*Npts);
+            std::memcpy(UpsampledForces.data(),LocalForces.data(),LocalForces.size()*sizeof(double));
+        } else { 
+            Npts = _Nupsample;
+            UpsampledForces.resize(3*Npts);
+            // Multiply by W_up E_up W_tilde^-1
+            BlasMatrixProduct(3*Npts, 3*_nXPerFib, 1,1.0,0.0,_OverSamplingWtsMatrix,false,LocalForces,UpsampledForces); 
+        }
+    }   
+    
+    void DownsampledVelocity(const vec &UpsampledVelocity, vec &NewVelocity){
+        int Npts = _nXPerFib;
+        if (_directRPY){ 
+            NewVelocity.resize(3*Npts);
+            std::memcpy(NewVelocity.data(),UpsampledVelocity.data(),UpsampledVelocity.size()*sizeof(double));
+        } else { 
+            Npts = _Nupsample;
+            NewVelocity.resize(3*Npts);
+            // Multiply by( W_up * E_up * WtildeInverse)^T
+            BlasMatrixProduct(3*_nXPerFib,3*Npts,1,1.0,0.0,_OverSamplingWtsMatrix,true,UpsampledVelocity,NewVelocity); 
+        }
+    }
+    
+    void RPYVelocityFromForces(const vec &Points, const vec &Forces, vec &Velocities){
+        int Npts = Points.size()/3;
+        for (int iPt = 0; iPt < Npts; iPt++){
+            for (int jPt = 0; jPt < Npts; jPt++){
+                vec3 u;
+                vec3 rvec;
+                vec3 Force;
+                for (int iD=0; iD < 3; iD++){
+                    rvec[iD]=Points[3*iPt+iD]-Points[3*jPt+iD];
+                    Force[iD]=Forces[3*jPt+iD];
+                }
+                _RPYEvaluator.RPYTot(rvec,Force,u);
+                // Copy the pairwise matrix into the big matrix
+                for (int iD=0; iD < 3; iD++){
+                    Velocities[3*iPt+iD]+=u[iD];
+                }
+            }
+        }
+    }  
+    
+    int getNupsample(){
+        if (_directRPY){
+            return _nXPerFib;
+        }
+        return _Nupsample;
+    }
  
     private:
     

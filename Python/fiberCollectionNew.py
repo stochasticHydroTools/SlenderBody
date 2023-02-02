@@ -7,7 +7,7 @@ import numba as nb
 import scipy.sparse as sp
 import time
 from math import sqrt, exp, pi
-#import BatchedNBodyRPY as gpurpy
+import BatchedNBodyRPY as gpurpy
 
 # Documentation last updated 01/21/2023
 
@@ -44,6 +44,7 @@ class fiberCollection(object):
         self._NXpf = self._fiberDisc._Nx;
         self._NTaupf = self._fiberDisc._Ntau;
         self._Ndirect = self._fiberDisc._nptsDirect;
+        self._FPLoc = self._fiberDisc._FinitePartLocal;
         self._nonLocal = nonLocal;
         self._mu = mu;
         self._omega = omega;
@@ -53,8 +54,6 @@ class fiberCollection(object):
         self.initPointForceVelocityArrays(Dom);
         self._kbT = kbT;
         self._rigid = rigidFibs;
-        if (self._nonLocal==1):
-            raise ValueError('Correction quad not supported anymore');
         
         DLens = Dom.getPeriodicLens();
         for iD in range(len(DLens)):
@@ -148,28 +147,28 @@ class fiberCollection(object):
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY
     ## ====================================================   
-    def formBlockDiagRHS(self, X_nonLoc,Xs_nonLoc,t,exForceDen,lamstar,Dom,RPYEval,FPimplicit=0,returnForce=False):
+    def formBlockDiagRHS(self,X,t,exForce,Lamstar,Dom,RPYEval):
         """
-        THIS METHOD NOT COMPLETE 
         RHS for the block diagonal GMRES system. 
-        Inputs: X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
-        tangent vectors, t = system time, exForceDen = external force density (treated explicitly), 
-        lamstar = lambdas for the nonlocal calculation, Dom = Domain object, RPYEval = RPY velocity
-        evaluator for the nonlocal terms, FPimplicit = whether to do the finite part integral implicitly,
-        returnForce = whether we need the force (we do if this collection is part of a collection of species and 
-        the hydro for the species collection is still outstanding) 
-        The block diagonal RHS is 
-        [M^Local*(F*X^n+f^ext) + M^NonLocal * (F*X^(n+1/2,*)+lambda*+f^ext)+u_0]
-        M^Local is the part that is being treated explicitly, and M^NonLocal is the part that is being treated
-        implicitly
+        Inputs: X = Chebyshev point locations,t = system time, 
+        exForce = external force (treated explicitly), 
+        Lamstar = Lambdas for the nonlocal calculation, Dom = Domain object, RPYEval = RPY velocity
+        evaluator for the nonlocal terms, includeFP = whether to do include the finite part (intra-fiber)
+        interactions in the nonlocal velocity 
+        Return the nonlocal velocities and forces for the saddle point system. Specifically, if the saddle 
+        point solve can be written as  
+        B*alpha = M*F+UEx, 
+        return F and UEx. Here UEx includes the nonlocal velocity.
         """
-        self._exForceDen = exForceDen;
-        return np.zeros(3*self._Nfib*self._NXpf);
+        # Compute elastic forces at X
+        BendForce = self.evalBendForce(X);
+        TotalForce = BendForce+exForce;
+        U0 = self.evalU0(X,t);
+        UNonLoc = self.nonLocalVelocity(X,Lamstar+exForce+BendForce, Dom, RPYEval);
+        return TotalForce, (UNonLoc+U0);
 
-    
-    def calcNewRHS(self,BlockDiagAnswer,X_nonLoc,Xs_nonLoc,dtimpco,lamstar, Dom, RPYEval,FPimplicit=0,returnForce=False):
+    def calcResidualVelocity(self,BlockDiagAnswer,X,Xs,dtimpco,Lamstar, Dom, RPYEval):
         """
-        THIS METHOD NOT COMPLETE
         New RHS (after block diag solve). This is the residual form of the system that gets 
         passed to GMRES. 
         Inputs: BlockDiagAnswer = the answer for lambda and alpha from the block diagonal solver, 
@@ -181,20 +180,33 @@ class fiberCollection(object):
         [M^NonLocal*(F*(X^n+dt*impco*K*alpha-X^(n+1/2,*)+lambda - lambda^*)); 0], where by lambda and alpha
         we mean the results from the block diagonal solver 
         """
-        lambdas = BlockDiagAnswer[:3*self._Nfib*self._Npf];
-        alphas = BlockDiagAnswer[3*self._Nfib*self._Npf:];
-        Kalph, Kstlam = self.KProductsAllFibers(Xs_nonLoc,alphas,lambdas);
-        fbendCorrection = self.evalBendForceDensity(self._ptsCheb- X_nonLoc+np.reshape(dtimpco*Kalph,(self._Nfib*self._Npf,3)));
-        lamCorrection = lambdas-lamstar;
-        totForceD = fbendCorrection+lamCorrection;
-        nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,totForceD,Dom,RPYEval,1-FPimplicit);
-        if (returnForce):
-            return np.concatenate((nonLocal,np.zeros((2*self._nPolys+3)*self._Nfib))), totForceD;
-        return np.concatenate((nonLocal,np.zeros((2*self._nPolys+3)*self._Nfib)));
+        Lambdas = BlockDiagAnswer[:3*self._Nfib*self._NXpf];
+        alphas = BlockDiagAnswer[3*self._Nfib*self._NXpf:];
+        KalphKTLam = self._FibColCpp.KAlphaKTLambda(Xs,alphas,Lambdas,self._rigid);
+        Kalph = KalphKTLam[:3*self._Nfib*self._NXpf];
+        FbendCorrection = self.evalBendForce(self._ptsCheb- X+np.reshape(dtimpco*Kalph,(self._Nfib*self._NXpf,3)));
+        LamCorrection = Lambdas-Lamstar;
+        TotalForce = FbendCorrection+LamCorrection;
+        nonLocalVel = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval);
+        return np.concatenate((nonLocalVel,np.zeros(3*self._NXpf*self._Nfib)));
         
-    def Mobility(self,lamalph,impcodt,X_nonLoc,Xs_nonLoc,Dom,RPYEval,returnForce=False):
+    def CheckResiduals(self,LamAlph,impcodt,X,Xs,Dom,RPYEval,t):
+        LamAlph = np.reshape(LamAlph,len(LamAlph))
+        Lambdas = LamAlph[:3*self._Nfib*self._NXpf];
+        alphas = LamAlph[3*self._Nfib*self._NXpf:];
+        KalphKTLam = self._FibColCpp.KAlphaKTLambda(Xs,alphas,Lambdas,self._rigid); 
+        Kalph = KalphKTLam[:3*self._Nfib*self._NXpf];
+        KTLam = KalphKTLam[3*self._Nfib*self._NXpf:];  
+        XnLForBend = X+np.reshape(impcodt*Kalph,(self._Nfib*self._NXpf,3)); # dt/2*K*alpha 
+        TotalForce = self.evalBendForce(XnLForBend)+Lambdas;   
+        U0 = self.evalU0(X,t);
+        Local = self.LocalVelocity(X,TotalForce);
+        nonLocal = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval);
+        res = (Local+nonLocal+U0)-Kalph;
+        return res;
+        
+    def Mobility(self,LamAlph,impcodt,X,Xs,Dom,RPYEval):
         """
-        THIS METHOD NOT COMPLETE
         Mobility calculation for GMRES
         Inputs: lamalph = the input lambdas and alphas impcodt = delta t * implicit coefficient,
         X_nonLoc = Npts * 3 array of Chebyshev point locations, Xs_nonLoc = Npts * 3 array of 
@@ -202,38 +214,38 @@ class fiberCollection(object):
         returnForce = whether we need the force (we do if this collection is part of a collection 
         of species and  the hydro for the species collection is still outstanding) 
         The calculation is 
-        [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +lambda); K*lambda ]
+        [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +Lambda); K^T*Lambda ]
         """
-        lamalph = np.reshape(lamalph,len(lamalph))
-        lambdas = lamalph[:3*self._Nfib*self._Npf];
-        alphas = lamalph[3*self._Nfib*self._Npf:];
-        Kalph, Ktlam = self.KProductsAllFibers(Xs_nonLoc,alphas,lambdas);
-        XnLForBend = np.reshape(impcodt*Kalph,(self._Nfib*self._Npf,3)); # dt/2*K*alpha       
-        forceDs = self.evalBendForceDensity(XnLForBend) +lambdas;
-        Local = self.calcLocalVelocities(np.reshape(Xs_nonLoc,self._totnum*3),forceDs);
-        nonLocal = self.nonLocalVelocity(X_nonLoc,Xs_nonLoc,forceDs,Dom,RPYEval);
+        LamAlph = np.reshape(LamAlph,len(LamAlph))
+        Lambdas = LamAlph[:3*self._Nfib*self._NXpf];
+        alphas = LamAlph[3*self._Nfib*self._NXpf:];
+        KalphKTLam = self._FibColCpp.KAlphaKTLambda(Xs,alphas,Lambdas,self._rigid);
+        Kalph = KalphKTLam[:3*self._Nfib*self._NXpf];
+        KTLam = KalphKTLam[3*self._Nfib*self._NXpf:];
+        XnLForBend = np.reshape(impcodt*Kalph,(self._Nfib*self._NXpf,3)); # dt/2*K*alpha       
+        TotalForce = self.evalBendForce(XnLForBend)+Lambdas;
+        Local = self.LocalVelocity(X,TotalForce);
+        nonLocal = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval);
         FirstBlock = -(Local+nonLocal)+Kalph; # zero if lambda, alpha = 0
-        SecondBlock = Ktlam;
-        if (returnForce):
-            return np.concatenate((FirstBlock,SecondBlock)), forceDs;   
-        return np.concatenate((FirstBlock,SecondBlock));
+        return np.concatenate((FirstBlock,KTLam));
        
-    def BlockDiagPrecond(self,Xs_nonLoc,dt,implic_coeff,X_nonLoc,doFP=0):
+    def BlockDiagPrecond(self,UNonLoc,Xs_nonLoc,dt,implic_coeff,X_nonLoc,ExForces):
         """
         Block diagonal solver. This solver takes inputs Xs_nonLoc (tangent vectors),, 
         dt (time step size), implic_coeff (implicit coefficient for temporal integrator), 
         X_nonLoc (locations of points), and doFP (whether to include finite part), and solves
         the saddle point system. 
-        K*alpha = M(F*((1-impco)*X^n+impco*X^(n+1)) + Lambda)
+        (K-impco*dt*M^L*F*K)*alpha = M^L*ExForces + Lambda)+UNonLoc
         K^T*Lambda = 0
-        for Lambda, and alpha. This corresponds to the matrix solve
-        [-M^L K-impco*dt*M^L*F*K; K^T 0]*[Lambda; alpha]=[M^L*F*X^n; 0]
+        for Lambda, and alpha. B is K with the implicit part included This corresponds to the matrix solve
+        [-M^L K-impco*dt*M^L*F*K; K^T 0]*[Lambda; alpha]=[M^L*ExForces; 0]
         where M^L is the local mobility on each fiber separately. If doFP=1, this 
         matrix describes the hydrodynamics fiber-by-fiber. Otherwise, it is just
         a local drag matrix
         """
-        return self._FibColCpp.applyPreconditioner(X_nonLoc,Xs_nonLoc,self._exForceDen,implic_coeff,dt,\
-            doFP,self._rigid);
+        UNonLoc = UNonLoc[:3*self._Nfib*self._NXpf];
+        LamAlph= self._FibColCpp.applyPreconditioner(X_nonLoc,Xs_nonLoc,ExForces,UNonLoc,implic_coeff,dt,self._FPLoc,self._rigid);
+        return LamAlph;
     
     def BrownianUpdate(self,dt,Randoms):
         """
@@ -249,93 +261,57 @@ class fiberCollection(object):
         self._Midpoints = CppXsMPX[self._Nfib*self._NTaupf:self._Nfib*self._NXpf,:];
         self._ptsCheb = CppXsMPX[self._Nfib*self._NXpf:,:];
         
-    def nonLocalVelocity(self,X_nonLoc,Xs_nonLoc,forceDs, Dom, RPYEval,doFinitePart=1):
+    def nonLocalVelocity(self,X,forces, Dom, RPYEval):
         """
-        THIS METHOD NOT COMPLETE
         Compute the non-local velocity due to the fibers.
-        Inputs: Arguments X_nonLoc, Xs_nonLoc = fiber positions and tangent vectors as Npts x 3 arrays, 
-        forceDs = force densities as an 3*npts 1D numpy array
+        Inputs: Arguments X = fiber positions as Npts x 3 arrays, 
+        forces = forces as an 3*npts 1D numpy array
         Dom = Domain object the computation happens on,  
         RPYEval = EwaldSplitter (RPYVelocityEvaluator) to compute velocities, doFinitePart = whether to 
         include the finite part integral in the calculation (no if it's being done implicitly)
         Outputs: nonlocal velocity as a tot#ofpts*3 one-dimensional array.
         """
         # If not doing nonlocal hydro, return nothing
+        doFinitePart = (not self._FPLoc);
         if (self._nonLocal==0):
             return np.zeros(3*self._Nfib*self._NXpf);
-        elif (self._nonLocal==2):
-            #print('Finite part off')
+        elif (self._nonLocal==2 or self._fiberDisc._RPYDirectQuad or self._fiberDisc._RPYOversample):
             doFinitePart=0;
             
-        forceDs = np.reshape(forceDs,(self._Nfib*self._NXpf,3));       
-        
         # Calculate finite part velocity
         thist=time.time();
-        finitePart = self._FibColCpp.FinitePartVelocity(X_nonLoc, forceDs,self._fiberDisc._truRPYMob);
+        finitePart = self._FibColCpp.FinitePartVelocity(X, forces);
         if (verbose>=0):
             print('Time to eval finite part %f' %(time.time()-thist));
             thist=time.time();
         if (self._nonLocal==4):
+            print(doFinitePart*finitePart)
             return doFinitePart*finitePart;
         
-        # Ewald w/ special quadrature corrections
-        if (self._nonLocal==1 or self._nonLocal==2):
-            # Update the spatial objects for Chebyshev and uniform
-            self._SpatialCheb.updateSpatialStructures(X_nonLoc,Dom);
-            # Multiply by the weights to get force from force density. 
-            forces = forceDs*np.reshape(np.tile(self._fiberDisc.getw(),self._Nfib),(self._totnum,1));
-            RPYVelocity = RPYEval.calcBlobTotalVel(X_nonLoc,forces,Dom,self._SpatialCheb,self._nThreads);
-            if (verbose>=0):
-                print('Ewald time %f' %(time.time()-thist));
-                thist=time.time();
-            SelfTerms = self._FibColCpp.SubtractAllRPY(X_nonLoc,forceDs,self._fiberDisc.getw());
-            RPYVelocity-= SelfTerms;
-        else: # Direct quad upsampled
-            fupsampled = self.getPointsForUpsampledQuad(forceDs);
-            forcesUp = fupsampled*np.reshape(np.tile(self._fiberDisc.getwDirect(),self._Nfib),(self._Ndirect*self._Nfib,1));
-            if (verbose>=0):
-                print('Upsampling time %f' %(time.time()-thist));
-                thist=time.time();
-            RPYVelocityUp = RPYEval.calcBlobTotalVel(self._Xupsampled,forcesUp,Dom,self._SpatialDirectQuad,self._nThreads);
-            if (verbose>=0):
-                print('Upsampled Ewald time %f' %(time.time()-thist));
-                thist=time.time();
-            SelfTerms = self.GPUSubtractSelfTerms(self._Ndirect,self._Xupsampled,forcesUp);
-            #SelfTerms2 = self._FibColCpp.SubtractAllRPY(self._Xupsampled,fupsampled,self._fiberDisc.getwDirect());
-            #print('Difference bw Raul and me %f' %(np.amax(np.abs(SelfTerms-SelfTerms2))))
-            if (verbose>=0):
-                print('Self time %f' %(time.time()-thist));
-                thist=time.time();
-            RPYVelocityUp -= SelfTerms;
-            RPYVelocity = self.getValuesfromDirectQuad(RPYVelocityUp);
-            if (verbose>=0):
-                print('Downsampling time %f' %(time.time()-thist));
-            if (np.any(np.isnan(RPYVelocity))):
-                raise ValueError('Velocity is nan - stability issue!') 
-            return np.reshape(RPYVelocity,self._totnum*3)+doFinitePart*finitePart;
-
-        # Corrections
-        thist=time.time();
-        alltargets=[];
-        numTbyFib=[];
-        self._uniPoints = self.getUniformPoints(X_nonLoc);
-        self._SpatialUni.updateSpatialStructures(self._uniPoints,Dom);
-        alltargets,numTbyFib = self.determineQuadLists(X_nonLoc,self._uniPoints,Dom);
+        # Add inter-fiber velocity
+        Xupsampled = self.getPointsForUpsampledQuad(X);
+        Fupsampled = self.getForcesForUpsampledQuad(forces);
         if (verbose>=0):
-            print('Determine quad corrections time %f' %(time.time()-thist));
+            print('Upsampling time %f' %(time.time()-thist));
             thist=time.time();
-        corVels = self._FibColCpp.CorrectNonLocalVelocity(X_nonLoc,self._uniPoints,forceDs,finitePart,Dom.getg(),numTbyFib,alltargets)
-        RPYVelocity+=corVels;
+        self._SpatialDirectQuad.updateSpatialStructures(Xupsampled,Dom);
+        RPYVelocityUp = RPYEval.calcBlobTotalVel(Xupsampled,Fupsampled,Dom,self._SpatialDirectQuad,self._nThreads);
         if (verbose>=0):
-            print('Correction quadrature time %f' %(time.time()-thist));
-            print('Maximum correction velocity %f' %np.amax(np.abs(corVels)));
-
+            print('Upsampled Ewald time %f' %(time.time()-thist));
+            thist=time.time();
+        SelfTerms = self.SubtractSelfTerms(self._Ndirect,Xupsampled,Fupsampled,RPYEval.NeedsGPU());
+        if (verbose>=0):
+            print('Self time %f' %(time.time()-thist));
+            thist=time.time();
+        RPYVelocityUp -= SelfTerms;
+        RPYVelocity = self.getDownsampledVelocity(RPYVelocityUp);
+        if (verbose>=0):
+            print('Downsampling time %f' %(time.time()-thist));
         if (np.any(np.isnan(RPYVelocity))):
             raise ValueError('Velocity is nan - stability issue!') 
-        # Return the velocity due to the other fibers + the finite part integral velocity
-        return np.reshape(RPYVelocity,self._totnum*3)+doFinitePart*finitePart;
+        return np.reshape(RPYVelocity,self._Nfib*self._NXpf*3)+doFinitePart*finitePart;
          
-    def updateLambdaAlpha(self,lamalph,Xsarg):
+    def updateLambdaAlpha(self,lamalph):
         """
         Update the lambda and alphas after the solve is complete. 
         Xsarg = legacy argument. To remove. 
@@ -343,11 +319,10 @@ class fiberCollection(object):
         self._lambdas = lamalph[:3*self._Nfib*self._NXpf];
         self._alphas = lamalph[3*self._Nfib*self._NXpf:];
            
-    def updateAllFibers(self,dt,XsforNL):
+    def updateAllFibers(self,dt):
         """
         Update the fiber configurations, assuming self._alphas has been computed above. 
         Inputs: dt = timestep
-        XsforNL = unnecessary legacy argument. Remove later. 
         """
         CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,self._alphas,dt);   
         self._tanvecs = CppXsMPX[:self._Nfib*self._NTaupf,:];
@@ -391,17 +366,23 @@ class fiberCollection(object):
         Inputs: chebpts as a (tot#ofpts x 3) array
         Outputs: upsampled points as a (nPtsUpsample*Nfib x 3) array.
         """
-        return NumbaColloc.useNumbatoUpsample(chebpts,self._Nfib,self._Npf,self._Ndirect,self._fiberDisc._MatfromNtoDirectN);
-        b= self._FibColCpp.upsampleForDirectQuad(chebpts);
+        return self._FibColCpp.getUpsampledPoints(chebpts);
         
-    def getValuesfromDirectQuad(self,upsampledVals):
+    def getForcesForUpsampledQuad(self,chebforces):
+        """
+        Obtain upsampled points from a set of Chebyshev points. 
+        Inputs: chebforces as a (tot#ofpts x 3) array
+        Outputs: upsampled forces as a (nPtsUpsample*Nfib x 3) array.
+        """
+        return self._FibColCpp.getUpsampledForces(chebforces);
+        
+    def getDownsampledVelocity(self,upsampledVel):
         """
         Obtain values at Chebyshev nodes from upsampled 
         Inputs: upsampled values as a (nPtsUpsample*Nfib x 3) array.
         Outputs: vals at cheb pts as a (tot#ofpts x 3) array
         """
-        return NumbaColloc.useNumbatoDownsample(upsampledVals,self._Nfib,self._Npf,self._Ndirect,self._fiberDisc._MatfromDirectNtoN);
-        b = self._FibColCpp.downsampleFromDirectQuad(upsampledVals);
+        return self._FibColCpp.getDownsampledVelocities(upsampledVel);
         
     def getg(self,t):
         """
@@ -420,6 +401,9 @@ class fiberCollection(object):
     
     def getFiberDisc(self):
         return self._fiberDisc;
+    
+    def getSysDimension(self):
+        return 6*self._Nfib*self._NXpf;
     
     def averageTangentVectors(self):
         """
@@ -516,14 +500,19 @@ class fiberCollection(object):
     ## ====================================================
     ##  "PRIVATE" METHODS NOT ACCESSED OUTSIDE OF THIS CLASS
     ## ====================================================
-    def GPUSubtractSelfTerms(self,Ndir,Xupsampled,fupsampled):
+    def SubtractSelfTerms(self,Ndir,Xupsampled,fupsampled,useGPU=False):
         """
         Subtract the self RPY integrals on each fiber
         Inputs: Ndir = number of points for direct quad,
         Xupsampled = upsampled positions, fupsampled = upsampled forces
-        Return thr direct RPY velocities
+        Return the direct RPY velocities
         """
-        hydrodynamicRadius = aRPYFac*self._epsilon*self._Lf;
+        if (not useGPU):
+            U1=self._FibColCpp.SingleFiberRPYSum(Ndir,Xupsampled,fupsampled);
+            return np.reshape(U1,(self._Nfib*Ndir,3));
+        
+        # GPU Version
+        hydrodynamicRadius = self._fiberDisc._a;
         selfMobility= 1.0/(6*pi*self._mu*hydrodynamicRadius);
         
         precision = np.float64;
@@ -539,14 +528,14 @@ class fiberCollection(object):
         	raise ValueError('You are getting zero velocity with finite force, your UAMMD precision is wrong!') 
         return np.reshape(MF,(self._Nfib*Ndir,3));
         
-    def calcLocalVelocities(self,X,forceDsAll):
+    def LocalVelocity(self,X,Forces):
         """
         Compute the LOCAL velocity on each fiber. 
         Inputs: Xs = positions as a (tot#ofpts*3) 1D array
         forceDsAll = the force densities respectively on the fibers as a 1D array
         Outputs: the velocity M_loc*f on all fibers as a 1D array
         """
-        return self._FibColCpp.evalLocalVelocities(X,forceDsAll,self._fiberDisc._truRPYMob)
+        return self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc);
         
     def evalU0(self,Xin,t):
         """
@@ -559,13 +548,12 @@ class fiberCollection(object):
         U0[:,0]=self._gam0*np.cos(self._omega*t)*Xin[:,1];
         return np.reshape(U0,3*len(Xin[:,0]));
     
-    def evalBendForceDensity(self,X_nonLoc):
+    def evalBendForce(self,X_nonLoc):
         """
-        Evaluate the bending force density
+        Evaluate the bending FORCES
         Inputs: X to evaluate at
-        Outputs: the forceDensities -EX_ssss also as a (tot#ofpts) x 3 array
+        Outputs: the forces -Wtilde*EX_ssss also as a (tot#ofpts) x 3 array
         """
-        print('Check this is density')
         return self._FibColCpp.evalBendForces(X_nonLoc);
         
     def calcCurvatures(self,X):
@@ -591,10 +579,10 @@ class SemiflexiblefiberCollection(fiberCollection):
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY
     ## ====================================================   
-    def formBlockDiagRHS(self, X_nonLoc,Xs_nonLoc,t,exForceDen,lamstar,Dom,RPYEval,FPimplicit=0,returnForce=False):
+    def formBlockDiagRHS(self, X_nonLoc,Xs_nonLoc,t,exForce,lamstar,Dom,RPYEval,includeFP=0,returnForce=False):
         """
         """
-        self._exForceDen = exForceDen;
+        self._exForce = exForce;
         return np.zeros(3*self._Nfib*self._NXpf);
         
     def BrownianUpdate(self,dt,kbT,Randoms):

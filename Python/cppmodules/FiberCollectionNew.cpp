@@ -57,6 +57,7 @@ class FiberCollectionNew {
 
         _MobilityEvaluator.initMobilitySubmatrices(pyXNodes,pyCs,pyFPMatrix,pyDoubFPMatrix,pyRL2aResampMatrix,
             pyRLess2aWts,pyXDiffMatrix,pyWTildeXInverse,pyOversampleForDirectQuad,pyUpsamplingMatrix,eigValThres);
+        _nUpsample = _MobilityEvaluator.getNupsample();
         _WTildeX = vec(pyWTildeX.size());
         _WTildeXInv = vec(pyWTildeXInverse.size());
         std::memcpy(_WTildeX.data(),pyWTildeX.data(),pyWTildeX.size()*sizeof(double));
@@ -101,7 +102,7 @@ class FiberCollectionNew {
             for (int i=0; i < 3*_nXPerFib; i++){
                 FiberPoints[i] = chebPts[3*_nXPerFib*iFib+i];
             }
-            BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,1,1.0,0.0,_D4BC,false,FiberPoints,LocalForces);
+            BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,1,1.0,0.0,_D4BCForce,false,FiberPoints,LocalForces);
             for (int i=0; i < 3*_nXPerFib; i++){
                 Forces[3*_nXPerFib*iFib+i] = LocalForces[i];
             }
@@ -128,7 +129,64 @@ class FiberCollectionNew {
         return makePyDoubleArray(AllUniPoints);
     }
     
-    py::array evalLocalVelocities(npDoub pyPositions, npDoub pyForceDensities, bool ExactRPY){
+    py::array getUpsampledPoints(npDoub pyPoints){
+        vec chebPts(pyPoints.size());
+        std::memcpy(chebPts.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
+        vec AllUpsampPoints(3*_NFib*_nUpsample);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < _NFib; iFib++){
+            vec FiberPoints(3*_nXPerFib);
+            vec LocalUpsampPts(3*_nUpsample);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                FiberPoints[i] = chebPts[3*_nXPerFib*iFib+i];
+            }
+            _MobilityEvaluator.UpsampledPoints(FiberPoints, LocalUpsampPts);
+            for (int i=0; i < 3*_nUpsample; i++){
+                AllUpsampPoints[3*_nUpsample*iFib+i] = LocalUpsampPts[i];
+            }
+        }
+        return makePyDoubleArray(AllUpsampPoints);
+    }
+    
+    py::array getUpsampledForces(npDoub pyForces){
+        vec chebForces(pyForces.size());
+        std::memcpy(chebForces.data(),pyForces.data(),pyForces.size()*sizeof(double));
+        vec AllUpsampForces(3*_NFib*_nUpsample);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < _NFib; iFib++){
+            vec FiberForces(3*_nXPerFib);
+            vec LocalUpsampForces(3*_nUpsample);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                FiberForces[i] = chebForces[3*_nXPerFib*iFib+i];
+            }
+            _MobilityEvaluator.UpsampledForces(FiberForces, LocalUpsampForces);
+            for (int i=0; i < 3*_nUpsample; i++){
+                AllUpsampForces[3*_nUpsample*iFib+i] = LocalUpsampForces[i];
+            }
+        }
+        return makePyDoubleArray(AllUpsampForces);
+    }
+    
+    py::array getDownsampledVelocities(npDoub pyUpVelocities){
+        vec chebUpVels(pyUpVelocities.size());
+        std::memcpy(chebUpVels.data(),pyUpVelocities.data(),pyUpVelocities.size()*sizeof(double));
+        vec AllDownVels(3*_NFib*_nXPerFib);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < _NFib; iFib++){
+            vec FiberUpVels(3*_nUpsample);
+            vec LocalDownSampVel(3*_nXPerFib);
+            for (int i=0; i < 3*_nUpsample; i++){
+                FiberUpVels[i] = chebUpVels[3*_nUpsample*iFib+i];
+            }
+            _MobilityEvaluator.DownsampledVelocity(FiberUpVels, LocalDownSampVel);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                AllDownVels[3*_nXPerFib*iFib+i] = LocalDownSampVel[i];
+            }
+        }
+        return makePyDoubleArray(AllDownVels);
+    }
+       
+    py::array evalLocalVelocities(npDoub pyChebPoints, npDoub pyForces, bool includeFP){
         /*
         Evaluate the local velocities M_local*f on the fiber.
         pyPositions = collocation points
@@ -136,26 +194,28 @@ class FiberCollectionNew {
         Exact RPY = whether we're doing exact RPY hydro or SBT
         @return 1D numpy array of local velocities
         */
-        vec Positions(pyPositions.size());
-        std::memcpy(Positions.data(),pyPositions.data(),pyPositions.size()*sizeof(double));
-        vec ForceDensities(pyForceDensities.size());
-        std::memcpy(ForceDensities.data(),pyForceDensities.data(),pyForceDensities.size()*sizeof(double));
-        vec AllLocalVelocities(Positions.size());
-        std::cout << "Explicit local drag not tested " << std::endl;
+        // allocate std::vector (to pass to the C++ function)
+        vec ChebPoints(pyChebPoints.size());
+        vec Forces(pyForces.size());
+        // copy py::array -> std::vector
+        std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
+        std::memcpy(Forces.data(),pyForces.data(),pyForces.size()*sizeof(double));
         
+        vec AllLocalVelocities(ChebPoints.size(),0.0);
+        int NFibIn = ChebPoints.size()/(3*_nXPerFib); // determine how many fibers we are working with
         #pragma omp parallel for num_threads(_nOMPThr)
-        for (int iFib=0; iFib < _NFib; iFib++){
+        for (int iFib=0; iFib < NFibIn; iFib++){
             int start = 3*iFib*_nXPerFib;
             vec LocalPts(3*_nXPerFib);
-            vec LocalForceDens(3*_nXPerFib);
+            vec LocalForces(3*_nXPerFib);
             for (int iPt=0; iPt < 3*_nXPerFib; iPt++){
-                LocalPts[iPt]=Positions[start+iPt];
-                LocalForceDens[iPt]=ForceDensities[start+iPt];
+                LocalPts[iPt]=ChebPoints[start+iPt];
+                LocalForces[iPt]=Forces[start+iPt];
             }
-            vec MLoc(9*_nXPerFib*_nXPerFib);
-            _MobilityEvaluator.MobilityMatrix(LocalPts, true, false, MLoc);
+            vec MLoc(9*_nXPerFib*_nXPerFib), EigVecs(9*_nXPerFib*_nXPerFib), EigVals(3*_nXPerFib);
+            _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MLoc,EigVecs,EigVals);
             vec LocalVel(3*_nXPerFib);
-            BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,1,1.0,0.0,MLoc,false,LocalForceDens,LocalVel);
+            ApplyMatrixPowerFromEigDecomp(3*_nXPerFib, 1.0, EigVecs, EigVals, LocalForces, LocalVel);  
             for (int iPt=0; iPt < 3*_nXPerFib; iPt++){
                 AllLocalVelocities[start+iPt]=LocalVel[iPt];
             }
@@ -163,21 +223,55 @@ class FiberCollectionNew {
         return make1DPyArray(AllLocalVelocities);
     }
     
-    npDoub FinitePartVelocity(npDoub pyChebPoints, npDoub pyForceDens, bool exactRPY){
+    py::array SingleFiberRPYSum(int NPerFib, npDoub pyChebPoints, npDoub pyForces){
+        /*
+        Evaluate the free space RPY kernel M*F on the fiber.
+        pyChebPoints = collocation points
+        pyForces = forces on the fiber
+        @return 1D numpy array of local velocities
+        */
+        // allocate std::vector (to pass to the C++ function)
+        vec ChebPoints(pyChebPoints.size());
+        vec Forces(pyForces.size());
+        // copy py::array -> std::vector
+        std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
+        std::memcpy(Forces.data(),pyForces.data(),pyForces.size()*sizeof(double));
+        
+        vec AllLocalVelocities(ChebPoints.size(),0.0);
+        int NFibIn = ChebPoints.size()/(3*NPerFib); // determine how many fibers we are working with
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib=0; iFib < NFibIn; iFib++){
+            int start = 3*iFib*NPerFib;
+            vec LocalPts(3*NPerFib);
+            vec LocalForces(3*NPerFib);
+            for (int iPt=0; iPt < 3*NPerFib; iPt++){
+                LocalPts[iPt]=ChebPoints[start+iPt];
+                LocalForces[iPt]=Forces[start+iPt];
+            }
+            vec ULocal(3*NPerFib);
+            _MobilityEvaluator.RPYVelocityFromForces(LocalPts, LocalForces,ULocal);
+            for (int iPt=0; iPt < 3*NPerFib; iPt++){
+                AllLocalVelocities[start+iPt]=ULocal[iPt];
+            }
+        }
+        return make1DPyArray(AllLocalVelocities);
+
+    }
+    
+    npDoub FinitePartVelocity(npDoub pyChebPoints, npDoub pyForces){
         /**
         Compute the finite part velocity on all fibers 
         @param pyChebPoints = Npts * 3 numpy array (2D) of Chebyshev points on ALL fibers
-        @param pyForceDens = Npts * 3 numpy array (2D) of force densities on ALL fibers
+        @param pyForceDens = Npts * 3 numpy array (2D) of forces on ALL fibers
         @return velocities = Npts * 3 numpy array (1D, row stacked "C" order) of finite part velocities
         **/
 
         // allocate std::vector (to pass to the C++ function)
         vec ChebPoints(pyChebPoints.size());
-        vec FDens(pyForceDens.size());
+        vec Forces(pyForces.size());
         // copy py::array -> std::vector
         std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
-        std::memcpy(FDens.data(),pyForceDens.data(),pyForceDens.size()*sizeof(double));
-        std::cout << "Explicit finite part not tested " << std::endl;
+        std::memcpy(Forces.data(),pyForces.data(),pyForces.size()*sizeof(double));
         
         vec AlluFP(ChebPoints.size(),0.0);
         int NFibIn = ChebPoints.size()/(3*_nXPerFib); // determine how many fiber we are working with
@@ -186,10 +280,12 @@ class FiberCollectionNew {
             int start = 3*iFib*_nXPerFib;
             vec LocalPts(3*_nXPerFib);
             vec LocalForceDens(3*_nXPerFib);
+            vec LocalForces(3*_nXPerFib);
             for (int iPt=0; iPt < 3*_nXPerFib; iPt++){
                 LocalPts[iPt]=ChebPoints[start+iPt];
-                LocalForceDens[iPt]=FDens[start+iPt];
+                LocalForces[iPt]=Forces[start+iPt];
             }
+            BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,1,1.0,0.0,_WTildeXInv,false,LocalForces,LocalForceDens);
             vec MFP(9*_nXPerFib*_nXPerFib);
             _MobilityEvaluator.MobilityMatrix(LocalPts, false,true, MFP);
             vec LocalFPVel(3*_nXPerFib);
@@ -200,6 +296,7 @@ class FiberCollectionNew {
         } // end fiber loop
         return make1DPyArray(AlluFP);
     } // end calcFP velocity
+    
     
     py::array ThermalTranslateAndDiffuse(npDoub pyPoints, npDoub pyTangents,npDoub pyRandVec1,bool implicitFP, double dt){
 
@@ -268,7 +365,7 @@ class FiberCollectionNew {
         return make1DPyArray(AllAlphas);      
     }
     
-    py::array applyPreconditioner(npDoub pyPoints, npDoub pyTangents,npDoub pyExForceDens, 
+    py::array applyPreconditioner(npDoub pyPoints, npDoub pyTangents,npDoub pyExForces,npDoub pyURHS,
         double impco, double dt, bool implicitFP,bool rigid){
         /*
         Apply preconditioner to obtain lambda and alpha. 
@@ -287,28 +384,28 @@ class FiberCollectionNew {
         std::memcpy(chebPoints.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
         vec Tangents(pyTangents.size());
         std::memcpy(Tangents.data(),pyTangents.data(),pyTangents.size()*sizeof(double));
-        vec ExForceDens(pyExForceDens.size());
-        std::memcpy(ExForceDens.data(),pyExForceDens.data(),pyExForceDens.size()*sizeof(double));
+        vec ExForces(pyExForces.size());
+        std::memcpy(ExForces.data(),pyExForces.data(),pyExForces.size()*sizeof(double));
+        vec U_RHS(pyURHS.size());
+        std::memcpy(U_RHS.data(),pyURHS.data(),pyURHS.size()*sizeof(double));
                 
         vec LambasAndAlphas(6*_nXPerFib*_NFib);
         #pragma omp parallel for num_threads(_nOMPThr)
         for (int iFib = 0; iFib < _NFib; iFib++){
 	        vec LocalPoints(3*_nXPerFib);
             vec LocalTangents(3*_nTauPerFib);
-            vec LocalForceDen(3*_nXPerFib), MinvbFib(3*_nXPerFib);
+            vec MinvbFib(3*_nXPerFib), LocalExForce(3*_nXPerFib), LocalURHS(3*_nXPerFib);
             for (int i=0; i < 3*_nXPerFib; i++){
                 LocalPoints[i] = chebPoints[3*_nXPerFib*iFib+i];
-                LocalForceDen[i] = ExForceDens[3*_nXPerFib*iFib+i];
+                LocalExForce[i] = ExForces[3*_nXPerFib*iFib+i];
+                LocalURHS[i] = U_RHS[3*_nXPerFib*iFib+i];
             }
             for (int i=0; i< 3*_nTauPerFib; i++){
                 LocalTangents[i] = Tangents[3*_nTauPerFib*iFib+i];
             }
-            vec LocalExForce(3*_nXPerFib);
-            BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,1,1.0,0.0,_WTildeX,true,LocalForceDen,LocalExForce);
             
             int FullSize = 3*_nXPerFib;
-            vec ForceN(FullSize), U0(FullSize,0.0);
-            BlasMatrixProduct(FullSize,FullSize,1.0,1.0,0.0,_D4BCForce,false,LocalPoints,ForceN);
+            vec ForceN(FullSize,0.0);
             for (int i=0; i < FullSize; i++){
                 ForceN[i]+=LocalExForce[i];
             }
@@ -317,7 +414,7 @@ class FiberCollectionNew {
                 systemSize = 6;
             }
             vec alphas(systemSize), Lambda(3*_nXPerFib);
-            SolveSaddlePoint(LocalPoints, LocalTangents, ForceN, U0, impco,dt, rigid, implicitFP, alphas,Lambda);
+            SolveSaddlePoint(LocalPoints, LocalTangents, ForceN, LocalURHS, impco,dt, rigid, implicitFP, alphas,Lambda);
                        
             for (int i=0; i < FullSize; i++){
                 LambasAndAlphas[FullSize*iFib+i] =Lambda[i]; // lambda
@@ -336,7 +433,63 @@ class FiberCollectionNew {
         return make1DPyArray(LambasAndAlphas);      
     }
     
-    py::array applyThermalPreconditioner(npDoub pyPoints, npDoub pyTangents, npDoub pyMidpoints, npDoub pyU0, npDoub pyExForceDen,
+    py::array KAlphaKTLambda(npDoub pyTangents,npDoub pyAlphas,npDoub pyLambdas,bool rigid){
+        /*
+        Compute the products K*alpha and K^T*Lambda
+        */
+
+        // allocate std::vector (to pass to the C++ function)
+        vec Tangents(pyTangents.size());
+        std::memcpy(Tangents.data(),pyTangents.data(),pyTangents.size()*sizeof(double));
+        vec Alphas(pyAlphas.size());
+        std::memcpy(Alphas.data(),pyAlphas.data(),pyAlphas.size()*sizeof(double));
+        vec Lambdas(pyLambdas.size());
+        std::memcpy(Lambdas.data(),pyLambdas.data(),pyLambdas.size()*sizeof(double));
+        
+        int systemSize = 3*_nXPerFib;
+        if (rigid){
+            systemSize = 6;
+        }
+        vec KAlphaKTLambda(3*_nXPerFib*_NFib+systemSize*_NFib);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < _NFib; iFib++){        
+            vec LocalLams(3*_nXPerFib);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                LocalLams[i] = Lambdas[3*_nXPerFib*iFib+i];
+            }
+            vec LocalTangents(3*_nTauPerFib);
+            for (int i=0; i< 3*_nTauPerFib; i++){
+                LocalTangents[i] = Tangents[3*_nTauPerFib*iFib+i];
+            }
+            vec LocalAlphas(systemSize);
+            for (int i=0; i < systemSize; i++){
+                LocalAlphas[i] = Alphas[3*_nXPerFib*iFib+i];
+                if (rigid && i > 2){
+                    LocalAlphas[i] = Alphas[3*_nXPerFib*iFib+3*(_nXPerFib-1)+(i%3)]; 
+                }   
+            }
+            // Form K and compute products with it
+            vec K(3*_nXPerFib*systemSize);
+            if (rigid){
+                calcKRigid(LocalTangents,K);
+            } else {
+                calcK(LocalTangents,K);
+            }
+            vec LocKAlphas(3*_nXPerFib), LocKTLambda(3*_nXPerFib);
+            BlasMatrixProduct(3*_nXPerFib,systemSize,1,1.0, 0.0,K,false,LocalAlphas,LocKAlphas);
+            BlasMatrixProduct(systemSize,3*_nXPerFib,1,1.0, 0.0,K,true,LocalLams,LocKTLambda);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                KAlphaKTLambda[3*_nXPerFib*iFib+i] = LocKAlphas[i];
+            }
+            for (int i=0; i < systemSize; i++){
+                KAlphaKTLambda[3*_nXPerFib*_NFib+iFib*systemSize+i] = LocKTLambda[i];
+            }
+        }
+        return make1DPyArray(KAlphaKTLambda);
+    }
+            
+    
+    py::array applyThermalPreconditioner(npDoub pyPoints, npDoub pyTangents, npDoub pyMidpoints, npDoub pyU0, npDoub pyExForces,
         npDoub pyRandVec1, npDoub pyRandVec2, double impco, double dt, bool ModifiedBE, bool implicitFP){
         /*
         Apply preconditioner to obtain lambda and alpha for SEMIFLEXIBLE FLUCTUATING FIBERS.  
@@ -354,7 +507,7 @@ class FiberCollectionNew {
         @return a vector (lambda,alpha) with the values on all fibers in a collection
         */
 
-
+        std::cout << "This needs to be updated to pass force (incl. elastic) and velocity" << std::endl;
         // allocate std::vector (to pass to the C++ function)
         vec chebPoints(pyPoints.size());
         std::memcpy(chebPoints.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
@@ -368,8 +521,8 @@ class FiberCollectionNew {
         std::memcpy(RandVec2.data(),pyRandVec2.data(),pyRandVec2.size()*sizeof(double));
         vec U0(pyU0.size());
         std::memcpy(U0.data(),pyU0.data(),pyU0.size()*sizeof(double));
-        vec ExForceDensity(pyExForceDen.size());
-        std::memcpy(ExForceDensity.data(),pyExForceDen.data(),pyExForceDen.size()*sizeof(double));
+        vec ExForces(pyExForces.size());
+        std::memcpy(ExForces.data(),pyExForces.data(),pyExForces.size()*sizeof(double));
         int sysDim = 3*_nXPerFib;
 
         vec LambasAndAlphas(6*_nXPerFib*_NFib);
@@ -381,17 +534,15 @@ class FiberCollectionNew {
             vec LocalRand1(sysDim);
             vec LocalRand2(sysDim);
             vec LocalU0(sysDim);
-            vec LocalExForceDen(sysDim);
             vec LocalExForce(sysDim);
             for (int i=0; i < sysDim; i++){
                 LocalPoints[i] = chebPoints[sysDim*iFib+i];
                 LocalRand1[i] = RandVec1[sysDim*iFib+i];
                 LocalRand2[i] = RandVec2[sysDim*iFib+i];
                 LocalU0[i] = U0[sysDim*iFib+i];
-                LocalExForceDen[i] = ExForceDensity[sysDim*iFib+i];
+                LocalExForce[i] = ExForces[sysDim*iFib+i];
             }
             // Convert force to force density
-            BlasMatrixProduct(sysDim,sysDim,1,1.0,0.0,_WTildeX,true,LocalExForceDen,LocalExForce);
             vec ForceN(sysDim);
             BlasMatrixProduct(sysDim,sysDim,1.0,1.0,0.0,_D4BCForce,false,LocalPoints,ForceN);
             for (int i=0; i < sysDim; i++){
@@ -533,7 +684,7 @@ class FiberCollectionNew {
     
     // Basic force
     int _nOMPThr, _NFib, _nXPerFib, _nTauPerFib;
-    int _nUni;
+    int _nUni, _nUpsample;
     vec _UnifRSMat, _BendMatX0;
     double _svdtol, _svdRigid, _kbT;
     SingleFiberMobilityEvaluator _MobilityEvaluator;
@@ -779,9 +930,14 @@ PYBIND11_MODULE(FiberCollectionNew, m) {
         .def("initResamplingMatrices", &FiberCollectionNew::initResamplingMatrices)
         .def("evalBendForces",&FiberCollectionNew::evalBendForces)
         .def("getUniformPoints", &FiberCollectionNew::getUniformPoints)
+        .def("getUpsampledPoints", &FiberCollectionNew::getUpsampledPoints)
+        .def("getUpsampledForces", &FiberCollectionNew::getUpsampledForces)
+        .def("getDownsampledVelocities", &FiberCollectionNew::getDownsampledVelocities)
         .def("evalLocalVelocities",&FiberCollectionNew::evalLocalVelocities)
+        .def("SingleFiberRPYSum",&FiberCollectionNew::SingleFiberRPYSum)
         .def("FinitePartVelocity",&FiberCollectionNew::FinitePartVelocity)
         .def("applyPreconditioner",&FiberCollectionNew::applyPreconditioner)
+        .def("KAlphaKTLambda",&FiberCollectionNew::KAlphaKTLambda)
         .def("applyThermalPreconditioner",&FiberCollectionNew::applyThermalPreconditioner)
         .def("RodriguesRotations",&FiberCollectionNew::RodriguesRotations)
         .def("ThermalTranslateAndDiffuse",&FiberCollectionNew::ThermalTranslateAndDiffuse);

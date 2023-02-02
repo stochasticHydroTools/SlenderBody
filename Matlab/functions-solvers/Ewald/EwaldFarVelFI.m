@@ -30,15 +30,15 @@ function velfar = EwaldFarVelFI(ptsxyz,forces,mu,Lx,Ly,Lz,xi,a,g)
     for iX=1:nx
         for iY=1:ny
             for iZ=1:nz
-                if (k(iY,iX,iZ)>0)
-                    ks=[kx(iY,iX,iZ) ky(iY,iX,iZ)-g*kx(iY,iX,iZ) kz(iY,iX,iZ)];
+                if (k(iX,iY,iZ)>0)
+                    ks=[kx(iX,iY,iZ) ky(iX,iY,iZ)-g*kx(iX,iY,iZ) kz(iX,iY,iZ)];
                     ks=ks/norm(ks);
-                    usofar=[uxhat(iY,iX,iZ); uyhat(iY,iX,iZ); ...
-                        uzhat(iY,iX,iZ)];
+                    usofar=[uxhat(iX,iY,iZ); uyhat(iX,iY,iZ); ...
+                        uzhat(iX,iY,iZ)];
                     u_off = (eye(3)-(ks'*ks))*usofar;
-                    uxhat(iY,iX,iZ)=u_off(1);
-                    uyhat(iY,iX,iZ)=u_off(2);
-                    uzhat(iY,iX,iZ)=u_off(3);
+                    uxhat(iX,iY,iZ)=u_off(1);
+                    uyhat(iX,iY,iZ)=u_off(2);
+                    uzhat(iX,iY,iZ)=u_off(3);
                 end
             end
         end

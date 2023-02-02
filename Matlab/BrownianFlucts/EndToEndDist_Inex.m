@@ -45,8 +45,9 @@ RectangularCollocation=0;
 %tf = 10*Timescales(7);
 mu = 1;
 tf = 0.01*mu*L^4/(log(eps^(-1))*Eb);
-for iDT=2
+for iDT=3
 dt = dts(iDT);
+dt=tf/1000;
 saveEvery = 1;
 nBins = 1000;
 

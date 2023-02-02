@@ -24,7 +24,7 @@ class FibCollocationDiscretization(object):
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16,rigid=False,\
-        RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True):
+        RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True):
         """
         Constructor. 
         L = fiber length, epsilon = fiber aspect ratio (IMPORTANT: this is the actual aspect ratio,
@@ -52,6 +52,10 @@ class FibCollocationDiscretization(object):
         self._nptsDirect = NupsampleForDirect;
         self._RPYSpecialQuad = RPYSpecialQuad;
         self._RPYDirectQuad = RPYDirectQuad;
+        self._FinitePartLocal=FPIsLocal;
+        if (self._RPYDirectQuad):
+            print('Overwriting the number of oversampling points with Nx, since you selected direct quad')
+            self._nptsDirect = self._Nx;
         self._RPYOversample = RPYOversample;
         self._Nsmall = 0;
         self._BendMatX0 = np.zeros(3*self._Nx)
@@ -131,11 +135,11 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
-        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True,penaltyParam=0):
+        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True,penaltyParam=0):
         """
         Initialize Chebyshev grids for x and tau
         """
-        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc);
+        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc,FPIsLocal);
 		# Chebyshev grid and weights
         self._sTau = cf.chebPts(self._Ntau,[0,self._L],chebGridType);
         self._wTau = cf.chebWts(self._Ntau,[0,self._L],chebGridType);
@@ -245,7 +249,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         for iD in range(3):
             self._D4BC[iD::3,iD::3]=OneD4BC; 
             self._D4BCForce[iD::3,iD::3]=OneD4BCForce; 
-            self._D4BCForceHalf[iD::3,iD::3]=OneD4BCForceHalf; 
+            self._D4BCForceHalf[iD::3,iD::3]=np.real(OneD4BCForceHalf); 
             self._stackWTilde_Nx[iD::3,iD::3] =  self._WtildeNx;    
             self._stackWTildeInverse_Nx[iD::3,iD::3] =  np.linalg.inv(self._WtildeNx);   
     

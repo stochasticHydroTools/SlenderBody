@@ -67,7 +67,7 @@ class CrossLinkedNetwork(object):
         FibFromSiteIndex = np.repeat(np.arange(nFib,dtype=np.int64),self._NsitesPerf);
         NChebs = self._Npf*np.ones(nFib,dtype=np.int64);
         self._CForceEvaluator = CForceEvalCpp(self._NsitesPerf,np.tile(self._su,nFib),fibDisc._MatfromNtoUniform[0::3,0::3],\
-            fibDisc._stackWTildeInverse_Nx,FibFromSiteIndex,NChebs,np.tile(fibDisc.gets(),nFib),\
+            fibDisc._stackWTilde_Nx,FibFromSiteIndex,NChebs,np.tile(fibDisc.gets(),nFib),\
             self._wCheb,self._sigma*np.ones(nFib),self._kCL,self._rl,nThreads);
     
     def sigmaFromNL(self,N,L):

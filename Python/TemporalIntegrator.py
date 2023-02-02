@@ -6,6 +6,7 @@ from functools import partial
 from mykrypy.linsys import LinearSystem, Gmres # mykrypy is krypy with modified linsys.py
 from mykrypy.utils import ConvergenceError     # mykrypy is krypy with modified linsys.py
 from warnings import warn
+from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
 itercap = 300; # cap on GMRES iterations if we converge all the way
@@ -22,13 +23,12 @@ class TemporalIntegrator(object):
     Abstract class: does first order explicit
     """
     
-    def __init__(self,fibCol,CLNetwork=None,FPimp=0):
+    def __init__(self,fibCol,CLNetwork=None):
         self._allFibers = fibCol;
         self._allFibersPrev = copy.deepcopy(self._allFibers); # initialize previous fiber network object
         self._CLNetwork = CLNetwork;
         self._impco = 0; #coefficient for linear solves
         self._maxGMIters = itercap;
-        self._FPimplicit = FPimp; # treat finite part implicitly?
     
     def getXandXsNonLoc(self):
         """
@@ -161,34 +161,34 @@ class TemporalIntegrator(object):
         lamStar = self.getLamNonLoc(iT); # lambdas
         self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
         
-        RHS = self._allFibers.formBlockDiagRHS(XforNL,XsforNL,tvalSolve,forceExt,lamStar,Dom,Ewald,FPimplicit=self._FPimplicit);
+        ExForce, UNonLoc = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
         if (verbose > 0):
             print('Time to form RHS %f' %(time.time()-thist))
             thist = time.time()
             
         # Apply preconditioner to get (delta lambda,delta alpha) from the block diagonal solver
-        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(XsforNL,dt,self._impco,XforNL,doFP=self._FPimplicit)
+        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(UNonLoc,XsforNL,dt,self._impco,XforNL,ExForce);
         if (verbose > 0):
             print('Time to apply preconditioner %f' %(time.time()-thist))
             thist = time.time()
         
         # Set answer = block diagonal or proceed with GMRES
         giters = self.getMaxIters(iT)-1; # subtract the first application of mobility/preconditioner
-        giters = 0; 
-        from warnings import warn
-        warn('Bypassing GMRES iterations for now to test new discretization. Return later')
-        if (giters==0):
+        if (giters==0 or isinstance(self._allFibers,SemiflexiblefiberCollection)):
             # Block diagonal acceptable 
             lamalph = BlockDiagAnswer;
             itsneeded = 0;
+            if (isinstance(self._allFibers,SemiflexiblefiberCollection)):
+                from warnings import warn
+                warn('Bypassing GMRES iterations for fluctuations')
         else:
             # GMRES set up and solve
-            RHS = self._allFibers.calcNewRHS(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald,FPimplicit=self._FPimplicit);
+            RHS = self._allFibers.calcResidualVelocity(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald);
             systemSize = self._allFibers.getSysDimension();
             A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
-                X_nonLoc=XforNL, Xs_nonLoc=XsforNL, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
+                X=XforNL, Xs=XsforNL, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
             Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
-                   Xs_nonLoc=XsforNL,dt=dt,implic_coeff=self._impco,X_nonLoc=XforNL,doFP=self._FPimplicit),dtype=np.float64);
+                   Xs_nonLoc=XsforNL,dt=dt,implic_coeff=self._impco,X_nonLoc=XforNL,ExForces=np.zeros(systemSize),),dtype=np.float64);
             SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
             if (giters == itercap-1):
                 gtol = GMREStolerance; # larger than GPU tolerance
@@ -206,13 +206,15 @@ class TemporalIntegrator(object):
                 resno = Solution.resnorms
                 print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
             lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
+            res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve);
+            print(np.amax(abs(res)))
             if (verbose > 0):
                 print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
                 thist = time.time()
                 
         # Update alpha and lambda and fiber positions
-        self._allFibers.updateLambdaAlpha(lamalph,XsforNL);
-        maxX = self._allFibers.updateAllFibers(dt,XsforNL);
+        self._allFibers.updateLambdaAlpha(lamalph);
+        maxX = self._allFibers.updateAllFibers(dt);
         if (verbose > 0):
             print('Update fiber time %f' %(time.time()-thist))
             thist = time.time()
@@ -265,8 +267,8 @@ class BackwardEuler(TemporalIntegrator):
     with a different implicit coefficient in the solves
     """
  
-    def __init__(self,fibCol,CLNetwork=None,FPimp=0):
-        super().__init__(fibCol,CLNetwork,FPimp);
+    def __init__(self,fibCol,CLNetwork=None):
+        super().__init__(fibCol,CLNetwork);
         self._impco = 1; #coefficient for linear solves
 
 class CrankNicolson(TemporalIntegrator):
@@ -277,9 +279,10 @@ class CrankNicolson(TemporalIntegrator):
     See parent class for method descriptions 
     """
     
-    def __init__(self,fibCol,CLNetwork=None,FPimp=0):
-        super().__init__(fibCol,CLNetwork,FPimp);
+    def __init__(self,fibCol,CLNetwork=None):
+        super().__init__(fibCol,CLNetwork);
         self._impco = 0.5; # coefficient for implicit solves
+        warn('Crank-Nicolson not tested in new discretization. Backward Euler recommended.')
       
     def getXandXsNonLoc(self):
         X = 1.5*self._allFibers.getX() - 0.5*self._allFibersPrev.getX();
