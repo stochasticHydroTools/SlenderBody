@@ -40,7 +40,7 @@ for Ld in Ldlist:
     for bendpow in [-2]: # loop over bending moduli
         Eb = 10.0**bendpow;
         print('Bending modulus %f' %Eb);
-        giters = 1; # begin with 1 iteration
+        giters = 2; # begin with 1 iteration
         done=0;
 
         while (done==0):
@@ -84,7 +84,7 @@ for Ld in Ldlist:
                     xlimit = 7;
                 if (maxX > xlimit):
                     print('Max x: %f' %maxX);
-                    raise ValueError('Unstable with Eb = %f' %(Eb))
+                    raise ValueError('Unstable with Eb = %f and giters = %d' %(Eb,giters))
 
             # Destruction and cleanup
             done=1;
