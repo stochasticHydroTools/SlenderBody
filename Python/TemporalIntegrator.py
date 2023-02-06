@@ -9,7 +9,7 @@ from warnings import warn
 from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
-itercap = 300; # cap on GMRES iterations if we converge all the way
+itercap = 100; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-6; # larger than GPU tolerance
 verbose = -1;
 
@@ -49,9 +49,6 @@ class TemporalIntegrator(object):
         > 1 = do nIters-1 GMRES iterations
         """
         self._maxGMIters = nIters;
-    
-    def setLargeTol(self,tol):
-        self._FiniteGMREStolerance = tol;
 
     def getMaxIters(self,iT):
         """
@@ -94,9 +91,66 @@ class TemporalIntegrator(object):
         else:
             Dom.setg(fixedg);       
         self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
+    
+                 
+    def SolveForFiberAlphaLambda(self,XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald):
+        """
+        This method solves the saddle point system for lambda and alpha. It is for DETERMINISTIC
+        fibers, and is based on solving a block-diagonal system first, then using GMRES to solve
+        for a residual lambda and alpha
+        """
+        thist = time.time();
+        ExForce, UNonLoc = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
+        if (verbose > 0):
+            print('Time to form RHS %f' %(time.time()-thist))
+            thist = time.time()
+            
+        # Apply preconditioner to get (delta lambda,delta alpha) from the block diagonal solver
+        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(UNonLoc,XsforNL,dt,self._impco,XforNL,ExForce);
+        if (verbose > 0):
+            print('Time to apply preconditioner %f' %(time.time()-thist))
+            thist = time.time()
+        
+        # Set answer = block diagonal or proceed with GMRES
+        giters = self.getMaxIters(iT)-1; # subtract the first application of mobility/preconditioner
+        if (giters==0 or isinstance(self._allFibers,SemiflexiblefiberCollection)):
+            # Block diagonal acceptable 
+            lamalph = BlockDiagAnswer;
+            itsneeded = 0;
+            if (isinstance(self._allFibers,SemiflexiblefiberCollection)):
+                from warnings import warn
+                warn('Bypassing GMRES iterations for fluctuations')
+        else:
+            # GMRES set up and solve
+            RHS = self._allFibers.calcResidualVelocity(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald);
+            systemSize = self._allFibers.getSysDimension();
+            A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
+                X=XforNL, Xs=XsforNL, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
+            Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
+                   Xs_nonLoc=XsforNL,dt=dt,implic_coeff=self._impco,X_nonLoc=XforNL,ExForces=np.zeros(systemSize)),dtype=np.float64);
+            SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
+            Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=GMREStolerance,maxiter=giters)
+            lamalphT = Solution.xk;
+            itsneeded = len(Solution.resnorms)
+            if (verbose > 0): 
+                resno = Solution.resnorms
+                print(resno)
+                print('Number of iterations %d' %len(resno))
+                print('Last residual %f' %resno[len(resno)-1])
+            if (itsneeded == itercap):
+                resno = Solution.resnorms
+                print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
+            lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
+            #res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
+            #print('Res Chk')
+            #print(np.amax(abs(res)))
+            if (verbose > 0):
+                print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
+                thist = time.time()
+        return lamalph, itsneeded;
 
-    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,updateNet=False,turnoverFibs=False,\
-        BrownianUpdate=False,fixedg=None,stress=False):
+    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,\
+        updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the maximum number of steps numSteps,
@@ -110,22 +164,20 @@ class TemporalIntegrator(object):
         # Birth / death fibers
         thist = time.time() 
         if (turnoverFibs):
-            bornFibs = self._allFibers.FiberBirthAndDeath(self.getFirstNetworkStep(dt,iT),self._allFibersPrev);
+            bornFibs = self._allFibers.FiberBirthAndDeath(dt);
             self._CLNetwork.deleteLinksFromFibers(bornFibs)
             if (verbose > 0):
                 print('Time to turnover fibers (first time) %f' %(time.time()-thist))
                 thist = time.time()    
         # Update the network (first time)
         if (updateNet):
-            self.NetworkUpdate(Dom,iT*dt,self.getFirstNetworkStep(dt,iT),fixedg);
+            self.NetworkUpdate(Dom,iT*dt,dt,fixedg);
             if (verbose > 0):
                 print('Time to update network (first time) %f' %(time.time()-thist))
                 thist = time.time()
         # Brownian update (always first order)
         thist = time.time() 
         if (BrownianUpdate):
-            if not (isinstance(self,BackwardEuler)):
-                raise ValueError('Must use backward Euler with Brownian fluctuations!')
             Randoms = np.random.randn(6*self._allFibers._Nfib);
             self._allFibers.BrownianUpdate(dt,Randoms);
             if (verbose > 0):
@@ -161,56 +213,7 @@ class TemporalIntegrator(object):
         lamStar = self.getLamNonLoc(iT); # lambdas
         self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
         
-        ExForce, UNonLoc = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
-        if (verbose > 0):
-            print('Time to form RHS %f' %(time.time()-thist))
-            thist = time.time()
-            
-        # Apply preconditioner to get (delta lambda,delta alpha) from the block diagonal solver
-        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(UNonLoc,XsforNL,dt,self._impco,XforNL,ExForce);
-        if (verbose > 0):
-            print('Time to apply preconditioner %f' %(time.time()-thist))
-            thist = time.time()
-        
-        # Set answer = block diagonal or proceed with GMRES
-        giters = self.getMaxIters(iT)-1; # subtract the first application of mobility/preconditioner
-        if (giters==0 or isinstance(self._allFibers,SemiflexiblefiberCollection)):
-            # Block diagonal acceptable 
-            lamalph = BlockDiagAnswer;
-            itsneeded = 0;
-            if (isinstance(self._allFibers,SemiflexiblefiberCollection)):
-                from warnings import warn
-                warn('Bypassing GMRES iterations for fluctuations')
-        else:
-            # GMRES set up and solve
-            RHS = self._allFibers.calcResidualVelocity(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald);
-            systemSize = self._allFibers.getSysDimension();
-            A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
-                X=XforNL, Xs=XsforNL, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
-            Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
-                   Xs_nonLoc=XsforNL,dt=dt,implic_coeff=self._impco,X_nonLoc=XforNL,ExForces=np.zeros(systemSize),),dtype=np.float64);
-            SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
-            if (giters == itercap-1):
-                gtol = GMREStolerance; # larger than GPU tolerance
-            else:
-                gtol = self._FiniteGMREStolerance;
-            Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=gtol,maxiter=giters)
-            lamalphT = Solution.xk;
-            itsneeded = len(Solution.resnorms)
-            if (giters > 5 and verbose > 0): 
-                resno = Solution.resnorms
-                print(resno)
-                print('Number of iterations %d' %len(resno))
-                print('Last residual %f' %resno[len(resno)-1])
-            if (itsneeded == itercap):
-                resno = Solution.resnorms
-                print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
-            lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
-            res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve);
-            print(np.amax(abs(res)))
-            if (verbose > 0):
-                print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
-                thist = time.time()
+        lamalph, itsneeded = self.SolveForFiberAlphaLambda(XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald)
                 
         # Update alpha and lambda and fiber positions
         self._allFibers.updateLambdaAlpha(lamalph);
@@ -228,21 +231,6 @@ class TemporalIntegrator(object):
             if (self._CLNetwork is not None):
                 CLstress = self._CLNetwork.CLStress(self._allFibers,XforNL,Dom);
             stressArray = np.array([lamStress ,ElasticStress, CLstress]);     
-                        
-        # Update the network (second time)
-        if (updateNet):
-            self.NetworkUpdate(Dom,(iT+1)*dt,self.getSecondNetworkStep(dt,iT,numSteps),fixedg);
-            if (verbose > 0):
-                print('Time to update network (second time) %f' %(time.time()-thist))
-                thist = time.time()  
-        # Turnover fibers (second time)
-        if (turnoverFibs):
-            bornFibs = self._allFibers.FiberBirthAndDeath(self.getSecondNetworkStep(dt,iT,numSteps),self._allFibersPrev);
-            self._CLNetwork.deleteLinksFromFibers(bornFibs)
-            #lBorn+=len(bornFibs);
-            if (verbose > 0):
-                print('Time to turnover fibers (second time) %f' %(time.time()-thist))
-                thist = time.time() 
                    
         if (write):
             self._allFibers.writeFiberLocations(outfile);
@@ -314,6 +302,53 @@ class CrankNicolson(TemporalIntegrator):
             return dt*0.5;
         return 0;
 
-    
+class MidpointDriftIntegrator(BackwardEuler):
 
+    def __init__(self,fibCol,CLNetwork=None):
+        super().__init__(fibCol,CLNetwork);
+        self._ModifyBE=True;
+        if (not isinstance(fibCol,SemiflexiblefiberCollection)):
+            raise TypeError('The midpoint drift integrator is for fibers with bending fluctuations only!')
+        
+    def SolveForFiberAlphaLambda(self,XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald):
+        """
+        """
+        ExForce, U0 = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
+        MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
+        TauMidtime, MPMidtime, XMidtime = self._allFibers.StepToMidpoint(MHalfEta,dt);
+        UBrown = self._allFibers.DriftPlusBrownianVel(XMidtime, MHalfEta, MMinusHalfEta,dt,self._ModifyBE,Dom,Ewald);
+        # Set the shear equal to the midtime shear
+        if (self._allFibers._nonLocal==1): 
+            # GMRES set up and solve
+            Dom.setg(self._allFibers.getg((iT+0.5)*dt)) #Test this!
+            if (Dom.getg() > 0):
+                warn('Test strained domain at midpoint!')
+            systemSize = self._allFibers.getSysDimension();
+            # Add velocity from external forcing
+            UExForce = self._allFibers.ComputeTotalVelocity(XMidtime,ExForce,Dom,Ewald);
+            RHS = np.concatenate((UBrown+U0+UExForce,np.zeros(systemSize//2)));
+            A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
+                X=XMidtime, Xs=TauMidtime, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
+            Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
+                   Xs_nonLoc=TauMidtime,dt=dt,implic_coeff=self._impco,X_nonLoc=XMidtime,ExForces=np.zeros(systemSize)),dtype=np.float64);
+            SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
+            Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=GMREStolerance,maxiter=itercap)
+            lamalph = np.reshape(Solution.xk,systemSize);
+            itsneeded = len(Solution.resnorms)
+            #if (giters > 5 and verbose > 0): 
+            resno = Solution.resnorms
+            print(resno)
+            print('Number of iterations %d' %len(resno))
+            print('Last residual %f' %resno[len(resno)-1])
+            if (itsneeded == itercap):
+                resno = Solution.resnorms
+                print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
+            res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XMidtime,TauMidtime,Dom,Ewald,tvalSolve,UBrown,ExForce);
+            print(np.amax(abs(res)))
+        else:
+            # Just apply block-diag precond
+            lamalph = self._allFibers.BlockDiagPrecond(UBrown+U0,TauMidtime,dt,self._impco,XMidtime,ExForce);
+        return lamalph, 0;
+        
+        return lamalph, itsneeded;
 
