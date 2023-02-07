@@ -62,3 +62,9 @@ class DiscretizedFiber(object):
         self._XMP = XMP;
         self._X = self._fibDisc.calcXFromXsAndMP(Xs,XMP);       
     
+    def getPositions(self):
+        """
+        Get the position and tangent vector as reshaped N x 3 arrays. 
+        """
+        return np.reshape(self._X,(self._fibDisc._Nx,3)), np.reshape(self._Xs,(self._fibDisc._Ntau,3)), self._XMP;
+    

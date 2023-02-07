@@ -1,8 +1,9 @@
 from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
 from FibCollocationDiscretizationNew import ChebyshevDiscretization
 from Domain import PeriodicShearedDomain
-from TemporalIntegrator import BackwardEuler
+from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
 from DiscretizedFiberNew import DiscretizedFiber
+from RPYVelocityEvaluator import EwaldSplitter, GPUEwaldSplitter
 import numpy as np
 from math import exp
 import sys
@@ -13,47 +14,43 @@ See Sections 4 and 5 in
 "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
 by O. Maxian, B. Sprinkle, and A. Donev. 
 
-As written right now, this function takes three command line arguments: 
-the -log of epsilonRPY (so 2 for epsRPY = 1e-2, 3 for epsRPY=1e-3), the time step size dt,
+As written right now, this function takes two command line arguments: 
+the -log of epsilonRPY (so 2 for epsRPY = 1e-2, 3 for epsRPY=1e-3),
 and the random seed. So calling
-python EndToEndFlucts.py 2 0.0001 3
-would simulate fibers with aRPY/L = 1e-2, dt = 0.0001, and seed = 3. 
+python EndToEndFlucts.py 2 3
+would simulate fibers with aRPY/L = 1e-2 and seed = 3. 
 """
 
-def makeStraightFibs(nFib,Lf,N,fibDisc):
+def makeStraightFibs(nFib,Lf,N,fibDisc,Ld=0):
     """
     Initialize a list of straight fibers that we will simulate 
     """
     # Falling fibers
     Xs = (np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T);
     Xs = np.reshape(Xs,3*N);
-    XMP = np.zeros(3);
+    XMP = np.array([0,Ld/nFib,0]);
     fibList = [None]*nFib
     for iFib in range(nFib):
         fibList[iFib] = DiscretizedFiber(fibDisc,Xs,XMP);
     return fibList;
 
 # Inputs 
-nFib=10          # number of fibers
+nFib=100         # number of fibers
 N=12          # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=4   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
+nonLocal=1   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
 nThr = 8;   # Number of OpenMP threads
 # Mobility options (can do SBT if all are set to false, otherwise some variant of RPY as described below)
-MobStr='CC';
+MobStr='NLOS64';
 RPYQuad = False;        # Special quadrature
-RPYDirect = True;       # Direct Clenshaw-Curtis quadrature
-RPYOversample = False;  # Oversampled quad
-NupsampleForDirect = 20; # Number of pts for oversampled quad
-FluctuatingFibs = True;
-RigidDiffusion = False;
-rigidDetFibs = False;
-Ld=10        # length of the periodic domain (not relevant here)
+RPYDirect = False;       # Direct Clenshaw-Curtis quadrature
+RPYOversample = True;  # Oversampled quad
+NupsampleForDirect = 64; # Number of pts for oversampled quad
+Ld=float(sys.argv[4]);        # length of the periodic domain
 mu=1            # fluid viscosity
 logeps = float(sys.argv[1]);
 eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3). The factor 4/exp(1.5) converts to actual fiber slenderness. 
-lpstar = 1;
-dt = float(sys.argv[2]);
+lpstar = 10;
 eigvalThres = 0.0;
 if (eps < 5e-3): # Only used for special quad
     if (N==12):
@@ -72,14 +69,17 @@ else:   # Only used for special quad
     
 kbT = 4.1e-3;
 Eb=lpstar*kbT*Lf;         # fiber bending stiffness
-tf = 0.01*mu*Lf**4/(np.log(10**logeps)*Eb) # extent longer if you want to simulate eq fluctuations
+tfund = 0.003*4*np.pi*mu*Lf**4/(np.log(10**logeps)*Eb) 
+tf = 10*tfund;
+dtfund = float(sys.argv[3]);
+dt = tfund*dtfund;
 penaltyParam = 0;
-seed = int(sys.argv[3]);
-nSaves = 100; # target number
-saveEvery = int(tf/(nSaves*dt));
+seed = int(sys.argv[2]);
+#nSaves = 100; # target number
+saveEvery = max(0.01/dtfund,1);#int(tf/(nSaves*dt)+1e-6);
 
-FileString = 'FreeFib.txt'#'SemiflexFlucts/Eps'+str(logeps)+'EndToEnd'+MobStr+'_N'+str(N)+'_Lp'+str(lpstar)\
-    #+'_dt'+str(dt)+'_'+str(seed)+'.txt'
+saveStr='Tol3Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
+FileString = 'SemiflexFlucts/Locs'+saveStr;
     
 # Initialize the domain
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
@@ -90,15 +90,19 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,deltaLoc
     
 # Initialize the master list of fibers
 allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,eigvalThres,nThreads=nThr);
-fibList = makeStraightFibs(nFib,Lf,N,fibDisc);
+#fibList = makeStraightFibs(nFib,Lf,N,fibDisc,Ld);
+np.random.seed(seed);
+fibList = [None]*nFib;
 allFibers.initFibList(fibList,Dom);
 
+Ewald=None;
+if (nonLocal==1):
+    totnumDir = fibDisc._nptsDirect*nFib;
+    xi = 3*totnumDir**(1/3)/Ld; # Ewald param
+    Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,totnumDir);
+
 # Initialize the temporal integrator
-TIntegrator = BackwardEuler(allFibers,FPimp=(nonLocal > 0));
-# Number of GMRES iterations for nonlocal solves
-# 1 = block diagonal solver
-# N > 1 = N-1 extra iterations of GMRES
-TIntegrator.setMaxIters(1);
+TIntegrator = MidpointDriftIntegrator(allFibers);
 
 # Prepare the output file and write initial locations
 np.random.seed(seed);
@@ -106,11 +110,13 @@ allFibers.writeFiberLocations(FileString,'w');
         
 # Time loop
 stopcount = int(tf/dt+1e-10);
-print(stopcount)
+itsNeeded = np.zeros(stopcount,dtype=np.int64);
 for iT in range(stopcount): 
     wr = 0;
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
-        print((iT+1)/stopcount)
-    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,write=wr,outfile=FileString);
+        print('Fraction done %f' %((iT+1)/stopcount))
+    maxX, its, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString);
+    itsNeeded[iT]=its;
+np.savetxt('SemiflexFlucts/ItsNeeded'+saveStr,itsNeeded)
         

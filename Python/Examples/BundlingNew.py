@@ -1,8 +1,9 @@
 from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
 from FibCollocationDiscretizationNew import ChebyshevDiscretization
 from DoubleEndedCrossLinkedNetwork import DoubleEndedCrossLinkedNetwork
+from RPYVelocityEvaluator import GPUEwaldSplitter
 from Domain import PeriodicShearedDomain
-from TemporalIntegrator import BackwardEuler
+from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
 from DiscretizedFiberNew import DiscretizedFiber
 from FileIO import prepareOutFile, writeArray
 import numpy as np
@@ -56,13 +57,18 @@ Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 # Initialize fiber discretization
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
     NupsampleForDirect=NupsampleForDirect,RPYSpecialQuad=RPYQuad,RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,
-    UseEnergyDisc=True,nptsUniform=Nuniformsites);
+    UseEnergyDisc=True,nptsUniform=Nuniformsites,FPIsLocal=(nonLocal>0));
 
 # Initialize the master list of fibers
 if (FluctuatingFibs):
     allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr);
 else:
     allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidDetFibs);
+
+Ewald = None;
+if (nonLocal==1):
+    xi = 2.4*(N*nFib)**(1/3)/Ld; # Ewald param
+    Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);   
 
 # Initialize the fiber list (straight fibers)
 np.random.seed(seed);
@@ -81,7 +87,9 @@ CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSec
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
 
 # Initialize the temporal integrator
-TIntegrator = BackwardEuler(allFibers,CLNet,FPimp=(nonLocal > 0));
+TIntegrator = BackwardEuler(allFibers,CLNet);
+if (FluctuatingFibs):
+    TIntegrator = MidpointDriftIntegrator(allFibers,CLNet);
 # Number of GMRES iterations for nonlocal solves
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
@@ -126,7 +134,7 @@ for iT in range(stopcount):
         wr=1;
         mythist = time.time()
     maxX, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
-        updateNet=updateNet,BrownianUpdate=RigidDiffusion);
+        updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
         print('MAIN Time step time %f ' %(time.time()-mythist));

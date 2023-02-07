@@ -1,13 +1,13 @@
 addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
 kbT = 4.1e-3;
-lpstar = 1;
+lpstar = 10;
 L = 2;
 Eb = lpstar*L*kbT;
 SplitScheme = 1;
 impcoeff=1;
 ModifyBE=1;
 IdForM = 0;
-eps = 1e-2;
+eps = 1e-3;
 N = 12;
 upsamp = 0 ;
 if (eps == 1e-3)
@@ -48,6 +48,8 @@ tf = 0.01*mu*L^4/(log(eps^(-1))*Eb);
 for iDT=3
 dt = dts(iDT);
 dt=tf/1000;
+dt = 0.005324395527187673;
+tf=100*dt;
 saveEvery = 1;
 nBins = 1000;
 

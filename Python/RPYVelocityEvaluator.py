@@ -275,7 +275,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
 
 
 # Parameters for Raul's code 
-GPUtol = 1e-10 # single precision, so 1e-6 is smallest tolerance
+GPUtol = 1e-3 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
     """
@@ -346,6 +346,28 @@ class GPUEwaldSplitter(EwaldSplitter):
         if (verbose > 0):
             print('Method Raul time: %f' %(time.time()-thist));
         return np.array(np.reshape(MF,(self._Npts,3)),np.float64);
+    
+    def calcMOneHalfW(self,ptsxyz,Dom):
+        """
+        Total velocity due to Ewald (far field + near field). 
+        Inputs: ptsxyz = the list of points 
+        Output: the total velocity as an Npts x 3 array.
+        """
+        # First check if Ewald parameter is ok
+        if (verbose > 0):
+            thist=time.time();
+        self._currentDomain = Dom;
+        pts = self._currentDomain.primecoords(ptsxyz);
+        self.checkrcut();
+        # Reshape for GPU
+        positions = np.array(np.reshape(pts,3*self._Npts), np.float64);
+        forces = 0*positions;
+        # It is really important that the result array has the same floating precision as the compiled uammd, otherwise
+        # python will just silently pass by copy and the results will be lost
+        MHalfW=np.zeros(3*self._Npts, np.float64);
+        self._GPUEwald.setShearStrain(self._currentDomain.getg())
+        self._GPUEwald.computeHydrodynamicDisplacements(positions,forces,MHalfW,temperature=0.5,prefactor = 1.0)
+        return MHalfW;
     
     def updateFarFieldArrays(self):
         """

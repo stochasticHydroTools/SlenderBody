@@ -10,7 +10,7 @@ from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
 itercap = 100; # cap on GMRES iterations if we converge all the way
-GMREStolerance=1e-6; # larger than GPU tolerance
+GMREStolerance=1e-3; # larger than GPU tolerance
 verbose = -1;
 
 # Documentation last updated: 03/12/2021
@@ -214,6 +214,10 @@ class TemporalIntegrator(object):
         self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
         
         lamalph, itsneeded = self.SolveForFiberAlphaLambda(XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald)
+        #np.savetxt('ChebPts.txt',XforNL)
+        #np.savetxt('TanVecs.txt',XsforNL)
+        #np.savetxt('FCL.txt',forceExt)
+        #np.savetxt('LambdaAlpha.txt',lamalph)
                 
         # Update alpha and lambda and fiber positions
         self._allFibers.updateLambdaAlpha(lamalph);
@@ -313,10 +317,23 @@ class MidpointDriftIntegrator(BackwardEuler):
     def SolveForFiberAlphaLambda(self,XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald):
         """
         """
+        thist = time.time()  
         ExForce, U0 = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
+        if (verbose > 0):
+            print('Time to form RHS %f' %(time.time()-thist))
+            thist = time.time()  
         MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
+        if (verbose > 0):
+            print('Time to do M^1/2 %f' %(time.time()-thist))
+            thist = time.time()  
         TauMidtime, MPMidtime, XMidtime = self._allFibers.StepToMidpoint(MHalfEta,dt);
+        if (verbose > 0):
+            print('Time to step to MP %f' %(time.time()-thist))
+            thist = time.time()  
         UBrown = self._allFibers.DriftPlusBrownianVel(XMidtime, MHalfEta, MMinusHalfEta,dt,self._ModifyBE,Dom,Ewald);
+        if (verbose > 0):
+            print('Time to calc drift %f' %(time.time()-thist))
+            thist = time.time()
         # Set the shear equal to the midtime shear
         if (self._allFibers._nonLocal==1): 
             # GMRES set up and solve
@@ -332,23 +349,25 @@ class MidpointDriftIntegrator(BackwardEuler):
             Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
                    Xs_nonLoc=TauMidtime,dt=dt,implic_coeff=self._impco,X_nonLoc=XMidtime,ExForces=np.zeros(systemSize)),dtype=np.float64);
             SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
+            #InitialGuess = np.concatenate((self._allFibers._lambdas,self._allFibers._alphas));
             Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=GMREStolerance,maxiter=itercap)
             lamalph = np.reshape(Solution.xk,systemSize);
             itsneeded = len(Solution.resnorms)
-            #if (giters > 5 and verbose > 0): 
-            resno = Solution.resnorms
-            print(resno)
-            print('Number of iterations %d' %len(resno))
-            print('Last residual %f' %resno[len(resno)-1])
+            if (verbose > 0): 
+                resno = Solution.resnorms
+                #print(resno)
+                print('Number of iterations %d' %len(resno))
+                print('Last residual %1.1E' %resno[len(resno)-1])
             if (itsneeded == itercap):
                 resno = Solution.resnorms
-                print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
-            res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XMidtime,TauMidtime,Dom,Ewald,tvalSolve,UBrown,ExForce);
-            print(np.amax(abs(res)))
+                print('WARNING: GMRES did not actually converge. The error at the last residual was %1.1E' %resno[len(resno)-1])
+            #res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XMidtime,TauMidtime,Dom,Ewald,tvalSolve,UBrown,ExForce);
+            #print(np.amax(abs(res)))
         else:
             # Just apply block-diag precond
             lamalph = self._allFibers.BlockDiagPrecond(UBrown+U0,TauMidtime,dt,self._impco,XMidtime,ExForce);
-        return lamalph, 0;
-        
+            itsneeded=0;
+        if (verbose > 0):
+            print('Time to solve system %f' %(time.time()-thist))
         return lamalph, itsneeded;
 
