@@ -64,7 +64,6 @@ TIntegrator = BackwardEuler(allFibers);
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
 TIntegrator.setMaxIters(giters);
-TIntegrator.setLargeTol(1e-6);
 
 # Prepare the output file and write initial locations
 FileString="ThreeSh.txt";
