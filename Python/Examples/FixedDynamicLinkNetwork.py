@@ -1,15 +1,31 @@
-from fiberCollection import fiberCollection
-from FibCollocationDiscretization import ChebyshevDiscretization
-from RPYVelocityEvaluator import GPUEwaldSplitter, EwaldSplitter
-from Domain import PeriodicShearedDomain
-from TemporalIntegrator import CrankNicolson, BackwardEuler
+from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
+from FibCollocationDiscretizationNew import ChebyshevDiscretization
 from DoubleEndedCrossLinkedNetwork import DoubleEndedCrossLinkedNetwork
+from RPYVelocityEvaluator import GPUEwaldSplitter
+from Domain import PeriodicShearedDomain
+from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
+from DiscretizedFiberNew import DiscretizedFiber
 from FileIO import prepareOutFile, writeArray
 import numpy as np
-import time, sys, os
+import chebfcns as cf
+from math import exp
+import sys, time
+from warnings import warn
 
 """
+This file runs the dynamics of a network of fibers without a background flow. 
+This can be used (a) to create steady state networks with fiber turnover whose mechanics
+we want to study or (b) simulate the dynamics of bundling of actin filaments. 
+
+The first thing this script does is read the input file (SemiflexBundleInputFile.txt) and write a copy in
+the folder BundlingBehavior (create such a folder if you do not have one). In the input file, there is a list of inputs
+to the simulation. It is currently set up to take 3 command line arguments in this order: the seed, the time step size, and 
+the persistence length. So, for example, running
+python BundlingNew.py 1 0.0001 10
+will simulate fibers with persistence length 10 using a time step 0.0001 and a seed of 1. 
+There are a number of outputs which are detailed in the README file. 
 """
+
 
 def saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='a'):
     Xf = allFibers.getX();
@@ -19,95 +35,75 @@ def saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='
     writeArray('BundlingBehavior/LinkStrains'+OutputFileName,[LinkStrainSqu],wora=wora)
     writeArray('BundlingBehavior/FibCurvesF'+OutputFileName,FibCurvatures,wora=wora)
 
-# Inputs for the slender body simulation
-if not os.path.exists('BundlingBehavior'):
-    os.makedirs('BundlingBehavior')
-
-# Fiber parameters
-try:
-	Input = open('FixedNetworkInputFile.txt','r')
-	for iLine in Input:
-		exec(iLine);
-	InputCopyName='BundlingBehavior/FixedNetInputFile_'+OutputFileName;
-	copyInput = open(InputCopyName,'w')
-	Input = open('FixedNetworkInputFile.txt','r')
-	for iLine in Input:
-		copyInput.write(iLine);
-	copyInput.write('COMMAND LINE ARGS \n')
-	copyInput.write('CLseed = '+str(CLseed)+'\n')
-	copyInput.write('Implicit Fp = '+str(ImplicitFinitePart)+'\n')
-	copyInput.write('True RPY mob = '+str(RPYMob)+'\n')
-	copyInput.close();
-	Input.close();
-except:
-	raise ValueError('This file takes three command line arguments: the seed (for CL network),\
-whether to do the finite part implicitly (0 or 1), and whether to use RPY mobility (0 or 1), in that order')
-
-saveEvery = int(savedt/dt+1e-10);  
-
-# Initialize the domain and spatial database
+Input = open('SemiflexBundleInputFile.txt','r')
+for iLine in Input:
+	exec(iLine);
+InputCopyName='BundlingBehavior/SemiflexBundleInputFile_'+FileString;
+copyInput = open(InputCopyName,'w')
+Input = open('SemiflexBundleInputFile.txt','r')
+for iLine in Input:
+	copyInput.write(iLine);
+copyInput.write('COMMAND LINE ARGS \n')
+copyInput.write('CLseed = '+str(seed)+'\n')
+copyInput.write('dt = '+str(dt)+'\n')
+copyInput.write('lp = '+str(lp)+'\n')
+copyInput.close();
+Input.close();
+    
+# Initialize the domain
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=0.1,nptsUniform=Nuniformsites,\
-    NupsampleForDirect=NupsampleForDirect,rigid=rigidFibs,trueRPYMobility=RPYMob);
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
+    NupsampleForDirect=NupsampleForDirect,RPYSpecialQuad=RPYQuad,RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,
+    UseEnergyDisc=True,nptsUniform=Nuniformsites,FPIsLocal=(nonLocal>0));
 
 # Initialize the master list of fibers
-allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,1,0,Dom,nThreads=nThr); # No flow, no nonlocal hydro (nothing to OMP parallelize)
+if (FluctuatingFibs):
+    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr);
+else:
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidDetFibs);
 
-# Initialize Ewald for non-local velocities
-if (nonLocal==0 or nonLocal == 4):
-    Ewald = EwaldSplitter(allFibers.getaRPY()*eps*Lf,mu,xi*1.4*(fibDisc.getNumDirect()/N)**(1/3),Dom,NupsampleForDirect*nFib);
-else: 
-    Ewald = GPUEwaldSplitter(allFibers.getaRPY()*eps*Lf,mu,xi*1.4*(fibDisc.getNumDirect()/N)**(1/3),Dom,NupsampleForDirect*nFib);
+Ewald = None;
+if (nonLocal==1):
+    totnumDir = fibDisc._nptsDirect*nFib;
+    xi = 3*totnumDir**(1/3)/Ld; # Ewald param
+    Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);   
 
 # Initialize the fiber list (straight fibers)
-np.random.seed(CLseed);
+np.random.seed(seed);
 fibList = [None]*nFib;
-if (initFile is None):
-    print('Initializing fresh')
-    allFibers.initFibList(fibList,Dom);
-else: 
-    print('Initializing from file '+initFile);
-    XFile = 'DynamicStress/DynamicSSLocs'+initFile;
-    XsFile ='DynamicStress/DynamicSSTanVecs'+initFile;
-    allFibers.initFibList(fibList,Dom,pointsfileName=XFile,tanvecfileName=XsFile);
+allFibers.initFibList(fibList,Dom);
 
 # Initialize the network of cross linkers
 # New seed for CLs
-np.random.seed(CLseed);
+np.random.seed(seed);
 # Initialize network
-print('Number uniform sites %d' %fibDisc.getNumUniform())
-if (BrownianFluct):
-    kBt = 4e-3;
-else:
-    kBt = 0;
-CLNet = DoubleEndedCrossLinkedNetwork(nFib,N,fibDisc.getNumUniform(),Lf,Kspring,\
-    rl,konCL,koffCL,konSecond,koffSecond,CLseed,Dom,fibDisc,nThreads=nThr,\
-    bindingSiteWidth=bindingSiteWidth,kT=kBt);
-#Pairs, _ = CLNet.getPairsThatCanBind(allFibers,Dom);
-#np.savetxt('PairsN'+str(fibDisc.getNumUniform())+'.txt',Pairs);
-if (initFile is None):
-    CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSecond)) # just to load up CLs
-else:
-    CLNet.setLinksFromFile('DynamicStress/DynamicSSLinks'+initFile,'DynamicStress/DynSSFreeLinkBound'+initFile);
+print('Number uniform sites %d' %fibDisc._nptsUniform)
+CLNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring,\
+    rl,konCL,koffCL,konSecond,koffSecond,seed,Dom,fibDisc,nThreads=nThr,\
+    bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce);
+CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSecond)) # just to load up CLs
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
-        
-# Initialize the temporal integrator
-if (BrownianFluct or useBackwardEuler):
-    TIntegrator = BackwardEuler(allFibers, CLNet,FPimp=ImplicitFinitePart);
-else:  
-    TIntegrator = CrankNicolson(allFibers, CLNet,FPimp=ImplicitFinitePart);
-TIntegrator.setMaxIters(nIts);
-TIntegrator.setLargeTol(LargeTol);
 
-# Prepare the output file and write initial network information
-of = prepareOutFile('BundlingBehavior/Locs'+OutputFileName);
-allFibers.writeFiberLocations(of);
-saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='w')
-ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+OutputFileName);
-CLNet.writeLinks(ofCL)
-ofCL.close()
+# Initialize the temporal integrator
+TIntegrator = BackwardEuler(allFibers,CLNet);
+if (FluctuatingFibs):
+    TIntegrator = MidpointDriftIntegrator(allFibers,CLNet);
+# Number of GMRES iterations for nonlocal solves
+# 1 = block diagonal solver
+# N > 1 = N-1 extra iterations of GMRES
+TIntegrator.setMaxIters(1);
+
+# Prepare the output file and write initial locations
+np.random.seed(seed);
+# Barymat for the quarter points
+LocsFileName = 'BundlingBehavior/Locs'+FileString;
+allFibers.writeFiberLocations(LocsFileName,'w');
+#if (seed==1):
+#    ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
+#    CLNet.writeLinks(ofCL)
+#   ofCL.close()
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -129,28 +125,29 @@ avgBundleAlignment_Sep[0] = CLNet.avgBundleAlignment(AllOrders_Sep,NPerBundleAll
 LocalAlignment,numCloseBy = CLNet.LocalOrientations(1,allFibers)
 NumFibsConnected[0,:] = numCloseBy;
 AllLocalAlignment[0,:] = LocalAlignment;
-
-
+saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
+        
 # Simulate 
 for iT in range(stopcount): 
     wr=0;
     if ((iT % saveEvery) == (saveEvery-1)):
-        print('Time %1.2E' %(float(iT)*dt));
         wr=1;
         mythist = time.time()
-    maxX, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,outfile=of,write=wr,\
-        updateNet=updateNet,turnoverFibs=turnover,BrownianUpdate=BrownianFluct,kBt=kBt);
+    maxX, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+        updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover);
     if (wr==1):
+        print('Time %1.2E' %(float(iT+1)*dt));
         print('MAIN Time step time %f ' %(time.time()-mythist));
         print('Max x: %f' %maxX)
         thist = time.time();
         print('Number of links %d' %CLNet._nDoubleBoundLinks)
-        saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName);
+        saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
-        #ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+OutputFileName);
-        #CLNet.writeLinks(ofCL)
-        #ofCL.close()
+        #if (seed==1):
+        #    ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
+        #    CLNet.writeLinks(ofCL)
+        #   ofCL.close()
                
         # Bundles where connections are 2 links separated by 2*restlen
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);
@@ -171,28 +168,14 @@ for iT in range(stopcount):
         print('Time to compute network info %f ' %(time.time()-thist));
        
 if (True):  
-    np.savetxt('BundlingBehavior/nLinksPerFib'+OutputFileName,numLinksByFib);  
-    np.savetxt('BundlingBehavior/NumFibsConnectedPerFib'+OutputFileName,NumFibsConnected);
-    np.savetxt('BundlingBehavior/LocalAlignmentPerFib'+OutputFileName,AllLocalAlignment);
-    np.savetxt('BundlingBehavior/NumberOfBundles_Sep'+OutputFileName,numBundlesSep);    
-    np.savetxt('BundlingBehavior/BundleOrderParams_Sep'+OutputFileName,AllOrders_Sep);
-    np.savetxt('BundlingBehavior/NFibsPerBundle_Sep'+OutputFileName,NPerBundleAll_Sep);
-    np.savetxt('BundlingBehavior/FinalLabels_Sep'+OutputFileName,AllLabels);
-    np.savetxt('BundlingBehavior/AvgTangents'+OutputFileName,AllaverageBundleTangents);
-
-if (True):
-    # Write the state to file for restart
-    np.savetxt('DynamicStress/DynamicSSLocs'+OutputFileName,allFibers._ptsCheb);
-    np.savetxt('DynamicStress/DynamicSSTanVecs'+OutputFileName,allFibers._tanvecs);
-    np.savetxt('DynamicStress/DynSSFreeLinkBound'+OutputFileName, CLNet._FreeLinkBound);
-    ofCL = prepareOutFile('DynamicStress/DynSSLinks'+OutputFileName);
+    np.savetxt('BundlingBehavior/nLinksPerFib'+FileString,numLinksByFib);  
+    np.savetxt('BundlingBehavior/NumFibsConnectedPerFib'+FileString,NumFibsConnected);
+    np.savetxt('BundlingBehavior/LocalAlignmentPerFib'+FileString,AllLocalAlignment);
+    np.savetxt('BundlingBehavior/NumberOfBundles_Sep'+FileString,numBundlesSep);    
+    np.savetxt('BundlingBehavior/BundleOrderParams_Sep'+FileString,AllOrders_Sep);
+    np.savetxt('BundlingBehavior/NFibsPerBundle_Sep'+FileString,NPerBundleAll_Sep);
+    np.savetxt('BundlingBehavior/FinalLabels_Sep'+FileString,AllLabels);
+    np.savetxt('BundlingBehavior/AvgTangents'+FileString,AllaverageBundleTangents);
+    ofCL = prepareOutFile('BundlingBehavior/FinalLinks'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
-
-# Destruction and cleanup
-of.close();
-del Dom;
-del Ewald;
-del fibDisc;
-del allFibers;
-del TIntegrator; 
