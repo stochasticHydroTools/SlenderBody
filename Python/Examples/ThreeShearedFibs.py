@@ -1,10 +1,10 @@
-from fiberCollectionNew import fiberCollection
-from FibCollocationDiscretizationNew import ChebyshevDiscretization
+from fiberCollection import fiberCollection
+from FibCollocationDiscretization import ChebyshevDiscretization
 from RPYVelocityEvaluator import EwaldSplitter, GPUEwaldSplitter, RPYVelocityEvaluator
 from Domain import PeriodicShearedDomain
 from TemporalIntegrator import CrankNicolson, BackwardEuler
 from CrossLinkedNetwork import CrossLinkedNetwork
-from DiscretizedFiberNew import DiscretizedFiber
+from DiscretizedFiber import DiscretizedFiber
 from FileIO import prepareOutFile
 import numpy as np
 

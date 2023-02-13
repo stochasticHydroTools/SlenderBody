@@ -1,6 +1,6 @@
 from math import pi
-from fiberCollectionNew import fiberCollection
-from FibCollocationDiscretizationNew import ChebyshevDiscretization
+from fiberCollection import fiberCollection
+from FibCollocationDiscretization import ChebyshevDiscretization
 from RPYVelocityEvaluator import EwaldSplitter, GPUEwaldSplitter
 from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler

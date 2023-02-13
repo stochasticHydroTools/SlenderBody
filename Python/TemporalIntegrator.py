@@ -6,7 +6,7 @@ from functools import partial
 from mykrypy.linsys import LinearSystem, Gmres # mykrypy is krypy with modified linsys.py
 from mykrypy.utils import ConvergenceError     # mykrypy is krypy with modified linsys.py
 from warnings import warn
-from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
+from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
 itercap = 100; # cap on GMRES iterations if we converge all the way
@@ -147,7 +147,7 @@ class TemporalIntegrator(object):
             if (verbose > 0):
                 print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
                 thist = time.time()
-        return lamalph, itsneeded;
+        return lamalph, itsneeded, XforNL;
 
     def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,\
         updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False):
@@ -190,7 +190,9 @@ class TemporalIntegrator(object):
             Dom.setg(self._allFibers.getg(tvalSolve));
         else:
             Dom.setg(fixedg);
-        self._gForStress = Dom.getg();
+        self._gForStress = Dom.getg(); # Will get reset during hydro!
+        #if (stress):
+        #    print('g for stress is %f' %self._gForStress)
         
         # Get relevant arguments for local/nonlocal
         XforNL, XsforNL = self.getXandXsNonLoc(); # for M and K
@@ -213,9 +215,9 @@ class TemporalIntegrator(object):
         lamStar = self.getLamNonLoc(iT); # lambdas
         self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
         
-        lamalph, itsneeded = self.SolveForFiberAlphaLambda(XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald)
+        lamalph, itsneeded, XWithLam = self.SolveForFiberAlphaLambda(XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald)
         #np.savetxt('ChebPts.txt',XforNL)
-        #np.savetxt('TanVecs.txt',XsforNL)
+        #np.savetxt('XWithLam.txt',XWithLam)
         #np.savetxt('FCL.txt',forceExt)
         #np.savetxt('LambdaAlpha.txt',lamalph)
                 
@@ -228,13 +230,16 @@ class TemporalIntegrator(object):
         
         stressArray = np.zeros(3);
         if (stress):
-            lamStress, ElasticStress = self._allFibers.FiberStress(XforNL,self._allFibers.getLambdas(),Dom)
+            ElasticStress, lamStress = self._allFibers.FiberStress(XforNL,XWithLam,Dom.getVol())
             # Stress due to CLs 
-            Dom.setg(self._gForStress);  # Make sure the shift in the CL links is at time n+1/2
+            Dom.setg(self._gForStress); 
             CLstress = 0
             if (self._CLNetwork is not None):
                 CLstress = self._CLNetwork.CLStress(self._allFibers,XforNL,Dom);
-            stressArray = np.array([lamStress ,ElasticStress, CLstress]);     
+            stressArray=np.array([lamStress[0,1],ElasticStress[0,1],CLstress[0,1]]);
+            if (verbose > 0):
+                print('Stress time %f' %(time.time()-thist))
+                thist = time.time()
                    
         if (write):
             self._allFibers.writeFiberLocations(outfile);
@@ -369,5 +374,5 @@ class MidpointDriftIntegrator(BackwardEuler):
             itsneeded=0;
         if (verbose > 0):
             print('Time to solve system %f' %(time.time()-thist))
-        return lamalph, itsneeded;
+        return lamalph, itsneeded, XMidtime;
 

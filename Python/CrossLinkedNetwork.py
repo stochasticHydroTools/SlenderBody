@@ -127,26 +127,18 @@ class CrossLinkedNetwork(object):
             return 0;
         uniPts = fibCollection.getUniformPoints(chebPts);
         shifts = Dom.unprimecoords(np.array(self._PrimedShifts));
-        if False: # python
-            stress = np.zeros((3,3));
-            for iLink in range(self._nDoubleBoundLinks): # loop over links
-                iFib = self.mapSiteToFiber(self._HeadsOfLinks[iLink]);
-                jFib = self.mapSiteToFiber(self._TailsOfLinks[iLink]);
-                # Force on each link 
-                Clforces = np.reshape(self._CForceEvaluator.calcCLForces([self._HeadsOfLinks[iLink]], [self._TailsOfLinks[iLink]], shifts[iLink,:],\
-                    uniPts,chebPts),(chebPts.shape));
-                for iPt in range(self._ChebStartByFib[iFib],self._ChebStartByFib[iFib+1]): 
-                    # increment stress: use minus since force on fluid = - force on fibers
-                    stress-=self._wCheb[iPt]*np.outer(chebPts[iPt,:],Clforces[iPt,:]);
-                for iPt in range(self._ChebStartByFib[jFib],self._ChebStartByFib[jFib+1]):
-                    stress-=self._wCheb[iPt]*np.outer(chebPts[iPt,:]+shifts[iLink,:],Clforces[iPt,:]);
-            print('Python stress')
-            print(stress)
-        # C++ function call 
-        stress = self._CForceEvaluator.calcCLStress(self._HeadsOfLinks[:self._nDoubleBoundLinks],\
+        #np.savetxt('uniPts.txt',uniPts)
+        #np.savetxt('shifts.txt',shifts)
+        #np.savetxt('Heads.txt',self._HeadsOfLinks[:self._nDoubleBoundLinks])
+        #np.savetxt('Tails.txt',self._TailsOfLinks[:self._nDoubleBoundLinks])
+        #np.savetxt('Chebpts.txt',chebPts)
+        if (self._smoothForce):
+            raise TypeError('Stress only implemented with nonsmooth (energy-based) CL forcing')
+        stress = self._CForceEvaluator.calcCLStressEnergy(self._HeadsOfLinks[:self._nDoubleBoundLinks],\
             self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPts,chebPts);
         #print('CPP stress %f' %stress)
-        stress/=np.prod(Dom.getLens());
+        stress/=Dom.getVol();
+        #np.savetxt('CLStress.txt',stress)
         return stress;
     
     ## ==============================================

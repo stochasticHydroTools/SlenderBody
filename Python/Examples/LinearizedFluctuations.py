@@ -1,8 +1,8 @@
-from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
-from FibCollocationDiscretizationNew import ChebyshevDiscretization
+from fiberCollection import fiberCollection, SemiflexiblefiberCollection
+from FibCollocationDiscretization import ChebyshevDiscretization
 from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler
-from DiscretizedFiberNew import DiscretizedFiber
+from DiscretizedFiber import DiscretizedFiber
 import numpy as np
 from math import exp
 import sys

@@ -93,14 +93,31 @@ void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdt
                    &*u.begin(), ldu, &*vt.begin(), ldvt);
     if (info > 0){ 
          std::cout << "LAPACK SVD DID NOT CONVERGE" << std::endl;
+         std::cout << "This means singular values will be out of order" << std::endl;
+         std::cout << "The matrix" << std::endl;
          for (int i = 0; i < Acopy.size(); i++){
                  std::cout << Acopy[i] << std::endl;
          }
+         std::cout << "The singular values returned" << std::endl;
+         for (int i = 0; i < s.size(); i++){
+                 std::cout << s[i] << std::endl;
+         }
+         std::cout << "The U matrix returned" << std::endl;
+         for (int i = 0; i < u.size(); i++){
+                 std::cout << u[i] << std::endl;
+         }
+         std::cout << "The V matrix returned" << std::endl;
+         for (int i = 0; i < vt.size(); i++){
+                 std::cout << vt[i] << std::endl;
+         }
     }
-    LAPACKESafeCall(info);
+    //LAPACKESafeCall(info);
     double sZero = 1.0;
     if (normalize){
-        sZero= s[0];
+        sZero = *max_element(s.begin(), s.end());
+    }
+    if (info > 0){
+        std::cout << "Normalizing by " << sZero << std::endl;
     }
     // Pseudo-inverse calculation
     for (int i = 0; i < n; i++) {

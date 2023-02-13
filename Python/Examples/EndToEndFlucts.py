@@ -1,8 +1,8 @@
-from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
-from FibCollocationDiscretizationNew import ChebyshevDiscretization
+from fiberCollection import fiberCollection, SemiflexiblefiberCollection
+from FibCollocationDiscretization import ChebyshevDiscretization
 from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
-from DiscretizedFiberNew import DiscretizedFiber
+from DiscretizedFiber import DiscretizedFiber
 from RPYVelocityEvaluator import EwaldSplitter, GPUEwaldSplitter
 import numpy as np
 from math import exp
@@ -76,9 +76,9 @@ dt = tfund*dtfund;
 penaltyParam = 0;
 seed = int(sys.argv[2]);
 #nSaves = 100; # target number
-saveEvery = max(0.01/dtfund,1);#int(tf/(nSaves*dt)+1e-6);
+saveEvery = max(np.floor(0.01/dtfund),1);#int(tf/(nSaves*dt)+1e-6);
 
-saveStr='Tol3Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
+saveStr='Tol2Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
 FileString = 'SemiflexFlucts/Locs'+saveStr;
     
 # Initialize the domain

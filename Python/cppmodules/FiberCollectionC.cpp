@@ -23,14 +23,14 @@ namespace py=pybind11;
 typedef py::array_t<int, py::array::c_style | py::array::forcecast> npInt; 
 typedef py::array_t<double, py::array::c_style | py::array::forcecast> npDoub; 
 
-class FiberCollectionNew {
+class FiberCollectionC {
 
     public: 
     
     //===========================================
     //        METHODS FOR INITIALIZATION
     //===========================================
-    FiberCollectionNew(int nFib,int nXPerFib,int nTauPerFib,int nThreads,
+    FiberCollectionC(int nFib,int nXPerFib,int nTauPerFib,int nThreads,
         double a, double L, double mu,double kbT, double svdtol, double svdrigid, bool quadRPY, bool directRPY, bool oversampleRPY)
         :_MobilityEvaluator(nXPerFib,a,L,mu,quadRPY,directRPY,oversampleRPY){
         /**
@@ -109,6 +109,58 @@ class FiberCollectionNew {
             }
         }
         return make1DPyArray(Forces);
+    }
+    
+    npDoub evalBendStress(npDoub pyPoints){
+        vec chebPts(pyPoints.size());
+        std::memcpy(chebPts.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
+        vec Stress(9);
+        int NFibs = chebPts.size()/(3*_nXPerFib);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < NFibs; iFib++){
+            vec FiberPoints(3*_nXPerFib);
+            vec LocalForces(3*_nXPerFib);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                FiberPoints[i] = chebPts[3*_nXPerFib*iFib+i];
+            }
+            BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,1,1.0,0.0,_D4BCForce,false,FiberPoints,LocalForces);
+            for (int iPt=0; iPt < _nXPerFib; iPt++){
+                for (int iD=0; iD < 3; iD++){
+                    for (int jD=0; jD < 3; jD++){
+                        #pragma omp atomic update
+                        Stress[3*iD+jD] -= FiberPoints[3*iPt+iD]*LocalForces[3*iPt+jD];
+                    }
+                }
+            }
+        }
+        return makePyDoubleArray(Stress);
+    }
+    
+    npDoub evalStressFromForce(npDoub pyPoints, npDoub pyForces){
+        vec chebPts(pyPoints.size());
+        vec chebForces(pyForces.size());
+        std::memcpy(chebPts.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
+        std::memcpy(chebForces.data(),pyForces.data(),pyForces.size()*sizeof(double));
+        vec Stress(9);
+        int NFibs = chebPts.size()/(3*_nXPerFib);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < NFibs; iFib++){
+            vec FiberPoints(3*_nXPerFib);
+            vec LocalForces(3*_nXPerFib);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                FiberPoints[i] = chebPts[3*_nXPerFib*iFib+i];
+                LocalForces[i] = chebForces[3*_nXPerFib*iFib+i];
+            }
+            for (int iPt=0; iPt < _nXPerFib; iPt++){
+                for (int iD=0; iD < 3; iD++){
+                    for (int jD=0; jD < 3; jD++){
+                        #pragma omp atomic update
+                        Stress[3*iD+jD] -= FiberPoints[3*iPt+iD]*LocalForces[3*iPt+jD];
+                    }
+                }
+            }
+        }
+        return makePyDoubleArray(Stress);
     }
     
     py::array getUniformPoints(npDoub pyPoints){
@@ -983,26 +1035,28 @@ class FiberCollectionNew {
 
 };
 
-PYBIND11_MODULE(FiberCollectionNew, m) {
-    py::class_<FiberCollectionNew>(m, "FiberCollectionNew")
+PYBIND11_MODULE(FiberCollectionC, m) {
+    py::class_<FiberCollectionC>(m, "FiberCollectionC")
         .def(py::init<int,int,int,int,double,double,double,double,double,double,bool,bool,bool>())
-        .def("initMatricesForPreconditioner", &FiberCollectionNew::initMatricesForPreconditioner)
-        .def("initMobilityMatrices", &FiberCollectionNew::initMobilityMatrices)
-        .def("initResamplingMatrices", &FiberCollectionNew::initResamplingMatrices)
-        .def("evalBendForces",&FiberCollectionNew::evalBendForces)
-        .def("getUniformPoints", &FiberCollectionNew::getUniformPoints)
-        .def("getUpsampledPoints", &FiberCollectionNew::getUpsampledPoints)
-        .def("getUpsampledForces", &FiberCollectionNew::getUpsampledForces)
-        .def("getDownsampledVelocities", &FiberCollectionNew::getDownsampledVelocities)
-        .def("evalLocalVelocities",&FiberCollectionNew::evalLocalVelocities)
-        .def("SingleFiberRPYSum",&FiberCollectionNew::SingleFiberRPYSum)
-        .def("FinitePartVelocity",&FiberCollectionNew::FinitePartVelocity)
-        .def("applyPreconditioner",&FiberCollectionNew::applyPreconditioner)
-        .def("KAlphaKTLambda",&FiberCollectionNew::KAlphaKTLambda)
-        .def("MHalfAndMinusHalfEta", &FiberCollectionNew::MHalfAndMinusHalfEta)
-        .def("InvertKAndStep", &FiberCollectionNew::InvertKAndStep)
-        .def("ComputeDriftVelocity", &FiberCollectionNew::ComputeDriftVelocity)
-        .def("getLHalfX", &FiberCollectionNew::getLHalfX)
-        .def("RodriguesRotations",&FiberCollectionNew::RodriguesRotations)
-        .def("ThermalTranslateAndDiffuse",&FiberCollectionNew::ThermalTranslateAndDiffuse);
+        .def("initMatricesForPreconditioner", &FiberCollectionC::initMatricesForPreconditioner)
+        .def("initMobilityMatrices", &FiberCollectionC::initMobilityMatrices)
+        .def("initResamplingMatrices", &FiberCollectionC::initResamplingMatrices)
+        .def("evalBendForces",&FiberCollectionC::evalBendForces)
+        .def("evalBendStress",&FiberCollectionC::evalBendStress)
+        .def("evalStressFromForce",&FiberCollectionC::evalStressFromForce)
+        .def("getUniformPoints", &FiberCollectionC::getUniformPoints)
+        .def("getUpsampledPoints", &FiberCollectionC::getUpsampledPoints)
+        .def("getUpsampledForces", &FiberCollectionC::getUpsampledForces)
+        .def("getDownsampledVelocities", &FiberCollectionC::getDownsampledVelocities)
+        .def("evalLocalVelocities",&FiberCollectionC::evalLocalVelocities)
+        .def("SingleFiberRPYSum",&FiberCollectionC::SingleFiberRPYSum)
+        .def("FinitePartVelocity",&FiberCollectionC::FinitePartVelocity)
+        .def("applyPreconditioner",&FiberCollectionC::applyPreconditioner)
+        .def("KAlphaKTLambda",&FiberCollectionC::KAlphaKTLambda)
+        .def("MHalfAndMinusHalfEta", &FiberCollectionC::MHalfAndMinusHalfEta)
+        .def("InvertKAndStep", &FiberCollectionC::InvertKAndStep)
+        .def("ComputeDriftVelocity", &FiberCollectionC::ComputeDriftVelocity)
+        .def("getLHalfX", &FiberCollectionC::getLHalfX)
+        .def("RodriguesRotations",&FiberCollectionC::RodriguesRotations)
+        .def("ThermalTranslateAndDiffuse",&FiberCollectionC::ThermalTranslateAndDiffuse);
 }

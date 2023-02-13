@@ -1,10 +1,10 @@
-from fiberCollectionNew import fiberCollection, SemiflexiblefiberCollection
-from FibCollocationDiscretizationNew import ChebyshevDiscretization
+from fiberCollection import fiberCollection, SemiflexiblefiberCollection
+from FibCollocationDiscretization import ChebyshevDiscretization
 from DoubleEndedCrossLinkedNetwork import DoubleEndedCrossLinkedNetwork
 from RPYVelocityEvaluator import GPUEwaldSplitter
 from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
-from DiscretizedFiberNew import DiscretizedFiber
+from DiscretizedFiber import DiscretizedFiber
 from FileIO import prepareOutFile, writeArray
 import numpy as np
 import chebfcns as cf
@@ -149,7 +149,7 @@ for iT in range(stopcount):
         #    CLNet.writeLinks(ofCL)
         #   ofCL.close()
                
-        # Bundles where connections are 2 links separated by 2*restlen
+        # Bundles where connections are 2 links
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);
         print('Number bundles (1 per bundle possible) %d' %numBundlesSep[saveIndex])
         Orders, NPerBundle, avgTangents = CLNet.BundleOrderParameters(allFibers,numBundlesSep[saveIndex], AllLabels[saveIndex,:],minPerBundle=2)
@@ -176,6 +176,8 @@ if (True):
     np.savetxt('BundlingBehavior/NFibsPerBundle_Sep'+FileString,NPerBundleAll_Sep);
     np.savetxt('BundlingBehavior/FinalLabels_Sep'+FileString,AllLabels);
     np.savetxt('BundlingBehavior/AvgTangents'+FileString,AllaverageBundleTangents);
+    allFibers.writeFiberLocations('BundlingBehavior/FinalLocs'+FileString,'w');
+    np.savetxt('BundlingBehavior/FinalFreeLinkBound'+FileString, CLNet._FreeLinkBound);
     ofCL = prepareOutFile('BundlingBehavior/FinalLinks'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()

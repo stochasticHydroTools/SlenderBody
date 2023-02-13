@@ -208,8 +208,8 @@ class CrossLinkForceEvaluator {
         }
         return make1DPyArray(CLForces);
     }
-    
-    double calcCLStress(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints){
+        
+    npDoub calcCLStressEnergy(const intvec &iPts, const intvec &jPts, npDoub pyShifts, npDoub pyUnipoints, npDoub pyChebPoints){
         /**
         Compute force densities on the fibers from the list of links. 
         @param iPts = nLinks vector of uniform point numbers where one CL end is
@@ -227,50 +227,39 @@ class CrossLinkForceEvaluator {
         std::memcpy(Shifts.data(),pyShifts.data(),pyShifts.size()*sizeof(double));
         std::memcpy(uniPoints.data(),pyUnipoints.data(),pyUnipoints.size()*sizeof(double));
         std::memcpy(chebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
-        double stress = 0;
-        // Dimension of stress we care about
-        int dX = 1;
-        int df = 0;
-        #pragma omp parallel for num_threads(_nThreads) reduction(+:stress)
+        vec stress(9);
+        #pragma omp parallel for num_threads(_nThreads)
         for (uint iL=0; iL < iPts.size(); iL++){
             int iPtstar = iPts[iL];
+            int iuPtMod = iPtstar % _Nuniform;
             int jPtstar = jPts[iL];
+            int juPtMod = jPtstar % _Nuniform;
             int iFib = _FibFromSiteIndex[iPtstar];
             int jFib = _FibFromSiteIndex[jPtstar];
-            double s1star = _sUniform[iPtstar];
-            double s2star = _sUniform[jPtstar];
-            double totwt1=0;
-            double totwt2=0;
-            vec deltah1(_NCheb[iFib]);
-            vec deltah2(_NCheb[jFib]);
-            for (int kPt=_chebStart[iFib]; kPt < _chebStart[iFib+1]; kPt++){
-                deltah1[kPt-_chebStart[iFib]] = deltah(_sChebyshev[kPt]-s1star,iFib);
-                totwt1+=deltah1[kPt-_chebStart[iFib]]*_weights[kPt];
-            }
-            for (int kPt=_chebStart[jFib]; kPt < _chebStart[jFib+1]; kPt++){
-                deltah2[kPt-_chebStart[jFib]] = deltah(_sChebyshev[kPt]-s2star,jFib);
-                totwt2+=deltah2[kPt-_chebStart[jFib]]*_weights[kPt];
-            }
-            double rnorm = 1.0/(totwt1*totwt2); // normalization factor
+            //std::cout << "Link " << iL << " (" << iPtstar << "," << jPtstar << ") on fibers (" << iFib << "," << jFib << ") \n";
             // Displacement vector
             vec3 ds;
             for (int d =0; d < 3; d++){
                 ds[d] = uniPoints[3*iPtstar+d] -  uniPoints[3*jPtstar+d] - Shifts[3*iL+d];
             }
-            
-            double nds = sqrt(dot(ds,ds));
-            for (int iPt=_chebStart[iFib]; iPt < _chebStart[iFib]+_NCheb[iFib]; iPt++){
-                for (int jPt=_chebStart[jFib]; jPt < _chebStart[jFib]+_NCheb[jFib]; jPt++){
-                    // Multiplication due to rest length and densities
-                    double factor = (1.0-_restlen/nds)*deltah1[iPt-_chebStart[iFib]]*deltah2[jPt-_chebStart[jFib]]*rnorm;
-                    // The df component of the force:
-                    double forceij = -_Kspring*(chebPoints[3*iPt+df] -  chebPoints[3*jPt+df] - Shifts[3*iL+df])*factor;
-                    stress-=_weights[iPt]*chebPoints[3*iPt+dX]*forceij*_weights[jPt];
-                    stress+=_weights[jPt]*(chebPoints[3*jPt+dX]+Shifts[3*iL+dX])*forceij*_weights[iPt];
+            double nds = normalize(ds);
+            // Multiplication due to rest length and densities
+            vec3 Force;//, force1, force2, X1, X2;
+            for (int d =0; d < 3; d++){
+                Force[d] = -_Kspring*(nds-_restlen)*ds[d];
+            }
+            for (int iPt=0; iPt < _NCheb[iFib]; iPt++){
+                for (int iD=0; iD < 3; iD++){
+                    for (int jD=0; jD < 3; jD++){   
+                        #pragma omp atomic update
+                        stress[3*iD+jD]-=chebPoints[3*(iPt+_chebStart[iFib])+iD]*Force[jD]*_RUniform[iuPtMod*_NCheb[iFib]+iPt]; // Fiber i
+                        #pragma omp atomic update
+                        stress[3*iD+jD]-=(chebPoints[3*(iPt+_chebStart[jFib])+iD]+Shifts[3*iL+iD])*-1.0*Force[jD]*_RUniform[juPtMod*_NCheb[jFib]+iPt]; // Fiber j
+                    }
                 }
             }
         }
-        return stress; 
+        return makePyDoubleArray(stress); 
     }
 
     private:
@@ -338,7 +327,7 @@ PYBIND11_MODULE(CrossLinkForceEvaluator, m) {
         .def(py::init<int,vec, npDoub, npDoub, intvec, intvec, vec, vec, vec, double, double, int>())
         .def("calcCLForces", &CrossLinkForceEvaluator::calcCLForces)
         .def("calcCLForcesEnergy", &CrossLinkForceEvaluator::calcCLForcesEnergy)
-        .def("calcCLStress", &CrossLinkForceEvaluator::calcCLStress);
+        .def("calcCLStressEnergy", &CrossLinkForceEvaluator::calcCLStressEnergy);
 }
 
 
