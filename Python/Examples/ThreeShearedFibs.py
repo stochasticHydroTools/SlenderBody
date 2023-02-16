@@ -49,21 +49,21 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=True,deltaLocal=
     RPYDirectQuad=False,RPYOversample=False,NupsampleForDirect=32,FPIsLocal=True);
 
 # Initialize the master list of fibers
-allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0,eigvalThres,nThreads=2);
+allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0,eigvalThres,nThreads=1,rigidFibs=False);
 fibList = makeThreeSheared(Lf,N,fibDisc);
 allFibers.initFibList(fibList,Dom);
 allFibers.fillPointArrays();
 
 # Initialize Ewald for non-local velocities
-#Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
-Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
+Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
+#Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
 
 # Initialize the temporal integrator
 TIntegrator = BackwardEuler(allFibers);
 # Number of GMRES iterations for nonlocal solves
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
-TIntegrator.setMaxIters(giters);
+TIntegrator.setMaxIters(1);
 
 # Prepare the output file and write initial locations
 FileString="ThreeSh.txt";

@@ -285,7 +285,7 @@ class FiberCollectionC {
                 LocalForces[iPt]=Forces[start+iPt];
             }
             vec MLoc(9*_nXPerFib*_nXPerFib), EigVecs(9*_nXPerFib*_nXPerFib), EigVals(3*_nXPerFib);
-            _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MLoc,EigVecs,EigVals);
+            _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, -1,MLoc,EigVecs,EigVals);
             vec LocalVel(3*_nXPerFib);
             ApplyMatrixPowerFromEigDecomp(3*_nXPerFib, 1.0, EigVecs, EigVals, LocalForces, LocalVel);  
             for (int iPt=0; iPt < 3*_nXPerFib; iPt++){
@@ -387,7 +387,7 @@ class FiberCollectionC {
         vec RandVec1(pyRandVec1.size());
         std::memcpy(RandVec1.data(),pyRandVec1.data(),pyRandVec1.size()*sizeof(double));   
         
-        vec AllAlphas(3*_nXPerFib*_NFib);
+        vec AllAlphas(6*_NFib);
         #pragma omp parallel for num_threads(_nOMPThr)
         for (int iFib = 0; iFib < _NFib; iFib++){
 	        vec LocalPoints(3*_nXPerFib);
@@ -405,7 +405,7 @@ class FiberCollectionC {
             // M and Schur complement block B
             int sysDim = 3*_nXPerFib;
             vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
-            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, implicitFP, MWsym, EigVecs, EigVals);
+            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, implicitFP, -1,MWsym, EigVecs, EigVals);
             
            
             vec MinvK(sysDim*6);
@@ -422,23 +422,19 @@ class FiberCollectionC {
             double rigidSVDTol = 2.0*_kbT*dt/(_svdRigid*_svdRigid);
             bool normalize = false;
             bool half = true;
-            SolveWithPseudoInverse(6, SchurComplement, LocalRand1, alphas, rigidSVDTol,normalize,half,6); // N*LocalRand1
-            int startAlphInd=3*iFib*_nXPerFib;
-            for (int iPt = 0; iPt < _nTauPerFib; iPt++){
-                for (int d=0; d < 3;d++){
-                    AllAlphas[startAlphInd+3*iPt+d]=sqrt(2.0*_kbT/dt)*alphas[d];
-                }
-            }
+            SolveWithPseudoInverse(6, 6,SchurComplement, LocalRand1, alphas, rigidSVDTol,normalize,half,6); // N*LocalRand1
+            int startAlphInd=6*iFib;
             for (int d=0; d < 3;d++){
-                AllAlphas[startAlphInd+3*_nTauPerFib+d]=sqrt(2.0*_kbT/dt)*alphas[3+d];
-            } 
+                AllAlphas[startAlphInd+d]=sqrt(2.0*_kbT/dt)*alphas[d];
+                AllAlphas[startAlphInd+3+d]=sqrt(2.0*_kbT/dt)*alphas[3+d];
+            }
         }
         // Return 1D numpy array
         return make1DPyArray(AllAlphas);      
     }
     
     py::array applyPreconditioner(npDoub pyPoints, npDoub pyTangents,npDoub pyExForces,npDoub pyURHS,
-        double impco, double dt, bool implicitFP,bool rigid){
+        double impco, double dt, bool implicitFP,bool rigid, int NBands){
         /*
         Apply preconditioner to obtain lambda and alpha. 
         pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
@@ -461,8 +457,12 @@ class FiberCollectionC {
         vec U_RHS(pyURHS.size());
         std::memcpy(U_RHS.data(),pyURHS.data(),pyURHS.size()*sizeof(double));
         
+        int nAlphas = 3*_nXPerFib;
+        if (rigid){
+            nAlphas = 6;
+        }
         int nFibs = chebPoints.size()/(3*_nXPerFib);   
-        vec LambasAndAlphas(6*_nXPerFib*nFibs);
+        vec LambasAndAlphas(3*_nXPerFib*nFibs+nAlphas*nFibs);
         #pragma omp parallel for num_threads(_nOMPThr)
         for (int iFib = 0; iFib < nFibs; iFib++){
 	        vec LocalPoints(3*_nXPerFib);
@@ -482,24 +482,14 @@ class FiberCollectionC {
             for (int i=0; i < FullSize; i++){
                 ForceN[i]+=LocalExForce[i];
             }
-            int systemSize = 3*_nXPerFib;
-            if (rigid){
-                systemSize = 6;
-            }
-            vec alphas(systemSize), Lambda(3*_nXPerFib);
-            SolveSaddlePoint(LocalPoints, LocalTangents, ForceN, LocalURHS, impco,dt, rigid, implicitFP, alphas,Lambda);
+            vec alphas(nAlphas), Lambda(3*_nXPerFib);
+            SolveSaddlePoint(LocalPoints, LocalTangents, ForceN, LocalURHS, impco,dt, rigid, implicitFP,NBands, alphas,Lambda);
                        
             for (int i=0; i < FullSize; i++){
                 LambasAndAlphas[FullSize*iFib+i] =Lambda[i]; // lambda
-                if (rigid) {
-                    if (i < FullSize-3){
-                        LambasAndAlphas[FullSize*(nFibs+iFib)+i] = alphas[i % 3]; // 0, 1,or 2
-                    } else { 
-                        LambasAndAlphas[FullSize*(nFibs+iFib)+i] = alphas[(i % 3)+3]; // 0, 1,or 2
-                    }
-                } else {
-                    LambasAndAlphas[FullSize*(nFibs+iFib)+i] = alphas[i];
-                }
+            }
+            for (int i=0; i < nAlphas; i++){
+                LambasAndAlphas[FullSize*nFibs+nAlphas*iFib+i] =alphas[i]; // lambda
             }
         }
         // Return 1D numpy array
@@ -536,10 +526,7 @@ class FiberCollectionC {
             }
             vec LocalAlphas(systemSize);
             for (int i=0; i < systemSize; i++){
-                LocalAlphas[i] = Alphas[3*_nXPerFib*iFib+i];
-                if (rigid && i > 2){
-                    LocalAlphas[i] = Alphas[3*_nXPerFib*iFib+3*(_nXPerFib-1)+(i%3)]; 
-                }   
+                LocalAlphas[i] = Alphas[systemSize*iFib+i]; 
             }
             // Form K and compute products with it
             vec K(3*_nXPerFib*systemSize);
@@ -548,7 +535,7 @@ class FiberCollectionC {
             } else {
                 calcK(LocalTangents,K);
             }
-            vec LocKAlphas(3*_nXPerFib), LocKTLambda(3*_nXPerFib);
+            vec LocKAlphas(3*_nXPerFib), LocKTLambda(systemSize);
             BlasMatrixProduct(3*_nXPerFib,systemSize,1,1.0, 0.0,K,false,LocalAlphas,LocKAlphas);
             BlasMatrixProduct(systemSize,3*_nXPerFib,1,1.0, 0.0,K,true,LocalLams,LocKTLambda);
             for (int i=0; i < 3*_nXPerFib; i++){
@@ -585,7 +572,7 @@ class FiberCollectionC {
             
             // M and Schur complement block B
             vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
-            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, MWsym, EigVecs, EigVals);
+            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, -1,MWsym, EigVecs, EigVals);
             vec MWHalfetaLoc(sysDim);
             vec MWMinusHalfetaLoc(sysDim);
             ApplyMatrixPowerFromEigDecomp(sysDim, 0.5, EigVecs, EigVals, LocalRand1, MWHalfetaLoc);
@@ -598,7 +585,23 @@ class FiberCollectionC {
         return make1DPyArray(BothHalfAndMinusHalf);
     }
     
-    py::array InvertKAndStep(npDoub pyTangents, npDoub pyMidpoints, npDoub pyVelocities, double dt){
+    py::array TestPInv(npDoub Ap, npDoub bp, int m, int n){
+        /*
+        */
+
+        // allocate std::vector (to pass to the C++ function)
+        vec A(Ap.size());
+        std::memcpy(A.data(),Ap.data(),Ap.size()*sizeof(double));
+        vec b(bp.size());
+        std::memcpy(b.data(),bp.data(),bp.size()*sizeof(double));
+        vec answer(n);
+        
+        SolveWithPseudoInverse(m,n, A, b, answer,_svdtol, false,false, std::max(m,n));
+        // Return 2D numpy array
+        return make1DPyArray(answer);      
+    }
+    
+    py::array InvertKAndStep(npDoub pyTangents, npDoub pyMidpoints, npDoub pyVelocities, double dt, bool rigid){
         /*
         */
 
@@ -629,15 +632,21 @@ class FiberCollectionC {
                 ThisMidpoint[d] = Midpoints[3*iFib+d];
             }           
             // Compute rotation rates Omega_tilde
-            vec KInverse(sysDim*sysDim);
-            calcKInverse(LocalTangents, KInverse);
             vec OmegaTilde(sysDim);
-            BlasMatrixProduct(sysDim,sysDim,1,1.0, 0.0,KInverse,false,Velocity,OmegaTilde);
+            if (rigid){
+                vec KRigid(sysDim*6);
+                calcKRigid(LocalTangents,KRigid);
+                SolveWithPseudoInverse(sysDim,6, KRigid, Velocity, OmegaTilde,_svdtol, true,false, 6); 
+            } else {
+                vec KInverse(sysDim*sysDim);
+                calcKInverse(LocalTangents, KInverse);
+                BlasMatrixProduct(sysDim,sysDim,1,1.0, 0.0,KInverse,false,Velocity,OmegaTilde);
+            }
             
             vec3 MidpointTilde;
             vec XTilde(sysDim);
             vec TauTilde(3*_nTauPerFib);
-            OneFibRotationUpdate(LocalTangents,ThisMidpoint,OmegaTilde,TauTilde,MidpointTilde,XTilde,dt,1e-10);
+            OneFibRotationUpdate(LocalTangents,ThisMidpoint,OmegaTilde,TauTilde,MidpointTilde,XTilde,dt,_svdtol, rigid);
             
             for (int iPt=0; iPt < _nTauPerFib; iPt++){
                 int Tauindex = iPt+iFib*_nTauPerFib;
@@ -695,7 +704,7 @@ class FiberCollectionC {
             
             // Compute tilde variables
             vec MWsymTilde(sysDim*sysDim), EigVecsTilde(sysDim*sysDim), EigValsTilde(sysDim);
-            _MobilityEvaluator.MobilityForceMatrix(XTilde, FPisLocal,MWsymTilde, EigVecsTilde, EigValsTilde);
+            _MobilityEvaluator.MobilityForceMatrix(XTilde, FPisLocal,-1,MWsymTilde, EigVecsTilde, EigValsTilde);
             
             // RFD term
             vec URFDPlus(sysDim);
@@ -719,7 +728,7 @@ class FiberCollectionC {
                 LocalU0[i]+=URFD[i]-PenaltyTerm[i]+sqrt(2.0*_kbT/dt)*AddBERandomVel[i]; // Drift + Backward Euler modification
             }
             for (int i=0; i < sysDim; i++){
-                U0Drift[sysDim*iFib+i] = LocalU0[i]; // lambda
+                U0Drift[sysDim*iFib+i] = LocalU0[i]; 
             }
         }
         
@@ -729,7 +738,7 @@ class FiberCollectionC {
     
     
 
-    npDoub RodriguesRotations(npDoub pyXsn, npDoub pyMidpoints, npDoub pyAllAlphas,double dt){
+    npDoub RodriguesRotations(npDoub pyXsn, npDoub pyMidpoints, npDoub pyAllAlphas,double dt, bool rigid){
         /*
         Method to update the tangent vectors and positions using Rodriguez rotation and Chebyshev integration
         for many fibers in parallel. 
@@ -752,12 +761,16 @@ class FiberCollectionC {
 
         // call pure C++ function
         vec TransformedXsAndX(6*_NFib*_nXPerFib);
+        int numAlphas = 3*_nXPerFib;
+        if (rigid){
+            numAlphas = 6;
+        }
         #pragma omp parallel for num_threads(_nOMPThr)
         for (int iFib=0; iFib < _NFib; iFib++){
             // Rotate tangent vectors
-            vec LocalAlphas(3*_nXPerFib);
-            for (int i=0; i < 3*_nXPerFib; i++){
-                LocalAlphas[i] = AllAlphas[3*_nXPerFib*iFib+i];
+            vec LocalAlphas(numAlphas);
+            for (int i=0; i < numAlphas; i++){
+                LocalAlphas[i] = AllAlphas[numAlphas*iFib+i];
             }
             vec LocalTangents(3*_nTauPerFib);
             for (int i=0; i< 3*_nTauPerFib; i++){
@@ -770,7 +783,7 @@ class FiberCollectionC {
             vec RotatedTaus(3*_nTauPerFib);
             vec3 NewMidpoint;
             vec NewX(3*_nXPerFib);
-            OneFibRotationUpdate(LocalTangents, ThisMidpoint,LocalAlphas, RotatedTaus,NewMidpoint,NewX,dt,1e-10);
+            OneFibRotationUpdate(LocalTangents, ThisMidpoint,LocalAlphas, RotatedTaus,NewMidpoint,NewX,dt,_svdtol,rigid);
             for (int iPt=0; iPt < _nTauPerFib; iPt++){
                 int Tauindex = iPt+iFib*_nTauPerFib;
                 for (int d = 0; d< 3; d++){
@@ -898,7 +911,7 @@ class FiberCollectionC {
     }
     
     void SolveSaddlePoint(const vec &LocalPoints, const vec &LocalTangents, vec &ForceN, 
-        const vec &U0, double impco, double dt, bool rigid, bool implicitFP, vec &alphas, vec &Lambda){
+        const vec &U0, double impco, double dt, bool rigid, bool implicitFP, int NBands, vec &alphas, vec &Lambda){
         // Solve saddle point system 
         // M[X]*(F^n + Lambda) + U0 = (K[X]-impcodt*M[X]*D4BC*K[X]) alpha 
         // K^T Lambda = 0
@@ -916,7 +929,7 @@ class FiberCollectionC {
        
         // M and Schur complement block B
         vec MWsym(FullSize*FullSize), EigVecs(FullSize*FullSize), EigVals(FullSize);
-        _MobilityEvaluator.MobilityForceMatrix(LocalPoints, implicitFP, MWsym, EigVecs, EigVals);
+        _MobilityEvaluator.MobilityForceMatrix(LocalPoints, implicitFP, NBands,MWsym, EigVecs, EigVals);
        
         // Overwrite K ->  K-impcoeff*dt*MW*D4BC*K;
         vec D4BCK(FullSize*systemSize);
@@ -932,7 +945,7 @@ class FiberCollectionC {
         // Overwrite b2 -> Schur RHS
         // Solve M^-1*U0, add to force first
         vec NewLocalU0(FullSize);
-        ApplyMatrixPowerFromEigDecomp(systemSize, -1.0, EigVecs, EigVals, U0, NewLocalU0);  
+        ApplyMatrixPowerFromEigDecomp(FullSize, -1.0, EigVecs, EigVals, U0, NewLocalU0);  
         for (int i=0; i < FullSize; i++){
             ForceN[i]+=NewLocalU0[i];
         }
@@ -948,12 +961,14 @@ class FiberCollectionC {
         bool normalize = true;
         int maxModes = 2*_nTauPerFib+3;
         if (rigid){
-            tol = 2.0*_kbT*dt/(_svdRigid*_svdRigid);
-            normalize = false;
             maxModes = 6;
+            if (_kbT > 0){ // change tolerance for rigid fibers so that nearly straight fibers are straight
+                tol = 2.0*_kbT*dt/(_svdRigid*_svdRigid);
+                normalize = false;
+            }
         }
         bool half = false;
-        SolveWithPseudoInverse(systemSize, SchurComplement, RHS, alphas, tol,normalize,half,maxModes);
+        SolveWithPseudoInverse(systemSize, systemSize,SchurComplement, RHS, alphas, tol,normalize,half,maxModes);
         
         // Back solve to get lambda
         vec Kalpha(FullSize);
@@ -966,14 +981,18 @@ class FiberCollectionC {
     }
 
     void OneFibRotationUpdate(const vec &Xsn, const vec3 &Midpoint, const vec &AllAlphas, vec &RotatedTaus,
-        vec3 &NewMidpoint, vec &NewX,double dt, double nOmTol){
+        vec3 &NewMidpoint, vec &NewX,double dt, double nOmTol, bool rigid){
         // Rotate tangent vectors for a single fiber.
         // Uses Rodrigues rotation formula. 
         for (int iPt=0; iPt < _nTauPerFib; iPt++){
             vec3 XsToRotate, Omega;
             for (int d =0; d < 3; d++){
                 XsToRotate[d] = Xsn[3*iPt+d];
-                Omega[d] = AllAlphas[3*iPt+d];
+                if (rigid){
+                    Omega[d] = AllAlphas[d];
+                } else {
+                    Omega[d] = AllAlphas[3*iPt+d];
+                }
             }
             double nOm = normalize(Omega);
             if (nOm > nOmTol){
@@ -991,8 +1010,12 @@ class FiberCollectionC {
             }
         } // end rotate tangent vectors
         // Add the midpoint
+        int nOmega = _nTauPerFib;
+        if (rigid){
+            nOmega = 1;
+        }
         for (int d=0; d< 3; d++){
-            NewMidpoint[d]=Midpoint[d]+dt*AllAlphas[3*_nTauPerFib+d];
+            NewMidpoint[d]=Midpoint[d]+dt*AllAlphas[3*nOmega+d];
         } 
         // Obtain X from Xs and midpoint
         BlasMatrixProduct(3*_nXPerFib, 3*_nTauPerFib, 1,1.0, 0.0,_XFromTauMat, false, RotatedTaus,NewX);
@@ -1058,5 +1081,6 @@ PYBIND11_MODULE(FiberCollectionC, m) {
         .def("ComputeDriftVelocity", &FiberCollectionC::ComputeDriftVelocity)
         .def("getLHalfX", &FiberCollectionC::getLHalfX)
         .def("RodriguesRotations",&FiberCollectionC::RodriguesRotations)
-        .def("ThermalTranslateAndDiffuse",&FiberCollectionC::ThermalTranslateAndDiffuse);
+        .def("ThermalTranslateAndDiffuse",&FiberCollectionC::ThermalTranslateAndDiffuse)
+        .def("TestPInv",&FiberCollectionC::TestPInv);
 }

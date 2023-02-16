@@ -81,15 +81,17 @@ void MatVec(int m, int p, int n, const vec &M, const vec &V, int start, vec &res
 }
 
 // Solve Ax = b using pinv(A)^(power)*b
-// Only implemented for square matrices at the moment
-void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdtol, bool normalize,bool half, int maxModes){
-    vec u(n*n), s(n), vt(n*n);
-    int lda = n, ldu = n, ldvt = n;
+void SolveWithPseudoInverse(int m, int n, vec &A, const vec &b, vec &answer,double svdtol, bool normalize,bool half, int maxModes){
+    int dimS = std::min(m,n);
+    int lda = n;
+    int ldu = m;
+    int ldvt = n;
+    vec u(m*m), s(dimS), vt(n*n);
 
     //computing the SVD
-    vec Acopy(n*n);
+    vec Acopy(m*n);
     std::memcpy(Acopy.data(),A.data(),A.size()*sizeof(double));
-    int info = LAPACKE_dgesdd(LAPACK_ROW_MAJOR, 'A', n, n, &*A.begin(), lda, &*s.begin(),
+    int info = LAPACKE_dgesdd(LAPACK_ROW_MAJOR, 'A', m, n, &*A.begin(), lda, &*s.begin(),
                    &*u.begin(), ldu, &*vt.begin(), ldvt);
     if (info > 0){ 
          std::cout << "LAPACK SVD DID NOT CONVERGE" << std::endl;
@@ -111,7 +113,7 @@ void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdt
                  std::cout << vt[i] << std::endl;
          }
     }
-    //LAPACKESafeCall(info);
+    LAPACKESafeCall(info);
     double sZero = 1.0;
     if (normalize){
         sZero = *max_element(s.begin(), s.end());
@@ -120,7 +122,7 @@ void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdt
         std::cout << "Normalizing by " << sZero << std::endl;
     }
     // Pseudo-inverse calculation
-    for (int i = 0; i < n; i++) {
+    for (int i = 0; i < dimS; i++) {
         if (s[i]/sZero > svdtol && i < maxModes){// Invert the singular values which are nonzero
             if (half){
                 s[i] = 1.0 / sqrt(s[i]);
@@ -136,12 +138,16 @@ void SolveWithPseudoInverse(int n, vec &A, const vec &b, vec &answer,double svdt
         answer[i]=0;
     }
     // Mat vec U^T*b
-    vec Ustarb(n);
-    BlasMatrixProduct(n, n, 1,1.0, 0.0,u, true, b, Ustarb);
+    vec Ustarb(m);
+    BlasMatrixProduct(m, m, 1,1.0, 0.0,u, true, b, Ustarb);
     // Overwrite V^T -> S^(-1)*V^T
-    for (int i = 0; i < n; i++) {
-        cblas_dscal(n,s[i],&vt[i*n],1);
+    if (dimS < m){
+        s.resize(m,0.0);
     }
+    for (int i = 0; i < m; i++) {
+        Ustarb[i]*=s[i];
+    }
+    Ustarb.resize(n);
     // Multiply by U^T*b to get V*S^(-1)*U^T*b
     BlasMatrixProduct(n, n, 1,1.0, 0.0,vt, true, Ustarb, answer);
 }

@@ -58,6 +58,7 @@ AllXPrev = AllX;
 AllXsPrev = AllXs;
 AllXMPPrev = AllXMP;
 maxIts=20; % for the first 2 steps
+rigid=0;
 WtInvSingle = WTilde_Np1_Inverse(1:3:end,1:3:end);
 %% Computations
 for count=0:stopcount-1 
@@ -99,10 +100,10 @@ for count=0:stopcount-1
                     +BendForceMat*(impcoeff*AllXnp1Star(inds)+(1-impcoeff)*AllX(inds));
             end
         end
-        UAllPer = PeriodicRPYSum(nFib,reshape(XMob,3,[])',reshape(ForceNL,3,[])',...
-            Lds,xi,gSh,a,mu,RupsampleHydro,wup,WtInvSingle,upsamp==-1);
-        %UAllPer = UnboundedRPYSum(nFib,reshape(XMob,3,[])',reshape(ForceNL,3,[])',...
-        %    a,mu,RupsampleHydro,wup,WtInvSingle,upsamp==-1,0);
+        %UAllPer = PeriodicRPYSum(nFib,reshape(XMob,3,[])',reshape(ForceNL,3,[])',...
+        %   Lds,xi,gSh,a,mu,RupsampleHydro,wup,WtInvSingle,upsamp==-1);
+        UAllPer = UnboundedRPYSum(nFib,reshape(XMob,3,[])',reshape(ForceNL,3,[])',...
+            a,mu,RupsampleHydro,wup,WtInvSingle,upsamp==-1,0);
         USelf = UnboundedRPYSum(nFib,reshape(XMob,3,[])',...
             reshape(ForceNL,3,[])',a,mu,RupsampleHydro,wup,WtInvSingle,upsamp==-1,1);
         uNonLoc = reshape((UAllPer-USelf)',[],1);

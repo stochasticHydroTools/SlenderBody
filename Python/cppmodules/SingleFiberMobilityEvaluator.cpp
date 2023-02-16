@@ -106,13 +106,13 @@ class SingleFiberMobilityEvaluator {
         
     }
     
-    void MobilityForceMatrix(const vec &LocalPoints, bool nonLocalParts,vec &MForce, vec &EigVecs, vec &EigVals){
+    void MobilityForceMatrix(const vec &LocalPoints, bool nonLocalParts, int NBands, vec &MForce, vec &EigVecs, vec &EigVals){
         /*
         Main method to compute the mobility M[X]
         This is the matrix that acts on FORCES to give velocities
         */
         if (_directRPY || _oversampledRPY){
-            RPYDirectMobility(LocalPoints,MForce);
+            RPYDirectMobility(LocalPoints,MForce,NBands);
             SymmetrizeAndDecomposePositive(3*_nXPerFib, MForce, 0, EigVecs, EigVals);
         } else { // Doing SBT or quadrature 
             vec M(9*_nXPerFib*_nXPerFib);
@@ -490,7 +490,7 @@ class SingleFiberMobilityEvaluator {
         }
     }
     
-    void RPYDirectMobility(const vec &LocalPoints, vec &MForce){
+    void RPYDirectMobility(const vec &LocalPoints, vec &MForce, int NBands){
         /*
         This forms the matrix M when we use direct RPY. The flow of the method is the same, 
         but extra matrices have to be added when we do oversampling
@@ -504,7 +504,13 @@ class SingleFiberMobilityEvaluator {
         }
         vec MRPYDirect(9*Npts*Npts);
         for (int iPt = 0; iPt < Npts; iPt++){
-            for (int jPt = 0; jPt < Npts; jPt++){
+            int startPt=0;
+            int endPt=Npts-1;
+            if (NBands > 0){
+                startPt = std::max(iPt-NBands,0);
+                endPt = std::min(iPt+NBands,Npts-1);
+            }
+            for (int jPt = startPt; jPt <= endPt; jPt++){
                 vec MPair(9);
                 vec3 rvec;
                 for (int iD=0; iD < 3; iD++){

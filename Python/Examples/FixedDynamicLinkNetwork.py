@@ -60,9 +60,9 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
 
 # Initialize the master list of fibers
 if (FluctuatingFibs):
-    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr);
+    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidFibs);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidDetFibs);
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidFibs);
 
 Ewald = None;
 if (nonLocal==1):
@@ -87,9 +87,10 @@ CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSec
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
 
 # Initialize the temporal integrator
-TIntegrator = BackwardEuler(allFibers,CLNet);
 if (FluctuatingFibs):
     TIntegrator = MidpointDriftIntegrator(allFibers,CLNet);
+else:
+    TIntegrator = BackwardEuler(allFibers,CLNet);
 # Number of GMRES iterations for nonlocal solves
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
@@ -126,6 +127,8 @@ LocalAlignment,numCloseBy = CLNet.LocalOrientations(1,allFibers)
 NumFibsConnected[0,:] = numCloseBy;
 AllLocalAlignment[0,:] = LocalAlignment;
 saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
+
+ItsNeed = np.zeros(stopcount);
         
 # Simulate 
 for iT in range(stopcount): 
@@ -133,7 +136,7 @@ for iT in range(stopcount):
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
         mythist = time.time()
-    maxX, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+    maxX, ItsNeed[iT], _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
         updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
@@ -168,6 +171,7 @@ for iT in range(stopcount):
         print('Time to compute network info %f ' %(time.time()-thist));
        
 if (True):  
+    np.savetxt('ItsNeeded'+FileString,ItsNeed);
     np.savetxt('BundlingBehavior/nLinksPerFib'+FileString,numLinksByFib);  
     np.savetxt('BundlingBehavior/NumFibsConnectedPerFib'+FileString,NumFibsConnected);
     np.savetxt('BundlingBehavior/LocalAlignmentPerFib'+FileString,AllLocalAlignment);

@@ -78,7 +78,7 @@ seed = int(sys.argv[2]);
 #nSaves = 100; # target number
 saveEvery = max(np.floor(0.01/dtfund),1);#int(tf/(nSaves*dt)+1e-6);
 
-saveStr='Tol2Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
+saveStr='ChkNLTol2Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
 FileString = 'SemiflexFlucts/Locs'+saveStr;
     
 # Initialize the domain
