@@ -14,7 +14,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     This class is a child of CrossLinkedNetwork which implements a network 
     with cross links where each end matters separately. 
        
-    There are 3 reactions
+    There are 6 reactions (the even ones are the reverse of the odds)
     1) Binding of a floating link to one site (rate _kon)
     2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
     3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)

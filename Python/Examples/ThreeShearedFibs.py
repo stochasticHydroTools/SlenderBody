@@ -49,7 +49,7 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=True,deltaLocal=
     RPYDirectQuad=False,RPYOversample=False,NupsampleForDirect=32,FPIsLocal=True);
 
 # Initialize the master list of fibers
-allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0,eigvalThres,nThreads=1,rigidFibs=False);
+allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0,eigvalThres,nThreads=4,rigidFibs=True);
 fibList = makeThreeSheared(Lf,N,fibDisc);
 allFibers.initFibList(fibList,Dom);
 allFibers.fillPointArrays();

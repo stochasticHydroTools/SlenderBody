@@ -10,7 +10,7 @@ from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
 itercap = 100; # cap on GMRES iterations if we converge all the way
-GMREStolerance=1e-6; # larger than GPU tolerance
+GMREStolerance=1e-3; # larger than GPU tolerance
 verbose = -1;
 
 # Documentation last updated: 03/12/2021
@@ -19,7 +19,12 @@ class TemporalIntegrator(object):
 
     """
     Class to do temporal integration. 
-    Child classes: BackwardEuler and CrankNicolson
+    There are three possibilities implemented:
+    1) Backward Euler - first order accuracy for deterministic fibers
+    2) Crank Nicolson - "second order" accuracy for deterministic fibers. However, 
+    this temporal integrator is very sensitive because it uses linear multistep formulas
+    to get higher-order accuracy. We do not use it any more for this reason.
+    3) Midpoint Drift integrator - for filaments with semiflexible bending fluctuations. 
     Abstract class: does first order explicit
     """
     
@@ -97,7 +102,8 @@ class TemporalIntegrator(object):
         """
         This method solves the saddle point system for lambda and alpha. It is for DETERMINISTIC
         fibers, and is based on solving a block-diagonal system first, then using GMRES to solve
-        for a residual lambda and alpha
+        for a residual lambda and alpha. See Section 4.5 here: https://arxiv.org/pdf/2007.11728.pdf 
+        for more details on this. 
         """
         thist = time.time();
         ExForce, UNonLoc = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
@@ -106,7 +112,8 @@ class TemporalIntegrator(object):
             thist = time.time()
             
         # Apply preconditioner to get (delta lambda,delta alpha) from the block diagonal solver
-        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(UNonLoc,XsforNL,dt,self._impco,XforNL,ExForce);
+        self._allFibers.FactorizePreconditioner(XforNL,XsforNL,self._impco,dt);
+        BlockDiagAnswer = self._allFibers.BlockDiagPrecond(UNonLoc,ExForce);
         if (verbose > 0):
             print('Time to apply preconditioner %f' %(time.time()-thist))
             thist = time.time()
@@ -121,10 +128,12 @@ class TemporalIntegrator(object):
             # GMRES set up and solve
             RHS = self._allFibers.calcResidualVelocity(BlockDiagAnswer,XforNL,XsforNL,dt*self._impco,lamStar, Dom, Ewald);
             systemSize = self._allFibers.getSysDimension();
+            BlockOne = self._allFibers.getBlockOneSize();
+            BlockTwo = systemSize - BlockOne;
             A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
                 X=XforNL, Xs=XsforNL, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
             Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
-                   Xs_nonLoc=XsforNL,dt=dt,implic_coeff=self._impco,X_nonLoc=XforNL,ExForces=np.zeros(systemSize)),dtype=np.float64);
+                   ExForces=np.zeros(BlockOne)),dtype=np.float64);
             SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
             Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=GMREStolerance,maxiter=giters)
             lamalphT = Solution.xk;
@@ -201,7 +210,7 @@ class TemporalIntegrator(object):
                 print('Time to calc CL force %f' %(time.time()-thist))
                 thist = time.time()
         
-        # Block diagonal solve
+        # Solve for the (alpha, lambda) to update the fibers
         thist = time.time()
         # Solve the block diagonal way
         if (turnoverFibs): # reinitialize lambda for fibers that were turned over
@@ -215,7 +224,7 @@ class TemporalIntegrator(object):
         #np.savetxt('TanVecs.txt',XsforNL)
         #np.savetxt('FCL.txt',forceExt)
         #np.savetxt('LambdaAlpha.txt',lamalph)
-                
+
         # Update alpha and lambda and fiber positions
         self._allFibers.updateLambdaAlpha(lamalph);
         maxX = self._allFibers.updateAllFibers(dt);
@@ -310,6 +319,14 @@ class CrankNicolson(TemporalIntegrator):
 
 class MidpointDriftIntegrator(BackwardEuler):
 
+    """
+    This is the midpoint drift integrator that is intended for use 
+    with semiflexible bending fluctuations. Basically, it is based on generating a
+    Brownian velocity, then inverting K to step to the midpoint, then solving the 
+    saddle point system we usually solve at the midpoint.
+    More details can be found in Section 3 here: https://arxiv.org/pdf/2301.11123.pdf
+    """ 
+
     def __init__(self,fibCol,CLNetwork=None):
         super().__init__(fibCol,CLNetwork);
         self._ModifyBE=True;
@@ -318,38 +335,47 @@ class MidpointDriftIntegrator(BackwardEuler):
         
     def SolveForFiberAlphaLambda(self,XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald):
         """
+        This is the method that gives alpha and lambda on the fibers using the midpoint solve. 
+        The steps are outlined in the columns below. 
         """
         thist = time.time()  
+        # Compute the external flow and force we treat explicitly (this includes the bending force 
+        # at time n)
         ExForce, U0 = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
         if (verbose > 0):
             print('Time to form RHS %f' %(time.time()-thist))
             thist = time.time()  
+        # Compute M^(1/2)*W for later use
         MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
         if (verbose > 0):
             print('Time to do M^1/2 %f' %(time.time()-thist))
             thist = time.time()  
+        # Use M^(1/2)*W to step to the midpoint
         TauMidtime, MPMidtime, XMidtime = self._allFibers.StepToMidpoint(MHalfEta,dt);
+        self._allFibers.FactorizePreconditioner(XMidtime,TauMidtime,self._impco,dt);
         if (verbose > 0):
             print('Time to step to MP %f' %(time.time()-thist))
             thist = time.time()  
+        # Compute the additional velocity for the saddle point system. This includes 1) M^(1/2)*W (the 
+        # normal Brownian velocity) + Drift terms + terms for modified backward Euler.
         UBrown = self._allFibers.DriftPlusBrownianVel(XMidtime, MHalfEta, MMinusHalfEta,dt,self._ModifyBE,Dom,Ewald);
         if (verbose > 0):
             print('Time to calc drift %f' %(time.time()-thist))
             thist = time.time()
-        # Set the shear equal to the midtime shear
         if (self._allFibers._nonLocal==1): 
             # GMRES set up and solve
-            Dom.setg(self._allFibers.getg((iT+0.5)*dt)) #Test this!
-            if (Dom.getg() > 0):
-                warn('Test strained domain at midpoint!')
+            # Set the shear equal to the midtime shear
+            Dom.setg(self._allFibers.getg((iT+0.5)*dt)) 
             systemSize = self._allFibers.getSysDimension();
+            BlockOne = self._allFibers.getBlockOneSize();
+            BlockTwo = systemSize - BlockOne;
             # Add velocity from external forcing
             UExForce = self._allFibers.ComputeTotalVelocity(XMidtime,ExForce,Dom,Ewald);
-            RHS = np.concatenate((UBrown+U0+UExForce,np.zeros(systemSize-self._allFibers.getBlockOneSize())));
+            RHS = np.concatenate((UBrown+U0+UExForce,np.zeros(BlockTwo)));
             A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
                 X=XMidtime, Xs=TauMidtime, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
             Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
-                   Xs_nonLoc=TauMidtime,dt=dt,implic_coeff=self._impco,X_nonLoc=XMidtime,ExForces=np.zeros(systemSize)),dtype=np.float64);
+                   ExForces=np.zeros(BlockOne)),dtype=np.float64);
             SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
             Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=GMREStolerance,maxiter=itercap)
             lamalph = np.reshape(Solution.xk,systemSize);
@@ -366,7 +392,7 @@ class MidpointDriftIntegrator(BackwardEuler):
             #print(np.amax(abs(res)))
         else:
             # Just apply block-diag precond
-            lamalph = self._allFibers.BlockDiagPrecond(UBrown+U0,TauMidtime,dt,self._impco,XMidtime,ExForce);
+            lamalph = self._allFibers.BlockDiagPrecond(UBrown+U0,ExForce);
             itsneeded=0;
         if (verbose > 0):
             print('Time to solve system %f' %(time.time()-thist))

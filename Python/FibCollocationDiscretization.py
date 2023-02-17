@@ -18,6 +18,10 @@ class FibCollocationDiscretization(object):
     then the child class is specific to Chebyshev. The child class contains
     the relevant methods that need to be modified if we were to switch to e.g. 
     Legendre.
+    
+    The primary purpose of this class is to precompute the matrices that get used in the 
+    force and K matrix calculations. These matrix are passed to C++ through the class
+    fiberCollection.py. 
     """
     
     ## ===========================================
@@ -27,7 +31,8 @@ class FibCollocationDiscretization(object):
         RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True):
         """
         Constructor. 
-        L = fiber length, epsilon = fiber aspect ratio (IMPORTANT: this is the actual aspect ratio,
+        L = fiber length, 
+        epsilon = fiber aspect ratio (IMPORTANT: this is the actual aspect ratio,
         NOT the aspect ratio of the RPY tensor. The RPY radius can be computed from the actual radius
         by multiplying by aRPYFac, as is done below).      
         Eb = bending stiffness, mu = fluid viscosity. 
@@ -40,6 +45,8 @@ class FibCollocationDiscretization(object):
         RPYOversample = whether to use oversampled quadrature for the mobility
         UseEnergyDisc = whether to use an energy discretization for the elastic force. If false, uses 
         rectangular spectral collocation. 
+        FPIsLocal = whether intra-fiber (or "finite part") hydrodynamics is considered local or nonlocal. 
+        This is important when we form the mobility matrix M in the preconditioner.
         """
         self._L = L;
         self._epsilon = epsilon;
@@ -66,10 +73,8 @@ class FibCollocationDiscretization(object):
 
     def initIs(self):
         """
-        Initialize the identity matrix and matrix that takes 
-        definite integrals (these are constant throughout a simulation).
-        This method depends only on the quadrature weights, which we 
-        assume have already been initialized
+        Initialize the identity matrix which maps a 3 x 1 vector to the 
+        whole grid
         """
         self._I = np.zeros((3*self._Nx,3));
         try:
@@ -84,6 +89,8 @@ class FibCollocationDiscretization(object):
         The distance delta is the fraction of the fiber over which the ellipsoidal endpoint
         decay occurs. 
         See pg. 9 here: https://arxiv.org/pdf/2007.11728.pdf for formulas
+        Note that this is only used when the mobility is SBT, i.e., when RPYSpecialQuad, 
+        RPYDirectQuad, and _RPYOversample have ALL been set to false. 
         """
         radii = np.zeros(self._Nx);
         self._delta = delta;
@@ -138,6 +145,14 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True,penaltyParam=0):
         """
         Initialize Chebyshev grids for x and tau
+        In this discretization, which is described here: https://arxiv.org/abs/2301.11123,
+        the tangent vectors are always described on a type 1 grid of size N. Then the collocation points X
+        are obtained on a grid of size Nx=N+1 by integrating the tangent vectors. 
+        The type of grid for X depends on how the elastic force is calculated - if we use rectangular spectral
+        collocation, the collocation grid must be type 1 (no endpoints). See this paper:
+        https://tobydriscoll.net/publication/driscoll-rectangular-spectral-collocation-2015/driscoll-rectangular-spectral-collocation-2015.pdf
+        for explanation. 
+        Otherwise, we use a grid of type 2 (endpoints included). 
         """
         super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc,FPIsLocal);
 		# Chebyshev grid and weights
@@ -185,8 +200,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         Initialize the up and downsampling matrices used when we do upsampled direct
         quadrature. There are two matrices here. There is the matrix EUpsample (not interesting)
         which takes the points and upsamples them, but then there is the _OversamplingWtsMat
-        which is W_up*E*Wtilde^(-1). See Eq. (23) in (ARXIV link) 
-        Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization
+        which is W_up*E*Wtilde^(-1). See Eq. (23) in https://arxiv.org/abs/2301.11123
         for more information on this. 
         """
         self._wForDirect = cf.chebWts(self._nptsDirect, [0,self._L],self._XGridType);   

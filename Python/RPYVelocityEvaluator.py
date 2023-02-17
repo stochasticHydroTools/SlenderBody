@@ -275,7 +275,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
 
 
 # Parameters for Raul's code 
-GPUtol = 1e-6 # single precision, so 1e-6 is smallest tolerance
+GPUtol = 1e-3 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
     """
@@ -349,9 +349,9 @@ class GPUEwaldSplitter(EwaldSplitter):
     
     def calcMOneHalfW(self,ptsxyz,Dom):
         """
-        Total velocity due to Ewald (far field + near field). 
-        Inputs: ptsxyz = the list of points 
-        Output: the total velocity as an Npts x 3 array.
+        This method is used to compute M[X]^(1/2)*W. 
+        ptsxyz = the points in (x,y,z) space, Dom = the domain object (gives the
+        periodicity and the conversion to sheared coordinates)
         """
         # First check if Ewald parameter is ok
         if (verbose > 0):
@@ -366,6 +366,7 @@ class GPUEwaldSplitter(EwaldSplitter):
         # python will just silently pass by copy and the results will be lost
         MHalfW=np.zeros(3*self._Npts, np.float64);
         self._GPUEwald.setShearStrain(self._currentDomain.getg())
+        # In UAMMD, setting temperature = 0.5 will return M^(1/2)*W - we can add the kBT prefactor later. 
         self._GPUEwald.computeHydrodynamicDisplacements(positions,forces,MHalfW,temperature=0.5,prefactor = 1.0)
         return MHalfW;
     

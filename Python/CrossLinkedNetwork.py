@@ -6,6 +6,7 @@ from scipy.sparse.csgraph import connected_components, shortest_path
 import time
 
 verbose = -1;
+kbT = 4.1e-3;
 
 # Documentation last updated: 03/09/2021
 
@@ -23,12 +24,18 @@ class CrossLinkedNetwork(object):
     def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,smoothForce,nThreads=1):
         """
         Initialize the CrossLinkedNetwork. 
-        Input variables: nFib = number of fibers, N = number of points per
-        fiber, Nunisites = number of uniformly placed CL binding sites per fiber
+        Input variables: 
+        nFib = number of fibers
+        N = number of points per fiber
+        Nunisites = number of uniformly placed CL binding sites per fiber
         Lfib = length of each fiber
-        kCL = cross linking spring constant, rl = rest length of the CLs, 
-        Dom = domain object, fibDisc = fiber collocation discretization, Threads = number 
-        of threads for openMP calculation of CL forces and stress
+        kCL = cross linking spring constant
+        rl = rest length of the CLs, 
+        Dom = domain object, 
+        fibDisc = fiber collocation discretization, 
+        smoothForce = whether to smooth out the forcing or us an actual spring between 
+            the uniformly spaced points
+        nThreads = number of threads for openMP calculation of CL forces and stress
         """
         self._Npf = N; 
         self._NsitesPerf = Nunisites;
@@ -44,10 +51,9 @@ class CrossLinkedNetwork(object):
         # The standard deviation of the cross linking Gaussian depends on the
         # number of points per fiber and the length of the fiber.
         self._sigma = self.sigmaFromNL(self._Npf,self._Lfib)
-        print('Sigma/L is %f' %(self._sigma/self._Lfib))
             
         # Cutoff bounds to form the CLs
-        self._deltaL = min(np.sqrt(4e-3/self._kCL),0.5*self._rl);
+        self._deltaL = min(np.sqrt(kbT/self._kCL),0.5*self._rl);
         # Add fudge factor because of discrete sites
         self._ds = self._Lfib/(self._NsitesPerf-1);
         #if (self._ds > 2*self._deltaL):
@@ -96,8 +102,10 @@ class CrossLinkedNetwork(object):
     def CLForce(self,uniPoints,chebPoints,Dom,fibCollection):
         """
         Compute the total cross linking force.
-        Inputs: uniPoints = uniform points for all fibers, chebPoints = Chebyshev points 
-        on all fibers, Dom = Domain object. 
+        Inputs: 
+        uniPoints = uniform points for all fibers
+        chebPoints = Chebyshev points on all fibers 
+        Dom = Domain object
         Outputs: nPts*3 one-dimensional array of the forces at the 
         Chebyshev points due to the CLs
         """
@@ -105,40 +113,35 @@ class CrossLinkedNetwork(object):
             return np.zeros(3*self._Npf*self._nFib);
         # Call the C++ function to compute forces
         shifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
-        #thist=time.time();
         if (self._smoothForce):
             Clforces = self._CForceEvaluator.calcCLForces(self._HeadsOfLinks[:self._nDoubleBoundLinks], \
                 self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPoints,chebPoints);
         else:
             Clforces = self._CForceEvaluator.calcCLForcesEnergy(self._HeadsOfLinks[:self._nDoubleBoundLinks], \
                     self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPoints,chebPoints);
-        #print('First method time %f' %(time.time()-thist))
         return Clforces;
         
  
     def CLStress(self,fibCollection,chebPts,Dom):
         """
         Compute the cross-linker contribution to the stress.
-        Inputs: fibCollection = fiberCollection object to compute
-        the stress on, fibDisc = fiber Discretization object describing
-        each fiber, Dom = Domain (needed to compute the volume)
+        Inputs: fibCollection = 
+        fiberCollection object to compute the stress on, 
+        chebPts = Chebyshev points 
+        Dom = Domain (needed to compute the volume)
+        This method is only implemented for nonsmooth forcing (actual springs
+        between the fibers). As such, it returns an error if you try to call it with
+        smooth forcing.
         """
         if (self._nDoubleBoundLinks==0):
             return 0;
         uniPts = fibCollection.getUniformPoints(chebPts);
         shifts = Dom.unprimecoords(np.array(self._PrimedShifts));
-        #np.savetxt('uniPts.txt',uniPts)
-        #np.savetxt('shifts.txt',shifts)
-        #np.savetxt('Heads.txt',self._HeadsOfLinks[:self._nDoubleBoundLinks])
-        #np.savetxt('Tails.txt',self._TailsOfLinks[:self._nDoubleBoundLinks])
-        #np.savetxt('Chebpts.txt',chebPts)
         if (self._smoothForce):
             raise TypeError('Stress only implemented with nonsmooth (energy-based) CL forcing')
         stress = self._CForceEvaluator.calcCLStressEnergy(self._HeadsOfLinks[:self._nDoubleBoundLinks],\
             self._TailsOfLinks[:self._nDoubleBoundLinks],shifts,uniPts,chebPts);
-        #print('CPP stress %f' %stress)
         stress/=Dom.getVol();
-        #np.savetxt('CLStress.txt',stress)
         return stress;
     
     ## ==============================================
@@ -148,6 +151,9 @@ class CrossLinkedNetwork(object):
         return self._nDoubleBoundLinks;
     
     def mapSiteToFiber(self,sites):
+        """
+        The fiber(s) associated with a set of uniform site(s)
+        """
         return sites//self._NsitesPerf;
     
     def mapFibToStartingSite(self,LinkedFibs):
@@ -183,11 +189,9 @@ class CrossLinkedNetwork(object):
     
     def SpringCOM(self,uniPoints,Dom):
         """
-        Method to compute the strain in each link
+        Method to compute the center of mass of each link. 
         Inputs: uniPoints = uniform points on the fibers to which the 
         links are bound, Dom = domain object for periodic shifts 
-        Return: an array of nLinks sisze that has the signed strain ||link length|| - rl
-        for each link 
         """
         linkCOMs = np.zeros((self._nDoubleBoundLinks,3));
         shifts = Dom.unprimecoords(self._PrimedShifts);

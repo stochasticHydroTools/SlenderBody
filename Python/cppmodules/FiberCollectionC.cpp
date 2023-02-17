@@ -8,15 +8,16 @@
 #include <iterator>
 #include "VectorMethods.cpp"
 #include "utils.h"
-#include "SingleFiberMobilityEvaluator.cpp"
+#include "SingleFiberSaddlePointSolver.cpp"
 
 
 /**
     FiberCollection.cpp
-    C++ class that updates arrays of many fiber positions, etc.
-    2 main public methods :
-    1) RodriguesRotations - return the rotated X and Xs
-    2) ApplyPreconditioner  - block diagonal solver
+    This is the C++ class that is called from python's fiberCollection.py. 
+    Its main purpose is to parallelize calculations with OpenMP and communicate with 
+    Python. All of the actual calculations are done in SingleFiberSaddlePointSolver
+    and SingleFiberMobilityEvaluator. This class serves to communicate between those classes
+    and python. 
 **/
 
 namespace py=pybind11;
@@ -30,7 +31,7 @@ class FiberCollectionC {
     //===========================================
     //        METHODS FOR INITIALIZATION
     //===========================================
-    FiberCollectionC(int nFib,int nXPerFib,int nTauPerFib,int nThreads,
+    FiberCollectionC(int nFib,int nXPerFib,int nTauPerFib,int nThreads,bool rigid,
         double a, double L, double mu,double kbT, double svdtol, double svdrigid, bool quadRPY, bool directRPY, bool oversampleRPY)
         :_MobilityEvaluator(nXPerFib,a,L,mu,quadRPY,directRPY,oversampleRPY){
         /**
@@ -38,8 +39,10 @@ class FiberCollectionC {
         nFib = number of fibers
         nXPerFib = number of collocation points per fiber
         nTauPerFib = number of tangent vectors on each fiber
-        nThreads = number of OMP threads,  svdtol = tolerance for SVD of 
-        semiflexible fibers, svdrigid = tolerance for SVD of rigid fibers, 
+        nThreads = number of OMP threads,
+        rigid = if the fibers are rigid
+        a = fiber radius, L = fiber length, mu = fluid viscosity,  svdtol = tolerance for SVD of 
+        semiflexible fibers, svdrigid = tolerance for SVD of rigid fibers (this depends on the time step) 
         kbT = thermal energy. Other parameters: see SingleFiberMobilityEvaluator class
         **/ 
         _NFib = nFib;
@@ -49,6 +52,10 @@ class FiberCollectionC {
         _svdtol = svdtol;
         _svdRigid = svdrigid;
         _kbT = kbT;
+        _rigid = rigid;
+        for (int i=0; i < _NFib; i++){
+            _SaddlePointSolvers.push_back(SingleFiberSaddlePointSolver(_nXPerFib,_nTauPerFib, rigid, svdtol, svdrigid));
+        }
     }
     
     void initMobilityMatrices(npDoub pyXNodes,npDoub &pyCs,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
@@ -65,32 +72,32 @@ class FiberCollectionC {
     }
     
     void initResamplingMatrices(int Nuniform, npDoub pyMatfromNtoUniform){    
-        // allocate std::vector (to pass to the C++ function)
         _nUni = Nuniform;
         _UnifRSMat = vec(pyMatfromNtoUniform.size());
         std::memcpy(_UnifRSMat.data(),pyMatfromNtoUniform.data(),pyMatfromNtoUniform.size()*sizeof(double));
     }
     
-    void initMatricesForPreconditioner(npDoub pyD4BC, npDoub pyD4BCForce, npDoub pyD4BCForceHalf,
+    void initMatricesForPreconditioner(npDoub pyD4BCForce, npDoub pyD4BCForceHalf,
         npDoub pyXFromTau, npDoub pyTauFromX,npDoub pyMP,npDoub pyBendMatX0){
+        for (int i=0; i < _NFib; i++){
+            _SaddlePointSolvers[i].initMatricesForPreconditioner(pyD4BCForce,pyXFromTau, pyTauFromX, pyMP);
+        }
 
-        _D4BC = vec(pyD4BC.size());
         _D4BCForce = vec(pyD4BCForce.size());
         _BendForceMatHalf = vec(pyD4BCForceHalf.size());
-        _XFromTauMat = vec(pyXFromTau.size());
-        _TauFromXMat = vec(pyTauFromX.size());
-        _MidpointSamp = vec(pyMP.size());
         _BendMatX0 = vec(pyBendMatX0.size());  
+        _XFromTauMat = vec(pyXFromTau.size());
          
-        std::memcpy(_D4BC.data(),pyD4BC.data(),pyD4BC.size()*sizeof(double));
         std::memcpy(_D4BCForce.data(),pyD4BCForce.data(),pyD4BCForce.size()*sizeof(double));
         std::memcpy(_BendForceMatHalf.data(),pyD4BCForceHalf.data(),pyD4BCForceHalf.size()*sizeof(double));
-        std::memcpy(_XFromTauMat.data(),pyXFromTau.data(),pyXFromTau.size()*sizeof(double));
-        std::memcpy(_TauFromXMat.data(),pyTauFromX.data(),pyTauFromX.size()*sizeof(double));
-        std::memcpy(_MidpointSamp.data(),pyMP.data(),pyMP.size()*sizeof(double));
         std::memcpy(_BendMatX0.data(),pyBendMatX0.data(),pyBendMatX0.size()*sizeof(double));
+        std::memcpy(_XFromTauMat.data(),pyXFromTau.data(),pyXFromTau.size()*sizeof(double));
     }
-
+    
+    
+    //===========================================
+    //        METHODS FOR DETERMINISTIC FIBERS 
+    //===========================================
     py::array evalBendForces(npDoub pyPoints){
         vec chebPts(pyPoints.size());
         std::memcpy(chebPts.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
@@ -221,6 +228,10 @@ class FiberCollectionC {
     }
     
     py::array getLHalfX(npDoub pyRand2){
+        /*
+        Multiplies L^(1/2)*eta, which is used in modified backward 
+        Euler calculations.
+        */
         vec chebRand(pyRand2.size());
         std::memcpy(chebRand.data(),pyRand2.data(),pyRand2.size()*sizeof(double));
         vec AllProducts(3*_NFib*_nXPerFib);
@@ -261,10 +272,6 @@ class FiberCollectionC {
     py::array evalLocalVelocities(npDoub pyChebPoints, npDoub pyForces, bool includeFP){
         /*
         Evaluate the local velocities M_local*f on the fiber.
-        pyPositions = collocation points
-        pyForceDensities = force densites on the fiber
-        Exact RPY = whether we're doing exact RPY hydro or SBT
-        @return 1D numpy array of local velocities
         */
         // allocate std::vector (to pass to the C++ function)
         vec ChebPoints(pyChebPoints.size());
@@ -332,10 +339,8 @@ class FiberCollectionC {
     
     npDoub FinitePartVelocity(npDoub pyChebPoints, npDoub pyForces){
         /**
-        Compute the finite part velocity on all fibers 
-        @param pyChebPoints = Npts * 3 numpy array (2D) of Chebyshev points on ALL fibers
-        @param pyForceDens = Npts * 3 numpy array (2D) of forces on ALL fibers
-        @return velocities = Npts * 3 numpy array (1D, row stacked "C" order) of finite part velocities
+        Compute the finite part velocity on all fibers. This is the total intra-fiber
+        velocity minus the part from local drag. 
         **/
 
         // allocate std::vector (to pass to the C++ function)
@@ -370,12 +375,12 @@ class FiberCollectionC {
     } // end calcFP velocity
     
     
-    py::array ThermalTranslateAndDiffuse(npDoub pyPoints, npDoub pyTangents,npDoub pyRandVec1,bool implicitFP, double dt){
+    py::array ThermalTranslateAndDiffuse(npDoub pyPoints, npDoub pyTangents,npDoub pyRandVec1,bool includeFP, double dt){
 
         /*
         Random Brownian translation and rotation, assuming the fiber is rigid
         Inputs: pyPoints = Chebyshev points, pyTangents = tangent vectors, 
-        pyRandVec1 = nFib*6 random vector, implicitFP = whether the mobility includes the finite
+        pyRandVec1 = nFib*6 random vector, includeFP = whether the local mobility includes the finite
         part integral (intra-fiber hydro) or not, dt = time step size
         */
 
@@ -398,31 +403,12 @@ class FiberCollectionC {
             for (int i=0; i< 3*_nTauPerFib; i++){
                 LocalTangents[i] = Tangents[3*_nTauPerFib*iFib+i];
             }
-            
-            // K and K*
-            vec KRig(3*_nXPerFib*6);
-            calcKRigid(LocalTangents,KRig);
-            // M and Schur complement block B
-            int sysDim = 3*_nXPerFib;
-            vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
-            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, implicitFP, -1,MWsym, EigVecs, EigVals);
-            
-           
-            vec MinvK(sysDim*6);
-            vec SchurComplement(6*6);
-            ApplyMatrixPowerFromEigDecomp(sysDim, -1.0, EigVecs, EigVals, KRig, MinvK);  
-            BlasMatrixProduct(6, sysDim,6, 1.0,0.0,KRig,true,MinvK,SchurComplement); // K'*(M^-1*K)
-            vec alphas(6);
             vec LocalRand1(6);
             for (int i=0; i < 6; i++){
                 LocalRand1[i] = RandVec1[6*iFib+i];
             }
-            vec SchurEigVecs(6*6), SchurEigVals(6);
-            SymmetrizeAndDecomposePositive(6, SchurComplement,0.0, SchurEigVecs, SchurEigVals); 
-            double rigidSVDTol = 2.0*_kbT*dt/(_svdRigid*_svdRigid);
-            bool normalize = false;
-            bool half = true;
-            SolveWithPseudoInverse(6, 6,SchurComplement, LocalRand1, alphas, rigidSVDTol,normalize,half,6); // N*LocalRand1
+            vec alphas(6);
+            _SaddlePointSolvers[iFib].RigidBodyDisplacements(LocalTangents, LocalPoints, LocalRand1, _MobilityEvaluator,includeFP, _kbT*dt,alphas);
             int startAlphInd=6*iFib;
             for (int d=0; d < 3;d++){
                 AllAlphas[startAlphInd+d]=sqrt(2.0*_kbT/dt)*alphas[d];
@@ -433,32 +419,18 @@ class FiberCollectionC {
         return make1DPyArray(AllAlphas);      
     }
     
-    py::array applyPreconditioner(npDoub pyPoints, npDoub pyTangents,npDoub pyExForces,npDoub pyURHS,
-        double impco, double dt, bool implicitFP,bool rigid, int NBands){
+    void FactorizePreconditioner(npDoub pyPoints, npDoub pyTangents,double impco, double dt, bool implicitFP, int NBands){
         /*
-        Apply preconditioner to obtain lambda and alpha. 
-        pyPoints = chebyshev fiber pts as an Npts x 3 2D numpy array
-        pyTangents = tangent vectors as an Npts x 3 2D numpy array (or row-stacked 1D, it gets converted anyway)
-        pyExForceDens = external force density on the fibers
-        impco = implicit coefficient (1 for backward Euler, 1/2 for Crank-Nicolson)
-        dt = time step size
-        implicitFP = whether to include intra-fiber hydro in mobility or not
-        rigid = whether fibers are rigid (obviously)
-        @return a vector (lambda,alpha) with the values on all fibers in a collection
+        See documentation for this method in fiberCollection.py
         */
-
         // allocate std::vector (to pass to the C++ function)
         vec chebPoints(pyPoints.size());
         std::memcpy(chebPoints.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
         vec Tangents(pyTangents.size());
         std::memcpy(Tangents.data(),pyTangents.data(),pyTangents.size()*sizeof(double));
-        vec ExForces(pyExForces.size());
-        std::memcpy(ExForces.data(),pyExForces.data(),pyExForces.size()*sizeof(double));
-        vec U_RHS(pyURHS.size());
-        std::memcpy(U_RHS.data(),pyURHS.data(),pyURHS.size()*sizeof(double));
-        
+      
         int nAlphas = 3*_nXPerFib;
-        if (rigid){
+        if (_rigid){
             nAlphas = 6;
         }
         int nFibs = chebPoints.size()/(3*_nXPerFib);   
@@ -467,24 +439,51 @@ class FiberCollectionC {
         for (int iFib = 0; iFib < nFibs; iFib++){
 	        vec LocalPoints(3*_nXPerFib);
             vec LocalTangents(3*_nTauPerFib);
-            vec MinvbFib(3*_nXPerFib), LocalExForce(3*_nXPerFib), LocalURHS(3*_nXPerFib);
             for (int i=0; i < 3*_nXPerFib; i++){
                 LocalPoints[i] = chebPoints[3*_nXPerFib*iFib+i];
-                LocalExForce[i] = ExForces[3*_nXPerFib*iFib+i];
-                LocalURHS[i] = U_RHS[3*_nXPerFib*iFib+i];
             }
             for (int i=0; i< 3*_nTauPerFib; i++){
                 LocalTangents[i] = Tangents[3*_nTauPerFib*iFib+i];
             }
             
+            _SaddlePointSolvers[iFib].FormSaddlePointMatrices(LocalPoints, LocalTangents, impco, dt, implicitFP, _MobilityEvaluator, NBands);
+        }
+    }
+        
+    
+    py::array applyPreconditioner(npDoub pyExForces,npDoub pyURHS){
+        /*
+        Apply preconditioner to obtain lambda and alpha. 
+        See documentation for this method in fiberCollection.py
+        */
+
+        // allocate std::vector (to pass to the C++ function)
+        vec ExForces(pyExForces.size());
+        std::memcpy(ExForces.data(),pyExForces.data(),pyExForces.size()*sizeof(double));
+        vec U_RHS(pyURHS.size());
+        std::memcpy(U_RHS.data(),pyURHS.data(),pyURHS.size()*sizeof(double));
+        
+        int nAlphas = 3*_nXPerFib;
+        if (_rigid){
+            nAlphas = 6;
+        }
+        int nFibs = ExForces.size()/(3*_nXPerFib);   
+        vec LambasAndAlphas(3*_nXPerFib*nFibs+nAlphas*nFibs);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < nFibs; iFib++){
+            vec LocalExForce(3*_nXPerFib), LocalURHS(3*_nXPerFib);
+            for (int i=0; i < 3*_nXPerFib; i++){
+                LocalExForce[i] = ExForces[3*_nXPerFib*iFib+i];
+                LocalURHS[i] = U_RHS[3*_nXPerFib*iFib+i];
+            }
             int FullSize = 3*_nXPerFib;
             vec ForceN(FullSize,0.0);
             for (int i=0; i < FullSize; i++){
                 ForceN[i]+=LocalExForce[i];
             }
             vec alphas(nAlphas), Lambda(3*_nXPerFib);
-            SolveSaddlePoint(LocalPoints, LocalTangents, ForceN, LocalURHS, impco,dt, rigid, implicitFP,NBands, alphas,Lambda);
-                       
+            _SaddlePointSolvers[iFib].SolveSaddlePoint(ForceN, LocalURHS, alphas,Lambda);
+            
             for (int i=0; i < FullSize; i++){
                 LambasAndAlphas[FullSize*iFib+i] =Lambda[i]; // lambda
             }
@@ -493,10 +492,10 @@ class FiberCollectionC {
             }
         }
         // Return 1D numpy array
-        return make1DPyArray(LambasAndAlphas);      
+        return make1DPyArray(LambasAndAlphas);   
     }
     
-    py::array KAlphaKTLambda(npDoub pyTangents,npDoub pyAlphas,npDoub pyLambdas,bool rigid){
+    py::array KAlphaKTLambda(npDoub pyTangents,npDoub pyAlphas,npDoub pyLambdas){
         /*
         Compute the products K*alpha and K^T*Lambda
         */
@@ -510,7 +509,7 @@ class FiberCollectionC {
         std::memcpy(Lambdas.data(),pyLambdas.data(),pyLambdas.size()*sizeof(double));
         
         int systemSize = 3*_nXPerFib;
-        if (rigid){
+        if (_rigid){
             systemSize = 6;
         }
         vec KAlphaKTLambda(3*_nXPerFib*_NFib+systemSize*_NFib);
@@ -528,16 +527,9 @@ class FiberCollectionC {
             for (int i=0; i < systemSize; i++){
                 LocalAlphas[i] = Alphas[systemSize*iFib+i]; 
             }
-            // Form K and compute products with it
-            vec K(3*_nXPerFib*systemSize);
-            if (rigid){
-                calcKRigid(LocalTangents,K);
-            } else {
-                calcK(LocalTangents,K);
-            }
             vec LocKAlphas(3*_nXPerFib), LocKTLambda(systemSize);
-            BlasMatrixProduct(3*_nXPerFib,systemSize,1,1.0, 0.0,K,false,LocalAlphas,LocKAlphas);
-            BlasMatrixProduct(systemSize,3*_nXPerFib,1,1.0, 0.0,K,true,LocalLams,LocKTLambda);
+            _SaddlePointSolvers[iFib].KAlpha(LocalAlphas,LocKAlphas);
+            _SaddlePointSolvers[iFib].KTLambda(LocalLams,LocKTLambda);
             for (int i=0; i < 3*_nXPerFib; i++){
                 KAlphaKTLambda[3*_nXPerFib*iFib+i] = LocKAlphas[i];
             }
@@ -547,9 +539,17 @@ class FiberCollectionC {
         }
         return make1DPyArray(KAlphaKTLambda);
     }
-            
+
+
+    //=============================================
+    // METHODS FOR SEMIFLEXIBLE FLUCTUATING FIBERS 
+    //=============================================
+                
     py::array MHalfAndMinusHalfEta(npDoub pyPoints, npDoub pyRandVec1, bool FPisLocal){
         /*
+        This method computes M[X]^(1/2)*W and M[X}^(-1/2)*W in the case when the mobility is given
+        by local drag only. The boolean FPisLocal says whether to include the finite part
+        mobility as part of that. 
         */
 
         // allocate std::vector (to pass to the C++ function)
@@ -587,6 +587,8 @@ class FiberCollectionC {
     
     py::array TestPInv(npDoub Ap, npDoub bp, int m, int n){
         /*
+        This is for de-bugging the solve with pseudo-inverse method
+        in VectorMethods.cpp. 
         */
 
         // allocate std::vector (to pass to the C++ function)
@@ -594,15 +596,18 @@ class FiberCollectionC {
         std::memcpy(A.data(),Ap.data(),Ap.size()*sizeof(double));
         vec b(bp.size());
         std::memcpy(b.data(),bp.data(),bp.size()*sizeof(double));
-        vec answer(n);
+        int nb = b.size()/m;
+        vec answer(n*nb);
         
         SolveWithPseudoInverse(m,n, A, b, answer,_svdtol, false,false, std::max(m,n));
         // Return 2D numpy array
         return make1DPyArray(answer);      
     }
     
-    py::array InvertKAndStep(npDoub pyTangents, npDoub pyMidpoints, npDoub pyVelocities, double dt, bool rigid){
+    py::array InvertKAndStep(npDoub pyTangents, npDoub pyMidpoints, npDoub pyVelocities, double dt){
         /*
+        Takke a "step" by inverting K. Specifically, we are computing
+        K^-1*Velocity, and then evolving the fiber by taking a step of size dt
         */
 
         // allocate std::vector (to pass to the C++ function)
@@ -618,7 +623,6 @@ class FiberCollectionC {
         #pragma omp parallel for num_threads(_nOMPThr)
         for (int iFib = 0; iFib < _NFib; iFib++){
             //std::cout << "Doing fiber " << iFib << " on thread " << omp_get_thread_num() << std::endl;
-	        vec LocalPoints(sysDim);
             vec LocalTangents(3*_nTauPerFib);
             vec Velocity(sysDim);
             for (int i=0; i < sysDim; i++){
@@ -633,20 +637,12 @@ class FiberCollectionC {
             }           
             // Compute rotation rates Omega_tilde
             vec OmegaTilde(sysDim);
-            if (rigid){
-                vec KRigid(sysDim*6);
-                calcKRigid(LocalTangents,KRigid);
-                SolveWithPseudoInverse(sysDim,6, KRigid, Velocity, OmegaTilde,_svdtol, true,false, 6); 
-            } else {
-                vec KInverse(sysDim*sysDim);
-                calcKInverse(LocalTangents, KInverse);
-                BlasMatrixProduct(sysDim,sysDim,1,1.0, 0.0,KInverse,false,Velocity,OmegaTilde);
-            }
+            _SaddlePointSolvers[iFib].KInverseU(LocalTangents,Velocity,OmegaTilde);
             
             vec3 MidpointTilde;
             vec XTilde(sysDim);
             vec TauTilde(3*_nTauPerFib);
-            OneFibRotationUpdate(LocalTangents,ThisMidpoint,OmegaTilde,TauTilde,MidpointTilde,XTilde,dt,_svdtol, rigid);
+            OneFibRotationUpdate(LocalTangents,ThisMidpoint,OmegaTilde,TauTilde,MidpointTilde,XTilde,dt,_svdtol);
             
             for (int iPt=0; iPt < _nTauPerFib; iPt++){
                 int Tauindex = iPt+iFib*_nTauPerFib;
@@ -674,6 +670,14 @@ class FiberCollectionC {
     py::array ComputeDriftVelocity(npDoub pyPointsTilde, npDoub pyMHalfEta, npDoub pyMMinusHalfEta, 
         npDoub pyRandVecBE, double dt, bool ModifiedBE, bool FPisLocal){
         /*
+        The purpose of this method is to return the velocity that goes on the RHS of the saddle 
+        point system. This has three components to it:
+        1) The Brownian velocity sqrt(2*kbT/dt)*M^(1/2)*W
+        2) The extra term M*L^(1/2)*W that comes in for modified backward Euler
+        3) The stochastic drift term. The drift term is done using a combination of M^(1/2)*W, M^(-1/2)*W, and 
+        Mtilde. The relevant formulas is Eq. (47) in 
+        https://arxiv.org/pdf/2301.11123.pdf
+        Note that this method is only used when the hydro is intra-fiber.
         */
         // allocate std::vector (to pass to the C++ function)
         vec chebPointsTilde(pyPointsTilde.size());
@@ -738,7 +742,7 @@ class FiberCollectionC {
     
     
 
-    npDoub RodriguesRotations(npDoub pyXsn, npDoub pyMidpoints, npDoub pyAllAlphas,double dt, bool rigid){
+    npDoub RodriguesRotations(npDoub pyXsn, npDoub pyMidpoints, npDoub pyAllAlphas,double dt){
         /*
         Method to update the tangent vectors and positions using Rodriguez rotation and Chebyshev integration
         for many fibers in parallel. 
@@ -762,7 +766,7 @@ class FiberCollectionC {
         // call pure C++ function
         vec TransformedXsAndX(6*_NFib*_nXPerFib);
         int numAlphas = 3*_nXPerFib;
-        if (rigid){
+        if (_rigid){
             numAlphas = 6;
         }
         #pragma omp parallel for num_threads(_nOMPThr)
@@ -783,7 +787,7 @@ class FiberCollectionC {
             vec RotatedTaus(3*_nTauPerFib);
             vec3 NewMidpoint;
             vec NewX(3*_nXPerFib);
-            OneFibRotationUpdate(LocalTangents, ThisMidpoint,LocalAlphas, RotatedTaus,NewMidpoint,NewX,dt,_svdtol,rigid);
+            OneFibRotationUpdate(LocalTangents, ThisMidpoint,LocalAlphas, RotatedTaus,NewMidpoint,NewX,dt,_svdtol);
             for (int iPt=0; iPt < _nTauPerFib; iPt++){
                 int Tauindex = iPt+iFib*_nTauPerFib;
                 for (int d = 0; d< 3; d++){
@@ -813,182 +817,21 @@ class FiberCollectionC {
     int _nUni, _nUpsample;
     vec _UnifRSMat, _BendMatX0;
     double _svdtol, _svdRigid, _kbT;
+    bool _rigid;
     SingleFiberMobilityEvaluator _MobilityEvaluator;
+    std::vector <SingleFiberSaddlePointSolver> _SaddlePointSolvers;
     // Variables for K and elastic force
-    vec _D4BC, _D4BCForce,_BendForceMatHalf, _XFromTauMat, _TauFromXMat, _MidpointSamp, _WTildeX, _WTildeXInv;
+    vec _D4BC, _D4BCForce,_BendForceMatHalf, _WTildeX, _WTildeXInv,_XFromTauMat;
     
-    
-    void calcK(const vec &TanVecs, vec &K){
-        /*
-        Kinematic matrix for semiflexible fibers
-        */
-        // First calculate cross product matrix
-        vec XMatTimesCPMat(3*_nTauPerFib*3*_nXPerFib);
-        vec CPMatrix(9*_nTauPerFib*_nTauPerFib);
-        for (int iPt = 0; iPt < _nTauPerFib; iPt++){
-            CPMatrix[3*iPt*3*_nTauPerFib+3*iPt+1] = -TanVecs[3*iPt+2];
-            CPMatrix[3*iPt*3*_nTauPerFib+3*iPt+2] =  TanVecs[3*iPt+1];
-            CPMatrix[(3*iPt+1)*3*_nTauPerFib+3*iPt]= TanVecs[3*iPt+2];
-            CPMatrix[(3*iPt+1)*3*_nTauPerFib+3*iPt+2]= -TanVecs[3*iPt];
-            CPMatrix[(3*iPt+2)*3*_nTauPerFib+3*iPt]= -TanVecs[3*iPt+1];
-            CPMatrix[(3*iPt+2)*3*_nTauPerFib+3*iPt+1]= TanVecs[3*iPt];
-        }
-        BlasMatrixProduct(3*_nXPerFib, 3*_nTauPerFib, 3*_nTauPerFib,-1.0, 0.0,_XFromTauMat, false, CPMatrix,XMatTimesCPMat);
-        // Add the identity part to K
-        for (int iPt=0; iPt < _nXPerFib; iPt++){
-            for (int iD=0; iD < 3; iD++){
-                int rowstart = (3*iPt+iD)*3*_nXPerFib;
-                int Xrowstart = (3*iPt+iD)*3*_nTauPerFib;
-                // Copy the row entry from XMatTimesCPMat
-                for (int iEntry=0; iEntry < 3*_nTauPerFib; iEntry++){
-                    K[rowstart+iEntry]=XMatTimesCPMat[Xrowstart+iEntry];
-                }
-            }
-        }  
-        for (int iPt=0; iPt < _nXPerFib; iPt++){
-            for (int iD=0; iD < 3; iD++){
-                int rowstart = (3*iPt+iD)*3*_nXPerFib;
-                K[rowstart+3*_nTauPerFib+iD]=1;
-            }
-        }
-    }
-       
-    void calcKRigid(const vec &TanVecs, vec &K){
-        /*
-        Kinematic matrix for rigid fibers
-        */
-        // First calculate cross product matrix
-        vec XMatTimesCPMat(9*_nXPerFib);
-        vec CPMatrix(9*_nTauPerFib);
-        for (int iPt = 0; iPt < _nTauPerFib; iPt++){
-            CPMatrix[9*iPt+1] = -TanVecs[3*iPt+2];
-            CPMatrix[9*iPt+2] =  TanVecs[3*iPt+1];
-            CPMatrix[9*iPt+3]= TanVecs[3*iPt+2];
-            CPMatrix[9*iPt+5]= -TanVecs[3*iPt];
-            CPMatrix[9*iPt+6]= -TanVecs[3*iPt+1];
-            CPMatrix[9*iPt+7]= TanVecs[3*iPt];
-        }
-        BlasMatrixProduct(3*_nXPerFib, 3*_nTauPerFib, 3,-1.0, 0.0,_XFromTauMat, false, CPMatrix,XMatTimesCPMat);
-        // Add the identity part to K
-        for (int iPt=0; iPt < _nXPerFib; iPt++){
-            for (int iD=0; iD < 3; iD++){
-                int rowstart = (3*iPt+iD)*6;
-                int Xrowstart = (3*iPt+iD)*3;
-                // Copy the row entry from XMatTimesCPMat
-                for (int iEntry=0; iEntry < 3; iEntry++){
-                    K[rowstart+iEntry]=XMatTimesCPMat[Xrowstart+iEntry];
-                }
-            }
-        } 
-        for (int iPt=0; iPt < _nXPerFib; iPt++){
-            for (int iD=0; iD < 3; iD++){
-                int rowstart = (3*iPt+iD)*6;
-                K[rowstart+3+iD]=1;
-            }
-        }
-    }
-    
-    
-    void calcKInverse(const vec &TanVecs, vec &KInverse){
-        // First calculate cross product matrix
-        vec CPMatrix(9*_nTauPerFib*_nTauPerFib);
-        for (int iPt = 0; iPt < _nTauPerFib; iPt++){
-            CPMatrix[3*iPt*3*_nTauPerFib+3*iPt+1] = -TanVecs[3*iPt+2];
-            CPMatrix[3*iPt*3*_nTauPerFib+3*iPt+2] =  TanVecs[3*iPt+1];
-            CPMatrix[(3*iPt+1)*3*_nTauPerFib+3*iPt]= TanVecs[3*iPt+2];
-            CPMatrix[(3*iPt+1)*3*_nTauPerFib+3*iPt+2]= -TanVecs[3*iPt];
-            CPMatrix[(3*iPt+2)*3*_nTauPerFib+3*iPt]= -TanVecs[3*iPt+1];
-            CPMatrix[(3*iPt+2)*3*_nTauPerFib+3*iPt+1]= TanVecs[3*iPt];
-        }
-        BlasMatrixProduct(3*_nTauPerFib, 3*_nTauPerFib, 3*_nXPerFib,1.0, 0.0,CPMatrix, false, _TauFromXMat,KInverse);
-        // Add the midpoint part for the last three rows
-        for (int iD=0; iD < 3; iD++){
-            int rowstart=3*_nXPerFib*(3*_nTauPerFib+iD);
-            for (int iPt=0; iPt < _nXPerFib; iPt++){
-                    KInverse[rowstart+3*iPt+iD]=_MidpointSamp[iPt];
-            }
-        }
-    }
-    
-    void SolveSaddlePoint(const vec &LocalPoints, const vec &LocalTangents, vec &ForceN, 
-        const vec &U0, double impco, double dt, bool rigid, bool implicitFP, int NBands, vec &alphas, vec &Lambda){
-        // Solve saddle point system 
-        // M[X]*(F^n + Lambda) + U0 = (K[X]-impcodt*M[X]*D4BC*K[X]) alpha 
-        // K^T Lambda = 0
-        int systemSize = 3*_nXPerFib;
-        int FullSize = 3*_nXPerFib;
-        if (rigid){
-            systemSize = 6;
-        }
-        vec K(3*_nXPerFib*systemSize);
-        if (rigid){
-            calcKRigid(LocalTangents,K);
-        } else {
-            calcK(LocalTangents,K);
-        }
-       
-        // M and Schur complement block B
-        vec MWsym(FullSize*FullSize), EigVecs(FullSize*FullSize), EigVals(FullSize);
-        _MobilityEvaluator.MobilityForceMatrix(LocalPoints, implicitFP, NBands,MWsym, EigVecs, EigVals);
-       
-        // Overwrite K ->  K-impcoeff*dt*MW*D4BC*K;
-        vec D4BCK(FullSize*systemSize);
-        vec MtimesD4BCK(FullSize*systemSize);
-        BlasMatrixProduct(FullSize,FullSize,systemSize,1.0,0.0,_D4BCForce,false,K,D4BCK);
-        ApplyMatrixPowerFromEigDecomp(FullSize, 1.0, EigVecs, EigVals, D4BCK, MtimesD4BCK); 
-        vec KWithImp(FullSize*systemSize);
-        for (int i = 0; i < FullSize*systemSize; i++){
-            KWithImp[i] = K[i]-impco*dt*MtimesD4BCK[i];
-        }
-        
-        // Factor M
-        // Overwrite b2 -> Schur RHS
-        // Solve M^-1*U0, add to force first
-        vec NewLocalU0(FullSize);
-        ApplyMatrixPowerFromEigDecomp(FullSize, -1.0, EigVecs, EigVals, U0, NewLocalU0);  
-        for (int i=0; i < FullSize; i++){
-            ForceN[i]+=NewLocalU0[i];
-        }
-        vec RHS(systemSize);
-        BlasMatrixProduct(systemSize,FullSize,1.0,1.0,1.0,K,true,ForceN,RHS);
-        
-        // Overwrite KWithImp-> M^(-1)*KWithImp
-        vec MinvKWithImp(3*_nXPerFib*systemSize);
-        ApplyMatrixPowerFromEigDecomp(FullSize, -1.0, EigVecs, EigVals, KWithImp, MinvKWithImp); 
-        vec SchurComplement(systemSize*systemSize);
-        BlasMatrixProduct(systemSize, FullSize,systemSize, 1.0,0.0,K,true,MinvKWithImp,SchurComplement); // K^T*(M^-1*B)
-        double tol = _svdtol;
-        bool normalize = true;
-        int maxModes = 2*_nTauPerFib+3;
-        if (rigid){
-            maxModes = 6;
-            if (_kbT > 0){ // change tolerance for rigid fibers so that nearly straight fibers are straight
-                tol = 2.0*_kbT*dt/(_svdRigid*_svdRigid);
-                normalize = false;
-            }
-        }
-        bool half = false;
-        SolveWithPseudoInverse(systemSize, systemSize,SchurComplement, RHS, alphas, tol,normalize,half,maxModes);
-        
-        // Back solve to get lambda
-        vec Kalpha(FullSize);
-        BlasMatrixProduct(FullSize,systemSize,1,1.0,0.0,KWithImp,false, alphas, Kalpha);
-        // Overwrite Kalpha -> lambda
-        ApplyMatrixPowerFromEigDecomp(FullSize, -1.0, EigVecs, EigVals, Kalpha, Lambda);  
-        for (int i=0; i < FullSize; i++){
-            Lambda[i]-=ForceN[i];
-        }
-    }
-
     void OneFibRotationUpdate(const vec &Xsn, const vec3 &Midpoint, const vec &AllAlphas, vec &RotatedTaus,
-        vec3 &NewMidpoint, vec &NewX,double dt, double nOmTol, bool rigid){
+        vec3 &NewMidpoint, vec &NewX,double dt, double nOmTol){
         // Rotate tangent vectors for a single fiber.
         // Uses Rodrigues rotation formula. 
         for (int iPt=0; iPt < _nTauPerFib; iPt++){
             vec3 XsToRotate, Omega;
             for (int d =0; d < 3; d++){
                 XsToRotate[d] = Xsn[3*iPt+d];
-                if (rigid){
+                if (_rigid){
                     Omega[d] = AllAlphas[d];
                 } else {
                     Omega[d] = AllAlphas[3*iPt+d];
@@ -1011,7 +854,7 @@ class FiberCollectionC {
         } // end rotate tangent vectors
         // Add the midpoint
         int nOmega = _nTauPerFib;
-        if (rigid){
+        if (_rigid){
             nOmega = 1;
         }
         for (int d=0; d< 3; d++){
@@ -1025,9 +868,6 @@ class FiberCollectionC {
             }
         }
     }
-        
-            
-   
     
     npDoub makePyDoubleArray(vec &cppvec){
         ssize_t              ndim    = 2;
@@ -1060,7 +900,7 @@ class FiberCollectionC {
 
 PYBIND11_MODULE(FiberCollectionC, m) {
     py::class_<FiberCollectionC>(m, "FiberCollectionC")
-        .def(py::init<int,int,int,int,double,double,double,double,double,double,bool,bool,bool>())
+        .def(py::init<int,int,int,int,bool,double,double,double,double,double,double,bool,bool,bool>())
         .def("initMatricesForPreconditioner", &FiberCollectionC::initMatricesForPreconditioner)
         .def("initMobilityMatrices", &FiberCollectionC::initMobilityMatrices)
         .def("initResamplingMatrices", &FiberCollectionC::initResamplingMatrices)
@@ -1074,6 +914,7 @@ PYBIND11_MODULE(FiberCollectionC, m) {
         .def("evalLocalVelocities",&FiberCollectionC::evalLocalVelocities)
         .def("SingleFiberRPYSum",&FiberCollectionC::SingleFiberRPYSum)
         .def("FinitePartVelocity",&FiberCollectionC::FinitePartVelocity)
+        .def("FactorizePreconditioner", &FiberCollectionC::FactorizePreconditioner)
         .def("applyPreconditioner",&FiberCollectionC::applyPreconditioner)
         .def("KAlphaKTLambda",&FiberCollectionC::KAlphaKTLambda)
         .def("MHalfAndMinusHalfEta", &FiberCollectionC::MHalfAndMinusHalfEta)

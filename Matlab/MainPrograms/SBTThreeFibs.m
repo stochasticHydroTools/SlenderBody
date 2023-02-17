@@ -58,7 +58,7 @@ AllXPrev = AllX;
 AllXsPrev = AllXs;
 AllXMPPrev = AllXMP;
 maxIts=20; % for the first 2 steps
-rigid=0;
+rigid=1;
 WtInvSingle = WTilde_Np1_Inverse(1:3:end,1:3:end);
 %% Computations
 for count=0:stopcount-1 

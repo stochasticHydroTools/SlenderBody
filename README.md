@@ -31,18 +31,12 @@ Organization is as follows:
 * Matlab: directory with matlab codes. These are the only codes used in [4] and [5]. 
 
 # External dependencies:
-* [FINUFFT](https://github.com/flatironinstitute/finufft). I have modified some of the v 1.0 code and included the raw code in Python/Dependencies. 
+* [FINUFFT](https://github.com/flatironinstitute/finufft). I have modified some of the v 1.0 code and included the raw code in Python/Dependencies. Note that this dependency is not strictly necessary; it is only needed if you wish to run nonlocal hydrodynamics and do not have a GPU. 
 * [krypy](https://github.com/andrenarchy/krypy).  I have modified some of this and included the raw code in Python/Dependencies.
 * [scipy](https://github.com/scipy/scipy)
 * LaPack (for C++ functions)
 * [PyBind11](https://github.com/pybind/pybind11) (to link python and C++)
-* [numba](https://github.com/numba/numba) (to accelerate and parallelize native python)
 * [UAMMD](https://github.com/RaulPPelaez/UAMMD) (for Ewald splitting on the GPU). This is used as a submodule in Python/Dependencies. 
-
-For nearly singular SBT integrals, we use a modified version of the quadrature scheme of Ludvig af Klinteberg and 
-Alex Barnett. Their original code is [here](https://github.com/ludvigak/linequad); we have made some modifications 
-to switch their Legendre discretization to a Chebyshev one in [Python/cppmodules/SpecialQuadratures.cpp](https://github.com/stochasticHydroTools/SlenderBody/blob/master/Python/cppmodules/SpecialQuadratures.cpp)
-The code here is independent of the linequad code of af Klinteberg and Barnett. 
 
 # Instructions for running code 
 1) Clone this repo using 
@@ -72,21 +66,13 @@ python3 ThreeShearedFibs.py
 will run the example in Section 5.1.2 of [1] 
 
 # Parallelization
-There are three portions of our code that are parallelized. We first note that the number of OpenMP threads
-(environment variable) MUST be set to one to obtain good performance. In particular, you must use 
+The number of OpenMP threads (environment variable) MUST be set to one to obtain good performance. 
+In particular, you must use 
 ```
 export OMP_NUM_THREADS=1
 ```
 in linux prior to running our code.
-The parallelization is then implemented in python in the following three ways:
-1) The (CPU) nonlocal velocity calculations (Ewald splitting), near fiber corrections, and force and stress calculations for 
-cross linkers are parallelized within C++ using OpenMP. The number of threads in these calculations can be set by passing an integer \
-to the constructor of fiberCollection.py. An example of this is on [line 49 of Python/Examples/CheckStability.py](https://github.com/stochasticHydroTools/SlenderBody/blob/990fc394a7c0341d38b3bc809a52991353e88f2e/Python/Examples/CheckStability.py#L49). We also have a GPU version. 
-2) The linear solves on all fibers are parallelized using numba. The number of numba threads can be set \
-on the command line in linux using (for example, to obtain 4 threads)
-```
-export NUMBA_NUM_THREADS=4
-```
+The parallelization is then implemented in the C++ class FiberCollectionC.cpp which takes as an inpute the number of threads. The number of threads in these calculations can be set by passing an integer to the constructor of fiberCollection.py. An example of this is on [line 49 of Python/Examples/CheckStability.py](https://github.com/stochasticHydroTools/SlenderBody/blob/990fc394a7c0341d38b3bc809a52991353e88f2e/Python/Examples/CheckStability.py#L49). We also have a GPU version. 
 
 # Uninstalling 
 1) Run ```make clean``` inside the Python folder.  

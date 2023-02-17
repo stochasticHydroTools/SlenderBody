@@ -5,7 +5,7 @@ import numpy as np
 class DiscretizedFiber(object):
     """
     Object that stores the points and forces for each fiber. 
-    That is X and Xs are the only things stored here, as well
+    That is X, Xs, and XMP are the only things stored here, as well
     as the discretization of the fiber. 
     """
     ## ===============================================
@@ -15,9 +15,8 @@ class DiscretizedFiber(object):
         """
         Constructor. Object variables are:
         Discretization = FiberDiscretization object that has all the 
-        Chebyshev information, X, Xs = (N x 3) arrays that contain 
-        the initial X and Xs (otherwise they are initialized randomly
-        as a straight fiber).
+        Chebyshev information, Xs = (N x 3 ) array of tangent vectors, 
+        XMP = fiber midpoint. 
         """
         self._fibDisc = Discretization;
         self._Xs = Xs;

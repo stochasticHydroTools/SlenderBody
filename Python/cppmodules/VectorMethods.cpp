@@ -4,6 +4,7 @@
 #include "lapacke.h"
 #include<exception>
 
+
 void throwLapackeError(int info, std::string functionName){
   throw std::runtime_error("LAPACKE Failed in function "+
 			   functionName +
@@ -12,7 +13,7 @@ void throwLapackeError(int info, std::string functionName){
 
 #define LAPACKESafeCall(info) {if(info != 0){throwLapackeError(info, __func__);}}
 
-//#include <mkl.h>
+//#include <mkl.h> // Use when compiling with intel
 #pragma once // only include once
 
 // Some standard vector methods 
@@ -80,7 +81,14 @@ void MatVec(int m, int p, int n, const vec &M, const vec &V, int start, vec &res
     }
 }
 
-// Solve Ax = b using pinv(A)^(power)*b
+/*  Solve Ax = b using pinv(A)*b. 
+    In some cases, we need pinv(A)^(1/2)*b. This is what is returned when half is true. 
+    IMPORTANT: there are very rare times when the LAPACK SVD does not converge. It uses 
+    some iterative algorithm. Plugging the same matrix into MATLAB will give the correct SVD
+    When it doesn't converge, the singular values are out of order. What we do is just go with 
+    the first 2N+3 and remove any of the zero ones. This happens maybe once out of 10^6 solves,
+    so the important thing is just that the code does not crash or go crazy. 
+*/
 void SolveWithPseudoInverse(int m, int n, vec &A, const vec &b, vec &answer,double svdtol, bool normalize,bool half, int maxModes){
     int dimS = std::min(m,n);
     int lda = n;
@@ -97,19 +105,19 @@ void SolveWithPseudoInverse(int m, int n, vec &A, const vec &b, vec &answer,doub
          std::cout << "LAPACK SVD DID NOT CONVERGE" << std::endl;
          std::cout << "This means singular values will be out of order" << std::endl;
          std::cout << "The matrix" << std::endl;
-         for (int i = 0; i < Acopy.size(); i++){
+         for (uint i = 0; i < Acopy.size(); i++){
                  std::cout << Acopy[i] << std::endl;
          }
          std::cout << "The singular values returned" << std::endl;
-         for (int i = 0; i < s.size(); i++){
+         for (uint i = 0; i < s.size(); i++){
                  std::cout << s[i] << std::endl;
          }
          std::cout << "The U matrix returned" << std::endl;
-         for (int i = 0; i < u.size(); i++){
+         for (uint i = 0; i < u.size(); i++){
                  std::cout << u[i] << std::endl;
          }
          std::cout << "The V matrix returned" << std::endl;
-         for (int i = 0; i < vt.size(); i++){
+         for (uint i = 0; i < vt.size(); i++){
                  std::cout << vt[i] << std::endl;
          }
     }
@@ -138,18 +146,19 @@ void SolveWithPseudoInverse(int m, int n, vec &A, const vec &b, vec &answer,doub
         answer[i]=0;
     }
     // Mat vec U^T*b
-    vec Ustarb(m);
-    BlasMatrixProduct(m, m, 1,1.0, 0.0,u, true, b, Ustarb);
-    // Overwrite V^T -> S^(-1)*V^T
-    if (dimS < m){
-        s.resize(m,0.0);
+    int nb = b.size()/m;
+    vec Ustarb(m*nb);
+    BlasMatrixProduct(m, m, nb,1.0, 0.0,u, true, b, Ustarb);
+    // pinv(S)*U^T*b
+    for (int i =0; i < dimS; i++){
+        for (int iC=0; iC < nb; iC++){
+            Ustarb[i*nb+iC]*=s[i];
+        }
     }
-    for (int i = 0; i < m; i++) {
-        Ustarb[i]*=s[i];
-    }
-    Ustarb.resize(n);
-    // Multiply by U^T*b to get V*S^(-1)*U^T*b
-    BlasMatrixProduct(n, n, 1,1.0, 0.0,vt, true, Ustarb, answer);
+    // Resize Ustarb by adding/removing rows at end
+    Ustarb.resize(n*nb,0.0);
+    // Multiply by V to get V*S^(-1)*U^T*b
+    BlasMatrixProduct(n, n, nb,1.0, 0.0,vt, true, Ustarb, answer);
 }
 
 // Apply A^(1/2)*b and A^(-1/2)*b using eigenvalue decomposition
@@ -162,7 +171,7 @@ void ApplyMatrixHalfAndMinusHalf(int n, const vec &A, const vec &b, vec &PlusHal
             Acopy[i*n+j]=A[i*n+j];
         }
     }
-    //computing the SVD
+    //computing the eigenvalue decomp
     int info = LAPACKE_dsyev(LAPACK_COL_MAJOR, 'V', 'U',n, &*Acopy.begin(), n, &*s.begin());
     LAPACKESafeCall(info);
     
