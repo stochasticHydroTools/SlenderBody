@@ -329,6 +329,7 @@ class MidpointDriftIntegrator(BackwardEuler):
 
     def __init__(self,fibCol,CLNetwork=None):
         super().__init__(fibCol,CLNetwork);
+        self._nLanczos=[];
         self._ModifyBE=True;
         if (not isinstance(fibCol,SemiflexiblefiberCollection)):
             raise TypeError('The midpoint drift integrator is for fibers with bending fluctuations only!')
@@ -347,6 +348,7 @@ class MidpointDriftIntegrator(BackwardEuler):
             thist = time.time()  
         # Compute M^(1/2)*W for later use
         MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
+        #self._nLanczos.append(nLanczos);
         if (verbose > 0):
             print('Time to do M^1/2 %f' %(time.time()-thist))
             thist = time.time()  

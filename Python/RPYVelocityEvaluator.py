@@ -305,7 +305,7 @@ class GPUEwaldSplitter(EwaldSplitter):
         # Raul's code
         import uammd
         self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
-            Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
+            LanczosTol=GPUtol,Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
         self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
         
         # Calculate the truncation distance for Ewald
@@ -368,7 +368,7 @@ class GPUEwaldSplitter(EwaldSplitter):
         self._GPUEwald.setShearStrain(self._currentDomain.getg())
         # In UAMMD, setting temperature = 0.5 will return M^(1/2)*W - we can add the kBT prefactor later. 
         self._GPUEwald.computeHydrodynamicDisplacements(positions,forces,MHalfW,temperature=0.5,prefactor = 1.0)
-        return MHalfW;
+        return MHalfW;#, self._GPUEwald.getNumLanczosIterations();
     
     def updateFarFieldArrays(self):
         """

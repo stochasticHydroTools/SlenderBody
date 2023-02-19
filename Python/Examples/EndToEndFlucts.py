@@ -119,4 +119,5 @@ for iT in range(stopcount):
     maxX, its, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString);
     itsNeeded[iT]=its;
 np.savetxt('SemiflexFlucts/ItsNeeded'+saveStr,itsNeeded)
+np.savetxt('SemiflexFlucts/LanczosNeeded'+saveStr,np.array(TIntegrator._nLanczos))
         

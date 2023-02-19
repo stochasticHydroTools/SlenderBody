@@ -171,7 +171,7 @@ for iT in range(stopcount):
         print('Time to compute network info %f ' %(time.time()-thist));
        
 if (True):  
-    np.savetxt('ItsNeeded'+FileString,ItsNeed);
+    np.savetxt('BundlingBehavior/ItsNeeded'+FileString,ItsNeed);
     np.savetxt('BundlingBehavior/nLinksPerFib'+FileString,numLinksByFib);  
     np.savetxt('BundlingBehavior/NumFibsConnectedPerFib'+FileString,NumFibsConnected);
     np.savetxt('BundlingBehavior/LocalAlignmentPerFib'+FileString,AllLocalAlignment);

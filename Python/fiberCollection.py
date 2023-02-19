@@ -476,12 +476,11 @@ class fiberCollection(object):
             FEx = ExForces[stackinds];
             FTotal = FBend+FEx;
             U0 = self.evalU0(self._ptsCheb[Xinds,:],t);
-            self._FibColCpp.FactorizePreconditioner(X,Xs,implic_coeff,dt,self._FPLoc,NBands);
+            self._FibColCpp.FactorizePreconditioner(X,Xs,implic_coeff,dt,self._FPLoc,-1);
             lamalph = self._FibColCpp.applyPreconditioner(FTotal,U0);
             self._lambdas[stackinds] = lamalph[:3*self._NXpf];
             if other is not None:
                 other._lambdas[stackinds] = lamalph[:3*self._NXpf];    
-                
     
     def FiberBirthAndDeath(self,tstep,other=None):
         """
@@ -665,12 +664,13 @@ class SemiflexiblefiberCollection(fiberCollection):
             MHalfEta = np.reshape(self.getDownsampledVelocity(MHalfEtaUp),3*self._Nfib*self._NXpf);
             MMinusHalfEta = 0; # never used
         else:
+            nLanczos = 0;
             RandVec1 = np.random.randn(3*self._Nfib*self._NXpf);
             #np.savetxt('RandVec1.txt',RandVec1)
             MHalfAndMinusHalf = self._FibColCpp.MHalfAndMinusHalfEta(X,RandVec1, self._FPLoc); # Replace with PSE 
             MHalfEta = MHalfAndMinusHalf[:3*self._Nfib*self._NXpf];
             MMinusHalfEta = MHalfAndMinusHalf[3*self._Nfib*self._NXpf:];
-        return MHalfEta, MMinusHalfEta;
+        return MHalfEta, MMinusHalfEta;#, nLanczos;
     
     def ComputeTotalVelocity(self,X,F,Dom,RPYEval):
         Local = self.LocalVelocity(X,F);
