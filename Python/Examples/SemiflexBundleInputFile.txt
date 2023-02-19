@@ -2,7 +2,7 @@
 nFib=200        # number of fibers
 N=12            # number of points per fiber
 Lf=1            # length of each fiber
-nonLocal=1;     # doing nonlocal solves? 0 = local drag, > 0 = nonlocal hydro (on one fiber at a time)
+nonLocal=4;     # doing nonlocal solves? 0 = local drag, > 0 = nonlocal hydro (on one fiber at a time)
 Ld=2            # length of the periodic domain
 mu=0.1          # fluid viscosity
 eps=4e-3/Lf     # slenderness ratio

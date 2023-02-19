@@ -276,17 +276,6 @@ function Kin = computeK(nP,X)
     end
 end
 
-function KstrT = computeKstrT(nP,X)
-    % Define kinematic matrix (9 x 3 Np) that acts on forces to give stress,
-    % evaluted at the eq config
-    KstrT = zeros(9,3*nP);
-    for iP=1:nP
-        KstrT(1,3*iP-2)=X(iP,1); KstrT(2,3*iP-1)=X(iP,1); KstrT(3,3*iP)=X(iP,1);
-        KstrT(4,3*iP-2)=X(iP,2); KstrT(5,3*iP-1)=X(iP,2); KstrT(6,3*iP)=X(iP,2);
-        KstrT(7,3*iP-2)=X(iP,3); KstrT(8,3*iP-1)=X(iP,3); KstrT(9,3*iP)=X(iP,3);
-    end
-end
-
 function Xnew = RigidUpdate(nP,X,UOmega,delta,L)
     % Performs update
     % X -> Omega x X + U

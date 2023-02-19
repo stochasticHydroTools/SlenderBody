@@ -373,7 +373,7 @@ class fiberCollection(object):
     def getLambdas(self):
         return self._lambdas; 
     
-    def FiberStress(self,XBend,XLam,Volume):
+    def FiberStress(self,XBend,XLam,Tau_n,Volume):
         """
         Compute fiber stress.
         """
@@ -748,4 +748,20 @@ class SemiflexiblefiberCollection(fiberCollection):
         FirstBlock = -AllVel+Kalph; # zero if lambda, alpha = 0
         #print('Mobility time %f' %(time.time()-timeMe));
         return np.concatenate((FirstBlock,KTLam));
+        
+    def FiberStress(self,XBend,XLam,Tau_n,Volume):
+        """
+        Compute fiber stress.
+        XLam = X used for the saddle point solve. For Brownian stress, we want to use
+        XLam as the argument for the bending and constraint stress, and then tau_n 
+        for the extra drift
+        """
+        #raise NotImplementedError('Stress not implemented for semiflexible filaments')
+        BendStress = 1/Volume*self._FibColCpp.evalBendStress(XLam);
+        LamStress = 1/Volume*self._FibColCpp.evalStressFromForce(XLam,self._lambdas)
+        DriftStress = self._kbT*1/Volume*self._FibColCpp.evalDriftPartofStress(Tau_n);
+        #np.savetxt('LambdasN.txt',self._lambdas)
+        #np.savetxt('BendStress.txt',BendStress)
+        #np.savetxt('LamStress.txt',LamStress)
+        return BendStress, LamStress+DriftStress;
     

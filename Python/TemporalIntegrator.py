@@ -234,16 +234,17 @@ class TemporalIntegrator(object):
         
         stressArray = np.zeros(3);
         if (stress):
-            ElasticStress, lamStress = self._allFibers.FiberStress(XforNL,XWithLam,Dom.getVol())
+            ElasticStress, lamStress = self._allFibers.FiberStress(XforNL,XWithLam,XsforNL,Dom.getVol())
             # Stress due to CLs 
             Dom.setg(self._gForStress); 
-            CLstress = 0
+            CLstress = np.zeros((3,3));
             if (self._CLNetwork is not None):
                 CLstress = self._CLNetwork.CLStress(self._allFibers,XforNL,Dom);
             stressArray=np.array([lamStress[0,1],ElasticStress[0,1],CLstress[0,1]]);
             if (verbose > 0):
                 print('Stress time %f' %(time.time()-thist))
                 thist = time.time()
+                
                    
         if (write):
             self._allFibers.writeFiberLocations(outfile);

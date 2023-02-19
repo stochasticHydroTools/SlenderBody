@@ -181,6 +181,27 @@ class SingleFiberSaddlePointSolver {
         }
     }
     
+    void KInverseKProductForStress(const vec &LocalTangents, vec &Stress){
+        int sysDim = 3*_nXPerFib;
+        vec K(_nAlphas*sysDim);
+        calcK(LocalTangents,K);
+        vec KInverse(_nAlphas*sysDim);
+        calcKInverse(LocalTangents, KInverse);
+        for (int iBlock=0; iBlock < 3; iBlock++){
+            for (int iRow=0; iRow < 3; iRow++){
+                for (int iPt=0; iPt < _nTauPerFib; iPt++){
+                    int pIndex = 3*iPt+iRow;
+                    int colIndex = 3*iPt+iBlock;
+                    int StressIndex = 3*iBlock+iRow;
+                    // Inner product of the pIndex row of Kinverse and the 
+                    // ColIndex column of K
+                    for (int i=0; i < sysDim; i++){ 
+                        Stress[StressIndex]+=KInverse[sysDim*pIndex+i]*K[sysDim*i+colIndex];
+                    }
+                }
+            }
+        }
+    }  
     
  
     private:

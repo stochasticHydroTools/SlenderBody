@@ -1,7 +1,7 @@
 from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 from FibCollocationDiscretization import ChebyshevDiscretization
 from Domain import PeriodicShearedDomain
-from TemporalIntegrator import BackwardEuler
+from TemporalIntegrator import MidpointDriftIntegrator
 from DiscretizedFiber import DiscretizedFiber
 import numpy as np
 from math import exp
@@ -33,7 +33,7 @@ def makeCurvedFib(Lf,N,fibDisc):
 
 # Inputs 
 nFib=1          # number of fibers
-N=24          # number of points per fiber
+N=12          # number of points per fiber
 Lf=2            # length of each fiber
 nonLocal=4     # doing nonlocal solves? 0 = local drag, >0 = nonlocal hydro.
 Ld=2.4          # length of the periodic domain (not relevant here because no nonlocal hydro)
@@ -73,7 +73,7 @@ allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,D
 allFibers.initFibList(fibList,Dom);
 
 # Initialize the temporal integrator
-TIntegrator = BackwardEuler(allFibers,FPimp=1);
+TIntegrator = MidpointDriftIntegrator(allFibers);
 # Number of GMRES iterations for nonlocal solves
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
@@ -86,4 +86,4 @@ allFibers.writeFiberLocations(FileString,'w');
 # Time loop
 stopcount = int(tf/dt+1e-10);
 for iT in range(stopcount): 
-    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,write=True,outfile=FileString);
+    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,write=True,outfile=FileString,stress=True);

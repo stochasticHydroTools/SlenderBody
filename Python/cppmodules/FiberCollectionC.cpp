@@ -170,6 +170,22 @@ class FiberCollectionC {
         return makePyDoubleArray(Stress);
     }
     
+    npDoub evalDriftPartofStress(npDoub pyTangents){
+        vec chebTans(pyTangents.size());
+        std::memcpy(chebTans.data(),pyTangents.data(),pyTangents.size()*sizeof(double));
+        vec Stress(9);
+        int NFibs = chebTans.size()/(3*_nTauPerFib);
+        for (int iFib = 0; iFib < NFibs; iFib++){
+            vec LocalTangents(3*_nTauPerFib);
+            for (int i=0; i < 3*_nTauPerFib; i++){
+                LocalTangents[i] = chebTans[3*_nTauPerFib*iFib+i];
+            }
+            std::cout << LocalTangents[10] << std::endl;
+            //_SaddlePointSolvers[iFib].KInverseKProductForStress(LocalTangents,Stress);
+        }
+        return makePyDoubleArray(Stress);
+    }
+    
     py::array getUniformPoints(npDoub pyPoints){
         vec chebPts(pyPoints.size());
         std::memcpy(chebPts.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
@@ -907,6 +923,7 @@ PYBIND11_MODULE(FiberCollectionC, m) {
         .def("evalBendForces",&FiberCollectionC::evalBendForces)
         .def("evalBendStress",&FiberCollectionC::evalBendStress)
         .def("evalStressFromForce",&FiberCollectionC::evalStressFromForce)
+        .def("evalDriftPartofStress",&FiberCollectionC::evalDriftPartofStress)
         .def("getUniformPoints", &FiberCollectionC::getUniformPoints)
         .def("getUpsampledPoints", &FiberCollectionC::getUpsampledPoints)
         .def("getUpsampledForces", &FiberCollectionC::getUpsampledForces)
