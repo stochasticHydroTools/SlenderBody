@@ -121,7 +121,7 @@ void SolveWithPseudoInverse(int m, int n, vec &A, const vec &b, vec &answer,doub
                  std::cout << vt[i] << std::endl;
          }
     }
-    LAPACKESafeCall(info);
+    //LAPACKESafeCall(info);
     double sZero = 1.0;
     if (normalize){
         sZero = *max_element(s.begin(), s.end());
