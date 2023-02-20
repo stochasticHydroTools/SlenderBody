@@ -86,4 +86,4 @@ allFibers.writeFiberLocations(FileString,'w');
 # Time loop
 stopcount = int(tf/dt+1e-10);
 for iT in range(stopcount): 
-    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,write=True,outfile=FileString,stress=True);
+    TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,write=True,outfile=FileString);

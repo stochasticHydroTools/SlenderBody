@@ -116,7 +116,7 @@ for iT in range(stopcount):
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
         print('Fraction done %f' %((iT+1)/stopcount))
-    maxX, its, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString,stress=True);
+    maxX, its, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString);
     itsNeeded[iT]=its;
 np.savetxt('SemiflexFlucts/ItsNeeded'+saveStr,itsNeeded)
 np.savetxt('SemiflexFlucts/LanczosNeeded'+saveStr,np.array(TIntegrator._nLanczos))
