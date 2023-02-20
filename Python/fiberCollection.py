@@ -28,6 +28,15 @@ class fiberCollection(object):
     At the end of this file, there is a child class for Semiflexible filaments
     that also perform bending fluctuations. That class reimplements some of the 
     methods
+    
+    An important variable throughout this class is self._nonLocal, which refers to 
+    how the hydrodynamics is handled. There are currently 3 options:
+    nonLocal = 0: local drag only. This can include intra-fiber hydro depending on if 
+    the fiberDiscretization object has FPIsLocal = True;
+    nonLocal = 1: full hydrodynamics (all fibers communicate with all fibers)
+    nonLocal = 4: only intra-fiber hydrodynamics. Depending on if FPIsLocal = True, 
+    then this would be done using the same matrix as local drag OR if FPIsLocal = False, 
+    the "finite part" velocity goes on the RHS of the saddle point system. 
     """
 
     ## ====================================================
