@@ -3,7 +3,7 @@
 % a(L/2) = D1mid
 % Returns the bishop frame (a,b) and material frame (D1,D2). The other axis
 % is Xs in both cases.
-function [bishA,bishB,D1,D2] = computeBishopFrame(N,Xs,Xss,s,b,L,theta,D1mid)
+function [bishA,bishB,D1,D2] = computeBishopFrame(N,Xs,Xss,Dinv,BMP,theta,D1mid)
     eyeC = zeros(3*N,3);
     for iC=1:N
         eyeC(3*iC-2:3*iC,:)=eye(3);
@@ -12,8 +12,7 @@ function [bishA,bishB,D1,D2] = computeBishopFrame(N,Xs,Xss,s,b,L,theta,D1mid)
     for iPt=1:N
         AllCPMat2(3*(iPt-1)+1:3*iPt,3*(iPt-1)+1:3*iPt)=CPMatrix(cross(Xs(iPt,:),Xss(iPt,:)));
     end
-    Dinv = pinv(diffmat(N,[0 L],'chebkind1'));
-    Matrix2 = [eye(3*N)-stackMatrix(Dinv)*AllCPMat2 eyeC; stackMatrix(barymat(L/2,s,b)) zeros(3)];
+    Matrix2 = [eye(3*N)-stackMatrix(Dinv)*AllCPMat2 eyeC; stackMatrix(BMP) zeros(3)];
     RHS2 = [zeros(3*N,1); D1mid];
     a2=Matrix2\RHS2;
     allas = reshape(a2(1:3*N),3,N)';

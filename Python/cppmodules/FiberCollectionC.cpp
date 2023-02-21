@@ -180,8 +180,7 @@ class FiberCollectionC {
             for (int i=0; i < 3*_nTauPerFib; i++){
                 LocalTangents[i] = chebTans[3*_nTauPerFib*iFib+i];
             }
-            std::cout << LocalTangents[10] << std::endl;
-            //_SaddlePointSolvers[iFib].KInverseKProductForStress(LocalTangents,Stress);
+            _SaddlePointSolvers[iFib].KInverseKProductForStress(LocalTangents,Stress);
         }
         return makePyDoubleArray(Stress);
     }

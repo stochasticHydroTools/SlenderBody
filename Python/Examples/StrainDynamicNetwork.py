@@ -93,13 +93,11 @@ CLNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,K
 CLNet.setLinksFromFile('BundlingBehavior/FinalLinks'+InFileString,'BundlingBehavior/FinalFreeLinkBound'+InFileString);
     
 # Initialize the temporal integrator
-TIntegrator = BackwardEuler(allFibers,CLNet);
 if (FluctuatingFibs):
     TIntegrator = MidpointDriftIntegrator(allFibers,CLNet);
-# Number of GMRES iterations for nonlocal solves
-# 1 = block diagonal solver
-# N > 1 = N-1 extra iterations of GMRES
-TIntegrator.setMaxIters(gitersDeterministic);
+else:
+    TIntegrator = BackwardEuler(allFibers,CLNet);
+    TIntegrator.setMaxIters(gitersDeterministic);
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -129,6 +127,12 @@ NumFibsConnected[0,:] = numCloseBy;
 AllLocalAlignment[0,:] = LocalAlignment;
 saveCurvaturesAndStrains(allFibers,CLNet,OutFileString);
 
+if (seed==1):
+    ofCL = prepareOutFile('DynamicRheo/Step'+str(0)+'Links'+OutFileString);
+    CLNet.writeLinks(ofCL)
+    ofCL.close()
+
+
 AllItsNeeded = np.zeros(stopcount);
 for iT in range(stopcount): 
     wr=0;
@@ -156,6 +160,10 @@ for iT in range(stopcount):
         saveCurvaturesAndStrains(allFibers,CLNet,OutFileString);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
+        if (seed==1):
+            ofCL = prepareOutFile('DynamicRheo/Step'+str(saveIndex)+'Links'+OutFileString);
+            CLNet.writeLinks(ofCL)
+            ofCL.close()
                
         # Bundles where connections are 2 links separated by 2*restlen
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);
