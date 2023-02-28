@@ -128,6 +128,27 @@ class fiberCollection(object):
                 XsThis, XMPThis = self._fiberDisc.calcXsAndMPFromX(Xfib);
                 self._fibList[jFib].initFib(Dom.getLens(),Xs=XsThis,XMP=XMPThis);   
         self.fillPointArrays()
+        
+    def RSAFibers(self,fibListIn, Dom,StericEval,nDiameters=1):
+        """
+        Initialize the list of fibers. This is done by giving each fiber
+        a copy of the discretization object, and then initializing positions
+        and tangent vectors.
+        Inputs: list of Discretized fiber objects (typically empty), Domain object,
+        file names for the points if we are initializing from file
+        The file names can be either file names or the actual point locations.
+        """
+        self._fibList = fibListIn;
+        self._DomLens = Dom.getLens();
+        for iFib in range(self._Nfib):
+            # Initialize memory
+            self._fibList[iFib] = DiscretizedFiber(self._fiberDisc);
+            Intersect = True;
+            while (Intersect):
+                # Initialize straight fiber positions at t=0
+                self._fibList[iFib].initFib(Dom.getLens());
+                Intersect = StericEval.CheckIntersectWithPrev(self._fibList,iFib,Dom,nDiameters);
+        self.fillPointArrays()
     
     def initPointForceVelocityArrays(self, Dom):
         """
@@ -388,10 +409,11 @@ class fiberCollection(object):
         """
         BendStress = 1/Volume*self._FibColCpp.evalBendStress(XBend);
         LamStress = 1/Volume*self._FibColCpp.evalStressFromForce(XLam,self._lambdas)
+        DriftStress = np.zeros((3,3));
         #np.savetxt('LambdasN.txt',self._lambdas)
         #np.savetxt('BendStress.txt',BendStress)
         #np.savetxt('LamStress.txt',LamStress)
-        return BendStress, LamStress;
+        return BendStress, LamStress,DriftStress;
               
     def uniformForce(self,strengths):
         """
@@ -772,5 +794,5 @@ class SemiflexiblefiberCollection(fiberCollection):
         #np.savetxt('LambdasN.txt',self._lambdas)
         #np.savetxt('BendStress.txt',BendStress)
         #np.savetxt('LamStress.txt',LamStress)
-        return BendStress, LamStress+DriftStress;
+        return BendStress, LamStress, DriftStress;
     
