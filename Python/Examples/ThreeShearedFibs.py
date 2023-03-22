@@ -7,6 +7,7 @@ from CrossLinkedNetwork import CrossLinkedNetwork
 from DiscretizedFiber import DiscretizedFiber
 from FileIO import prepareOutFile
 import numpy as np
+import sys
 
 """
 This file performs the three sheared fiber test in Section 5.1.2
@@ -27,29 +28,28 @@ def makeThreeSheared(Lf,N,fibDisc):
 
 # Inputs 
 nFib=3          # number of fibers
-N=16            # number of points per fiber
+N=int(sys.argv[1]);            # number of points per fiber
 Lf=2            # length of each fiber
 nonLocal=1      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
 Ld=2.4          # length of the periodic domain
-xi=6         # Ewald parameter
+xi=4         # Ewald parameter
 mu=1            # fluid viscosity
-eps=1e-3        # slenderness ratio
+eps=1e-2        # slenderness ratio
 Eb=1e-2        # fiber bending stiffness
-dt=0.05          # timestep
+dt=float(sys.argv[2]);       # timestep
 omega=0         # frequency of oscillations
 gam0=1          # base rate of strain
 tf=2.4        # final time
 giters = 1;
-eigvalThres = 1e-5;
 
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=True,deltaLocal=0.1,\
-    RPYDirectQuad=False,RPYOversample=False,NupsampleForDirect=32,FPIsLocal=True);
+    RPYDirectQuad=False,RPYOversample=False,NupsampleForDirect=40,FPIsLocal=True);
 
 # Initialize the master list of fibers
-allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0,eigvalThres,nThreads=4,rigidFibs=True);
+allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0);
 fibList = makeThreeSheared(Lf,N,fibDisc);
 allFibers.initFibList(fibList,Dom);
 allFibers.fillPointArrays();
@@ -63,16 +63,17 @@ TIntegrator = BackwardEuler(allFibers);
 # Number of GMRES iterations for nonlocal solves
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
-TIntegrator.setMaxIters(1);
+TIntegrator.setMaxIters(giters);
 
 # Prepare the output file and write initial locations
-FileString="ThreeSh.txt";
+#FileString='Eps3CNRPYExThreeSh_N'+str(N)+'_dt'+str(dt)+'.txt';
+FileString='ThreeShChk.txt'
 allFibers.writeFiberLocations(FileString,'w');
 
 # Time loop
 stopcount = int(tf/dt+1e-10);
 for iT in range(stopcount): 
     print('Time %f' %(float(iT)*dt));
-    maxX,_,_ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=True,outfile=FileString);
+    maxX,_,_,_ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=True,outfile=FileString);
     print(maxX)
 

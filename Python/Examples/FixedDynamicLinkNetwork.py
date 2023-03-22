@@ -6,6 +6,7 @@ from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
 from DiscretizedFiber import DiscretizedFiber
 from FileIO import prepareOutFile, writeArray
+from StericForceEvaluator import StericForceEvaluator
 import numpy as np
 import chebfcns as cf
 from math import exp
@@ -60,9 +61,9 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
 
 # Initialize the master list of fibers
 if (FluctuatingFibs):
-    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidFibs);
+    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidFibs);
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs);
 
 Ewald = None;
 if (nonLocal==1):
@@ -71,9 +72,18 @@ if (nonLocal==1):
     Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);   
 
 # Initialize the fiber list (straight fibers)
+nStericPts = int(1/eps);
+FibDiameter = 2*eps*Lf;
+StericEval = None;
+if (Sterics):
+    StericEval = StericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, FibDiameter,nThr);
+    
 np.random.seed(seed);
 fibList = [None]*nFib;
-allFibers.initFibList(fibList,Dom);
+if (Sterics):
+    allFibers.RSAFibers(fibList,Dom,StericEval,nDiameters=4);
+else:
+    allFibers.initFibList(fibList,Dom);
 
 # Initialize the network of cross linkers
 # New seed for CLs
@@ -129,6 +139,7 @@ AllLocalAlignment[0,:] = LocalAlignment;
 saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
 
 ItsNeed = np.zeros(stopcount);
+nContacts = np.zeros(stopcount);
         
 # Simulate 
 for iT in range(stopcount): 
@@ -136,8 +147,8 @@ for iT in range(stopcount):
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
         mythist = time.time()
-    maxX, ItsNeed[iT], _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
-        updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover);
+    maxX, ItsNeed[iT], _, nContacts[iT] = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+        updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover,StericEval=StericEval);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
         print('MAIN Time step time %f ' %(time.time()-mythist));
@@ -172,6 +183,7 @@ for iT in range(stopcount):
        
 if (True):  
     np.savetxt('BundlingBehavior/ItsNeeded'+FileString,ItsNeed);
+    np.savetxt('BundlingBehavior/nContacts'+FileString,nContacts);
     np.savetxt('BundlingBehavior/nLinksPerFib'+FileString,numLinksByFib);  
     np.savetxt('BundlingBehavior/NumFibsConnectedPerFib'+FileString,NumFibsConnected);
     np.savetxt('BundlingBehavior/LocalAlignmentPerFib'+FileString,AllLocalAlignment);

@@ -83,24 +83,21 @@ void MatVec(int m, int p, int n, const vec &M, const vec &V, int start, vec &res
 
 /*  Solve Ax = b using pinv(A)*b. 
     In some cases, we need pinv(A)^(1/2)*b. This is what is returned when half is true. 
-    IMPORTANT: there are very rare times when the LAPACK SVD does not converge. It uses 
-    some iterative algorithm. Plugging the same matrix into MATLAB will give the correct SVD
-    When it doesn't converge, the singular values are out of order. What we do is just go with 
-    the first 2N+3 and remove any of the zero ones. This happens maybe once out of 10^6 solves,
-    so the important thing is just that the code does not crash or go crazy. 
 */
 void SolveWithPseudoInverse(int m, int n, vec &A, const vec &b, vec &answer,double svdtol, bool normalize,bool half, int maxModes){
     int dimS = std::min(m,n);
     int lda = n;
     int ldu = m;
     int ldvt = n;
-    vec u(m*m), s(dimS), vt(n*n);
+    vec u(m*m), s(dimS), superb(dimS-1),vt(n*n);
 
     //computing the SVD
     vec Acopy(m*n);
     std::memcpy(Acopy.data(),A.data(),A.size()*sizeof(double));
-    int info = LAPACKE_dgesdd(LAPACK_ROW_MAJOR, 'A', m, n, &*A.begin(), lda, &*s.begin(),
-                   &*u.begin(), ldu, &*vt.begin(), ldvt);
+    //int info = LAPACKE_dgesdd(LAPACK_ROW_MAJOR, 'A', m, n, &*A.begin(), lda, &*s.begin(),
+    //               &*u.begin(), ldu, &*vt.begin(), ldvt); // DOES NOT ALWAYS CONVERGE
+    int info = LAPACKE_dgesvd(LAPACK_ROW_MAJOR, 'A', 'A',m, n, &*A.begin(), lda, &*s.begin(),
+                   &*u.begin(), ldu, &*vt.begin(), ldvt,&*superb.begin());
     if (info > 0){ 
          std::cout << "LAPACK SVD DID NOT CONVERGE" << std::endl;
          std::cout << "This means singular values will be out of order" << std::endl;
@@ -121,7 +118,7 @@ void SolveWithPseudoInverse(int m, int n, vec &A, const vec &b, vec &answer,doub
                  std::cout << vt[i] << std::endl;
          }
     }
-    //LAPACKESafeCall(info);
+    LAPACKESafeCall(info);
     double sZero = 1.0;
     if (normalize){
         sZero = *max_element(s.begin(), s.end());

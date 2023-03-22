@@ -62,7 +62,7 @@ class SingleFiberMobilityEvaluator {
         _mu = mu;
     }
     
-    void initMobilitySubmatrices(npDoub pyXNodes,npDoub &pyCs,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
+    void initMobilitySubmatrices(npDoub pyXNodes,npDoub pyRegXNodes,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
         npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyXDiffMatrix, npDoub pyWTildeXInverse,
         npDoub pyOversampleWtsForDirectQuad,npDoub pyUpsamplingMatrix, double eigValThres){    
 
@@ -72,8 +72,8 @@ class SingleFiberMobilityEvaluator {
         std::memcpy(_WTildeXInv.data(),pyWTildeXInverse.data(),pyWTildeXInverse.size()*sizeof(double));
         _XNodes = vec(_nXPerFib);
         std::memcpy(_XNodes.data(),pyXNodes.data(),pyXNodes.size()*sizeof(double));
-        _LocalDragCs = vec(pyCs.size());
-        std::memcpy(_LocalDragCs.data(),pyCs.data(),pyCs.size()*sizeof(double));
+        _RegNodes = vec(pyRegXNodes.size());
+        std::memcpy(_RegNodes.data(),pyRegXNodes.data(),pyRegXNodes.size()*sizeof(double));
         
         _FinitePartMatrix = vec(pyFPMatrix.size());
         _XDiffMatrix = vec(pyXDiffMatrix.size());
@@ -103,6 +103,7 @@ class SingleFiberMobilityEvaluator {
         std::memcpy(_RLess2aWts.data(),pyRLess2aWts.data(),pyRLess2aWts.size()*sizeof(double));
         _HalfNForSmall = _RL2aResampMatrix.size()/(2*_nXPerFib*_nXPerFib);
         initLocalDragCoeffsRPY();
+        
         
     }
     
@@ -211,7 +212,7 @@ class SingleFiberMobilityEvaluator {
     bool _exactRPY, _directRPY, _oversampledRPY;
     RPYKernelEvaluator _RPYEvaluator;
     // Variables for mobility
-    vec _XNodes, _LocalDragCs, _FinitePartMatrix, _DbltFinitePartMatrix, _XDiffMatrix, _WTildeXInv;
+    vec _XNodes, _RegNodes, _FinitePartMatrix, _DbltFinitePartMatrix, _XDiffMatrix, _WTildeXInv;
     vec _RL2aResampMatrix, _RLess2aWts, _stackedXDiffMatrix, _OverSamplingWtsMatrix, _UpsamplingMatrix;
     vec _LocalStokeslet, _LocalDoublet, _LocalRLess2aI, _LocalRLess2aTau;
     int _HalfNForSmall;
@@ -223,21 +224,37 @@ class SingleFiberMobilityEvaluator {
         _LocalRLess2aI = vec(_nXPerFib);
         _LocalRLess2aTau = vec(_nXPerFib);
         for (int iPt = 0; iPt < _nXPerFib; iPt++){
-            double s = _XNodes[iPt];
+            double s = _RegNodes[iPt]; // accounts for regularization
             _LocalStokeslet[iPt] = log(s*(_L-s)/(4.0*_a*_a));
             _LocalDoublet[iPt] = 1.0/(4.0*_a*_a)-1.0/(2.0*s*s)-1.0/(2.0*(_L-s)*(_L-s)); 
-            _LocalRLess2aI[iPt] = 23.0/6.0;
-            _LocalRLess2aTau[iPt] = 1.0/2.0;
             if (s < 2*_a){ 
                 _LocalStokeslet[iPt] = log((_L-s)/(2.0*_a));
                 _LocalDoublet[iPt] = 1.0/(8.0*_a*_a)-1.0/(2.0*(_L-s)*(_L-s));
-                _LocalRLess2aI[iPt] = 23.0/12.0+4.0*s/(3.0*_a)-3.0*s*s/(16.0*_a*_a);
-                _LocalRLess2aTau[iPt] = 1.0/4.0+s*s/(16.0*_a*_a);
             } else if (s > _L-2*_a){
                 _LocalStokeslet[iPt] = log(s/(2.0*_a));
                 _LocalDoublet[iPt] = 1.0/(8.0*_a*_a)-1.0/(2.0*s*s);
-                _LocalRLess2aI[iPt] = 23.0/12.0+4.0*(_L-s)/(3.0*_a)-3.0*(_L-s)*(_L-s)/(16.0*_a*_a);
-                _LocalRLess2aTau[iPt] = 1.0/4.0+(_L-s)*(_L-s)/(16.0*_a*_a);
+            }
+        }
+    }
+    
+    void updateLocalDragCoeffsRPY(const vec &Tangents){
+        for (int iPt = 0; iPt < _nXPerFib; iPt++){
+            vec3 Tau;
+            for (int id = 0; id < 3; id++){
+                Tau[id] = Tangents[3*iPt+id];
+            }
+            double nXs = normalize(Tau);
+            double s = _RegNodes[iPt]; // accounts for regularization
+            if (s < 2*_a) {
+                _LocalRLess2aI[iPt] = (128*_a*_a-36*_a*_a*nXs+64*_a*s-9*nXs*s*s)/(48.0*_a*_a);
+                _LocalRLess2aTau[iPt] = nXs*(0.25+s*s/(16.0*_a*_a));
+            } else if (s > _L-2*_a) {
+                double sbar = _L-s;
+                _LocalRLess2aI[iPt] = (128*_a*_a-36*_a*_a*nXs+64*_a*sbar-9*nXs*sbar*sbar)/(48.0*_a*_a);
+                _LocalRLess2aTau[iPt] = nXs*(0.25+sbar*sbar/(16.0*_a*_a));
+            } else {
+                _LocalRLess2aI[iPt] = 1.0/6*(32.0-9*nXs);
+                _LocalRLess2aTau[iPt] = nXs/2.0;
             }
         }
     }
@@ -250,6 +267,7 @@ class SingleFiberMobilityEvaluator {
         double viscInv = 1.0/(8.0*M_PI*_mu);
         vec Tangents(3*_nXPerFib,0.0);
         BlasMatrixProduct(_nXPerFib, _nXPerFib, 3,1.0,0.0,_XDiffMatrix,false,ChebPoints,Tangents); 
+        updateLocalDragCoeffsRPY(Tangents);
         for (int iPt = 0; iPt < _nXPerFib; iPt++){
             vec3 Tau;
             for (int id = 0; id < 3; id++){
@@ -264,14 +282,9 @@ class SingleFiberMobilityEvaluator {
                         deltaij=1;
                     }
                     double XsXs_ij =Tau[id]*Tau[jd];
-                    if (_exactRPY) { 
-                        M[3*_nXPerFib*(3*iPt+id)+3*iPt+jd] = viscInv*(_LocalStokeslet[iPt]*(deltaij+XsXs_ij)*normTauInv+
-                            2*_a*_a/3.0*_LocalDoublet[iPt]*(deltaij-3*XsXs_ij)*pow(normTauInv,3)+
-                            (_LocalRLess2aI[iPt]*deltaij+_LocalRLess2aTau[iPt]*XsXs_ij)*normTauInv);
-                    } else {
-                        //M[3*_nXPerFib*(3*iPt+id)+3*iPt+jd] = viscInv*(_LocalDragCs[iPt]*(deltaij+XsXs_ij)/normTau+(deltaij-3*XsXs_ij)/pow(normTau,3));
-                        M[3*_nXPerFib*(3*iPt+id)+3*iPt+jd] = viscInv*(_LocalDragCs[iPt]*(deltaij+XsXs_ij)+(deltaij-3*XsXs_ij));
-                    }
+                    M[3*_nXPerFib*(3*iPt+id)+3*iPt+jd] = viscInv*(_LocalStokeslet[iPt]*(deltaij+XsXs_ij)*normTauInv+
+                        2*_a*_a/3.0*_LocalDoublet[iPt]*(deltaij-3*XsXs_ij)*pow(normTauInv,3)+
+                        (_LocalRLess2aI[iPt]*deltaij+_LocalRLess2aTau[iPt]*XsXs_ij));
                 }
             }
         }
@@ -470,13 +483,13 @@ class SingleFiberMobilityEvaluator {
             } // end domain
         } // end iPt
         // Subtract diagonal part from M (previously included in local drag terms)
+        updateLocalDragCoeffsRPY(Tangents);
         for (int iPt = 0; iPt < _nXPerFib; iPt++){
             vec3 Tau;
             for (int id = 0; id < 3; id++){
                 Tau[id]=Tangents[3*iPt+id];
             }
             double normTau = normalize(Tau);
-            double normTauInv = 1.0/normTau;
             for (int id = 0; id < 3; id++){
                 for (int jd =0; jd < 3; jd++){
                     double deltaij = 0;
@@ -484,7 +497,7 @@ class SingleFiberMobilityEvaluator {
                         deltaij=1;
                     }
                     double XsXs_ij =Tau[id]*Tau[jd];
-                    M[3*_nXPerFib*(3*iPt+id)+3*iPt+jd]-= viscInv*(_LocalRLess2aI[iPt]*deltaij+_LocalRLess2aTau[iPt]*XsXs_ij)*normTauInv;
+                    M[3*_nXPerFib*(3*iPt+id)+3*iPt+jd]-= viscInv*(_LocalRLess2aI[iPt]*deltaij+_LocalRLess2aTau[iPt]*XsXs_ij);
                 }
             }
         }

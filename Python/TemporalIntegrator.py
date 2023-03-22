@@ -106,7 +106,7 @@ class TemporalIntegrator(object):
         for more details on this. 
         """
         thist = time.time();
-        ExForce, UNonLoc = self._allFibers.formBlockDiagRHS(XforNL,tvalSolve,forceExt,lamStar,Dom,Ewald);
+        ExForce, UNonLoc = self._allFibers.formBlockDiagRHS(XforNL,self._allFibers.getX(),tvalSolve,forceExt,lamStar,Dom,Ewald);
         if (verbose > 0):
             print('Time to form RHS %f' %(time.time()-thist))
             thist = time.time()
@@ -147,14 +147,17 @@ class TemporalIntegrator(object):
                 resno = Solution.resnorms
                 print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
             lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
-            #res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
+            print('RHS max %f' %np.amax(np.abs(RHS)))
+            res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
+            resno = Solution.resnorms
+            print('Last residual %1.2E' %resno[len(resno)-1])
             if (verbose > 0):
                 print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
                 thist = time.time()
         return lamalph, itsneeded, XforNL;
 
     def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,\
-        updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False):
+        updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False,StericEval=None):
         """
         The main update method. 
         Inputs: the timestep number as iT, the timestep dt, the maximum number of steps numSteps,
@@ -210,6 +213,12 @@ class TemporalIntegrator(object):
                 print('Time to calc CL force %f' %(time.time()-thist))
                 thist = time.time()
         
+        nContacts = 0;
+        if (StericEval is not None):
+            Touching, _ = StericEval.CheckContacts(XforNL,Dom);
+            nContacts, _ = Touching.shape;
+            forceExt +=StericEval.StericForces(XforNL,Dom);
+        
         # Solve for the (alpha, lambda) to update the fibers
         thist = time.time()
         # Solve the block diagonal way
@@ -232,15 +241,15 @@ class TemporalIntegrator(object):
             print('Update fiber time %f' %(time.time()-thist))
             thist = time.time()
         
-        stressArray = np.zeros(3);
+        stressArray = np.zeros(4);
         if (stress):
-            ElasticStress, lamStress = self._allFibers.FiberStress(XforNL,XWithLam,XsforNL,Dom.getVol())
+            ElasticStress, lamStress, DriftStress = self._allFibers.FiberStress(XforNL,XWithLam,XsforNL,Dom.getVol())
             # Stress due to CLs 
             Dom.setg(self._gForStress); 
             CLstress = np.zeros((3,3));
             if (self._CLNetwork is not None):
                 CLstress = self._CLNetwork.CLStress(self._allFibers,XforNL,Dom);
-            stressArray=np.array([lamStress[0,1],ElasticStress[0,1],CLstress[0,1]]);
+            stressArray=np.array([lamStress[0,1],ElasticStress[0,1],DriftStress[0,1],CLstress[0,1]]);
             if (verbose > 0):
                 print('Stress time %f' %(time.time()-thist))
                 thist = time.time()
@@ -248,7 +257,7 @@ class TemporalIntegrator(object):
                    
         if (write):
             self._allFibers.writeFiberLocations(outfile);
-        return maxX, itsneeded, stressArray;    
+        return maxX, itsneeded, stressArray, nContacts;    
      
     
     @staticmethod
@@ -286,7 +295,6 @@ class CrankNicolson(TemporalIntegrator):
     def __init__(self,fibCol,CLNetwork=None):
         super().__init__(fibCol,CLNetwork);
         self._impco = 0.5; # coefficient for implicit solves
-        warn('Crank-Nicolson not tested in new discretization. Backward Euler recommended.')
       
     def getXandXsNonLoc(self):
         X = 1.5*self._allFibers.getX() - 0.5*self._allFibersPrev.getX();

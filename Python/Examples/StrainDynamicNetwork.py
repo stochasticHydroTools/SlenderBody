@@ -6,6 +6,7 @@ from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
 from DiscretizedFiber import DiscretizedFiber
 from FileIO import prepareOutFile, writeArray
+from StericForceEvaluator import StericForceEvaluator
 import numpy as np
 import chebfcns as cf
 from math import exp, pi
@@ -68,9 +69,9 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
 
 # Initialize the master list of fibers
 if (FluctuatingFibs):
-    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr);
+    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidDetFibs);
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidDetFibs);
 
 Ewald = None;
 if (nonLocal==1):
@@ -91,7 +92,8 @@ CLNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,K
     konCL,koffCL,konSecond,koffSecond,seed,Dom,fibDisc,nThreads=nThr,bindingSiteWidth=bindingSiteWidth,\
     kT=kbT,smoothForce=smForce);
 CLNet.setLinksFromFile('BundlingBehavior/FinalLinks'+InFileString,'BundlingBehavior/FinalFreeLinkBound'+InFileString);
-    
+
+   
 # Initialize the temporal integrator
 if (FluctuatingFibs):
     TIntegrator = MidpointDriftIntegrator(allFibers,CLNet);
@@ -102,6 +104,7 @@ else:
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
 Lamstress21 = np.zeros(int(numStressPerCycle*nCyc)); 
+Driftstress21 = np.zeros(int(numStressPerCycle*nCyc)); 
 Elstress21 = np.zeros(int(numStressPerCycle*nCyc)); 
 CLstress21 = np.zeros(int(numStressPerCycle*nCyc)); 
 
@@ -143,7 +146,7 @@ for iT in range(stopcount):
     doStress = False;
     if ((iT % stressEvery) == (stressEvery-1)):
         doStress = True;
-    maxX, AllItsNeeded[iT], stressArray =  TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+    maxX, AllItsNeeded[iT], stressArray, _ =  TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
         updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover,stress=doStress);
     #print('MAIN Time step time %f ' %(time.time()-mythist));
     #print('Max x: %f' %(maxX));
@@ -151,7 +154,8 @@ for iT in range(stopcount):
         stressIndex = (iT+1)//stressEvery-1;
         Lamstress21[stressIndex]= stressArray[0];
         Elstress21[stressIndex] = stressArray[1];
-        CLstress21[stressIndex] = stressArray[2];
+        Driftstress21[stressIndex] = stressArray[2];
+        CLstress21[stressIndex] = stressArray[3];
     if (wr==1): # save curvatures and strains
         print('MAIN Time step time %f ' %(time.time()-mythist));
         print('Max x: %f' %maxX)
@@ -198,6 +202,7 @@ if (True):
     ofCL.close()
     np.savetxt('DynamicRheo/LamStress'+OutFileString,Lamstress21);
     np.savetxt('DynamicRheo/ElStress'+OutFileString,Elstress21);
+    np.savetxt('DynamicRheo/DriftStress'+OutFileString,Driftstress21);
     np.savetxt('DynamicRheo/CLStress'+OutFileString,CLstress21);
 
 

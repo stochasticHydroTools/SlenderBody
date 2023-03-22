@@ -6,7 +6,7 @@
 % on the fiber, w = Chebyshev wts, L=fiber length, K = spring constant,
 % rl = rest length of the cross linkers, 
 % Outputs - force per length on the fibers. 
-function [Clf,X1stars,X2stars] = getCLforce(links,X,Runi,s,w,L, K, rls,g,Ld)
+function [Clf,X1stars,X2stars] = getCLforce(links,X,Runi,s,w,L, K, rls,Lfacs,g,Ld)
     [nLink,~]=size(links);
     Clf=zeros(size(X));
     X1stars = zeros(nLink,3);
@@ -35,13 +35,14 @@ function [Clf,X1stars,X2stars] = getCLforce(links,X,Runi,s,w,L, K, rls,g,Ld)
         X2star = Runi(fib2pt,:)*X2;
         X2stars(iL,:)=X2star;
         s2star = (fib2pt-1)*hu;
-        renorm = w*deltah(s-s1star,N,L)*w*deltah(s-s2star,N,L);
+        renorm = w*deltah(s-s1star,N,L)*w*deltah(s-s2star,N,L)*Lfacs(fib1)*Lfacs(fib2);
         f1 = zeros(N,3);
         for iPt=1:N
             ds = X1(iPt,:)-X2;
             ig = ds*(1-rl/norm(X1star-X2star));
             ig = ig.*deltah(s-s2star,N,L);
-            f1(iPt,:)=-K*w*ig*deltah(s(iPt)-s1star,N,L);
+            % Integrating over fiber 2 for each pt on fiber 1
+            f1(iPt,:)=-K*Lfacs(fib2)*w*ig*deltah(s(iPt)-s1star,N,L);
         end
         % Renormalize f1
         f1=f1./renorm;
@@ -52,7 +53,8 @@ function [Clf,X1stars,X2stars] = getCLforce(links,X,Runi,s,w,L, K, rls,g,Ld)
             ds = X2(iPt,:)-X1;
             ig = ds*(1-rl/norm(X1star-X2star));
             ig = ig.*deltah(s-s1star,N,L);
-            f2(iPt,:)=-K*w*ig*deltah(s(iPt)-s2star,N,L);
+            % Integrating over fiber 1 for each pt on fiber 2
+            f2(iPt,:)=-K*Lfacs(fib1)*w*ig*deltah(s(iPt)-s2star,N,L);
         end
         % Renormalize
         f2=f2./renorm;

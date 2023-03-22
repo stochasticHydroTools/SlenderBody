@@ -48,7 +48,7 @@ class StericForceEvaluator(object):
         potential decays to exp(-4) \approx 0.02 over 4 diameters. So we truncate 
         at d-r = 4*delta. 
         """
-        delta = self._FibSize;
+        delta = self._FibSize/4;
         dcrit = self._FibSize;
         F0 = 4*4.1e-3/delta;
         nStds = 4;
@@ -102,7 +102,7 @@ class StericForceEvaluator(object):
                 rvec = Dom.calcShifted(Xconcat[iPt,:]-Xconcat[jPt,:]);
                 if (np.linalg.norm(rvec) < Cutoff):
                     return True;
-        print('Fiber %d accepted' %iFib)
+        #print('Fiber %d accepted' %iFib)
         return False;    
     
     def mapUniPtToFiber(self,sites):

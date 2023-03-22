@@ -4,6 +4,8 @@ import chebfcns as cf
 import time
 from math import sqrt, exp
 from scipy.linalg import lu_factor, lu_solve, sqrtm
+from warnings import warn
+from RPYVelocityEvaluator import RPYVelocityEvaluator
 
 # Documentation last updated: 01/21/2023
 
@@ -92,7 +94,11 @@ class FibCollocationDiscretization(object):
         Note that this is only used when the mobility is SBT, i.e., when RPYSpecialQuad, 
         RPYDirectQuad, and _RPYOversample have ALL been set to false. 
         """
-        radii = np.zeros(self._Nx);
+        if (self._RPYSpecialQuad or self._RPYDirectQuad or  self._RPYDirectQuad):
+            if (delta > 0):
+                warn('Your regularization wont do anything - youre using RPY')
+            self._sRegularized = self._sX;
+            return;
         self._delta = delta;
         sNew = 0.5*self._L*np.ones(self._Nx);
         if (delta < 0.5):
@@ -102,7 +108,7 @@ class FibCollocationDiscretization(object):
             sNew[self._sX < self._L/2] =  regwt[self._sX < self._L/2]*self._sX[self._sX < self._L/2]+\
                 (1-regwt[self._sX < self._L/2]**2)*delta*self._L/2;
             sNew[self._sX > self._L/2] = self._L-np.flip(sNew[self._sX < self._L/2]);
-        self._leadordercs = np.log(4.0*sNew*(self._L-sNew)/(self._epsilon*self._L)**2);
+        self._sRegularized = sNew;       
            
     def averageTau(self,Xs):
         avgTau = np.zeros(3);
@@ -169,6 +175,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self.initD4BC(UseEnergyDisc,penaltyParam);
         self.initFPMatrix();
         self.initUpsamplingMatricesForDirectQuad();
+        self.FindEigenvalueThreshold();
         MatfromNtoUniform = cf.ResamplingMatrix(self._nptsUniform,self._Nx,'u',self._XGridType);
         self._MatfromNtoUniform = np.zeros((3*self._nptsUniform,3*self._Nx));
         for iD in range(3):
@@ -209,6 +216,29 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self._OversamplingWtsMat = np.zeros((3*self._nptsDirect,3*self._Nx));
         for iD in range(3):
             self._OversamplingWtsMat[iD::3,iD::3]=OneDResamp; 
+            
+    def FindEigenvalueThreshold(self):
+        # We only want to set the eigenvalue threshold when we do special quad
+        self._EigValThres = 0;
+        if ((not self._RPYDirectQuad) and (not self._RPYOversample)):
+            NToUpsamp = int(1/self._epsilon);
+            # Compute mobility for straight fiber on upsampled grid
+            sUp = cf.chebPts(NToUpsamp,[0,self._L],self._XGridType)
+            wUp = cf.chebWts(NToUpsamp,[0,self._L],self._XGridType)
+            Ext =  cf.ResamplingMatrix(NToUpsamp, self._Nx,self._XGridType,self._XGridType);
+            OneDResamp = np.dot(np.diag(wUp),np.dot(Ext,np.linalg.inv(self._WtildeNx)));
+            OversamplingWtsMat = np.zeros((3*NToUpsamp,3*self._Nx));
+            for iD in range(3):
+                OversamplingWtsMat[iD::3,iD::3]=OneDResamp; 
+            # Compute minimum eigenvalue  
+            StraightFiber = np.concatenate((np.reshape(sUp,(NToUpsamp,1)),np.zeros((NToUpsamp,1)),np.zeros((NToUpsamp,1))),axis=1);
+            MRPY = RPYVelocityEvaluator.RPYMatrix(NToUpsamp,StraightFiber,self._mu,self._a)
+            MRPYOversamp = np.dot(OversamplingWtsMat.T,np.dot(MRPY,OversamplingWtsMat));
+            self._EigValThres = np.min(np.linalg.eigvalsh(MRPYOversamp));
+        print('Eigenvalue threshold %1.2E' %self._EigValThres)
+    
+    def UniformUpsamplingMatrix(self,Nunipts):
+        return cf.ResamplingMatrix(Nunipts, self._Nx,'u',self._XGridType);    
     
     def calcXFromXsAndMP(self,Xs,XMP):
         return np.dot(self._XonNp1Mat,np.concatenate((Xs,XMP)));  

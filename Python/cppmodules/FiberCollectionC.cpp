@@ -58,11 +58,11 @@ class FiberCollectionC {
         }
     }
     
-    void initMobilityMatrices(npDoub pyXNodes,npDoub &pyCs,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
+    void initMobilityMatrices(npDoub pyXNodes,npDoub pyRegXNodes,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
         npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyXDiffMatrix,npDoub pyWTildeX, 
         npDoub pyWTildeXInverse, npDoub pyOversampleForDirectQuad, npDoub pyUpsamplingMatrix, double eigValThres){  
 
-        _MobilityEvaluator.initMobilitySubmatrices(pyXNodes,pyCs,pyFPMatrix,pyDoubFPMatrix,pyRL2aResampMatrix,
+        _MobilityEvaluator.initMobilitySubmatrices(pyXNodes,pyRegXNodes,pyFPMatrix,pyDoubFPMatrix,pyRL2aResampMatrix,
             pyRLess2aWts,pyXDiffMatrix,pyWTildeXInverse,pyOversampleForDirectQuad,pyUpsamplingMatrix,eigValThres);
         _nUpsample = _MobilityEvaluator.getNupsample();
         _WTildeX = vec(pyWTildeX.size());

@@ -7,7 +7,6 @@ nonLocal=4;     # doing nonlocal solves? 0 = local drag, > 0 = nonlocal hydro (o
 Ld=2            # length of the periodic domain
 mu=0.1          # fluid viscosity
 eps=4e-3/Lf     # slenderness ratio
-eigValThres = 2.2              # cutoff for eigenvalues of mobility (when doing special quad)
 lp = float(sys.argv[5]);       # persistence length
 kbT = 4.1e-3;
 Eb = kbT*lp                    # fiber bending stiffness
@@ -16,7 +15,7 @@ RPYQuad = False;                # Doing special quadrature for mobility
 RPYDirect = False;             # Doing direct quadrature for mobility
 RPYOversample = True;         # Doing oversampled quadrature for mobility
 NupsampleForDirect = 100;       # Number of oversampled points 
-FluctuatingFibs = True;        # Are there semiflexible bending fluctuations?
+FluctuatingFibs = False;        # Are there semiflexible bending fluctuations?
 RigidDiffusion = False;        # Are the fibers diffusing as rigid bodies every time step?
 rigidDetFibs = False;          # Are the fibers actually rigid and straight the whole time?
 smForce = False;               # Are we smoothing out the cross linking force or using a delta function?
@@ -40,7 +39,8 @@ turnovertime = 2.5;
 bindingSiteWidth = 20e-3;      # Set to 0 for no limit, 20 nm otherwise
 bunddist = 1/4                 # Distance separating 2 links to form a bundle
 OutFileString = 'CHKFluctOm1Lp'+str(lp)+'Ld'+str(Ld)+'Turn'+str(turnovertime)+'_'+str(seed)+'.txt'
-InFileString = 'FluctFibsLp'+str(lp)+'Turnover'+str(turnovertime)+'SS_'+str(seed)+'.txt'
+#InFileString = 'FluctFibsLp'+str(lp)+'Turnover'+str(turnovertime)+'SS_'+str(seed)+'.txt'
+InFileString = 'StericsBundlingLp17.0_Dt5e-06_'+str(seed)+'.txt'
 updateNet = True;              # Updating the network at each time step?
 turnover = True;               # Turning over the fibers? Turnover time above
 

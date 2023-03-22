@@ -54,9 +54,6 @@ RPYDirect = False;
 RPYOversample = False;
 NupsampleForDirect = 20;
 # Eigenvalue truncation point. Assumes eps=1e-3 for now. 
-eigvalThres =5.0/Lf 
-if (N==12):
-    eigvalThres = 3.2/Lf; 
 FileString = 'TESTCurved.txt';#'SemiflexFlucts/Penalty_N'+str(N)+'_Lp'+str(lpstar)+'_dt'+str(dtnum)+'_'+str(seed)+'.txt'
 
 # Initialize the domain
@@ -69,7 +66,7 @@ fibList = makeCurvedFib(Lf,N,fibDisc);
 fibDisc.calcBendMatX0(fibList[0]._X,penaltyParam);
 
 # Initialize the master list of fibers
-allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigvalThres);
+allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT);
 allFibers.initFibList(fibList,Dom);
 
 # Initialize the temporal integrator

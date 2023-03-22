@@ -37,12 +37,17 @@ class fiberCollection(object):
     nonLocal = 4: only intra-fiber hydrodynamics. Depending on if FPIsLocal = True, 
     then this would be done using the same matrix as local drag OR if FPIsLocal = False, 
     the "finite part" velocity goes on the RHS of the saddle point system. 
+    
+    Another important function of this class is to keep SpatialDatabase objects inside 
+    that can be used to query neighbors. All of these objects are currently "CellLinkedList,"
+    objects, which is a parallel CPU/GPU implementation of linked lists. (See SpatialDatabase.py
+    for documentation)
     """
 
     ## ====================================================
     ##              METHODS FOR INITIALIZATION
     ## ====================================================
-    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=1,rigidFibs=False,dt=1e-3):
+    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=1,rigidFibs=False,dt=1e-3):
         """
         Constructor for the fiberCollection class. 
         Inputs: Nfibs = number of fibers, turnover time = mean time for each fiber to turnover,
@@ -53,7 +58,6 @@ class fiberCollection(object):
         gam0 = base strain rate of the background flow, 
         Dom = Domain object to initialize the SpatialDatabase objects, 
         kbT = thermal energy, 
-        eigValThres = eigenvalue threshold for intra-fiber mobility, 
         nThreads = number of OMP threads for parallel calculations, 
         rigidFibs = whether the fibers are rigid
         """
@@ -91,12 +95,11 @@ class fiberCollection(object):
             self._fiberDisc._D4BCForceHalf,self._fiberDisc._XonNp1MatNoMP,self._fiberDisc._XsFromX,\
             self._fiberDisc._MidpointMat,self._fiberDisc._BendMatX0);
         self._FibColCpp.initResamplingMatrices(self._fiberDisc._nptsUniform,self._fiberDisc._MatfromNtoUniform);
-        self._FibColCpp.initMobilityMatrices(self._fiberDisc._sX, fibDisc._leadordercs,\
+        self._FibColCpp.initMobilityMatrices(self._fiberDisc._sX, fibDisc._sRegularized,\
             self._fiberDisc._FPMatrix.T,self._fiberDisc._DoubletFPMatrix.T,\
             self._fiberDisc._RLess2aResamplingMat,self._fiberDisc._RLess2aWts,\
             self._fiberDisc._DXGrid,self._fiberDisc._stackWTilde_Nx, self._fiberDisc._stackWTildeInverse_Nx,\
-            self._fiberDisc._OversamplingWtsMat,self._fiberDisc._EUpsample,eigValThres);
-
+            self._fiberDisc._OversamplingWtsMat,self._fiberDisc._EUpsample,self._fiberDisc._EigValThres);
     
     def initFibList(self,fibListIn, Dom,XFileName=None):
         """
@@ -193,7 +196,7 @@ class fiberCollection(object):
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY
     ## ====================================================   
-    def formBlockDiagRHS(self,X,t,exForce,Lamstar,Dom,RPYEval):
+    def formBlockDiagRHS(self,XNonLocal,XLocal,t,exForce,Lamstar,Dom,RPYEval):
         """
         RHS for the block diagonal GMRES system. 
         Inputs: X = Chebyshev point locations,t = system time, 
@@ -206,10 +209,11 @@ class fiberCollection(object):
         return F and UEx. Here UEx includes the nonlocal velocity.
         """
         # Compute elastic forces at X
-        BendForce = self.evalBendForce(X);
-        TotalForce = BendForce+exForce;
-        U0 = self.evalU0(X,t);
-        UNonLoc = self.nonLocalVelocity(X,Lamstar+exForce+BendForce, Dom, RPYEval);
+        LocalBendForce = self.evalBendForce(XLocal);
+        NonLocalBendForce = self.evalBendForce(XNonLocal);
+        U0 = self.evalU0(XNonLocal,t);
+        UNonLoc = self.nonLocalVelocity(XNonLocal,Lamstar+exForce+NonLocalBendForce, Dom, RPYEval);
+        TotalForce = LocalBendForce+exForce;
         return TotalForce, (UNonLoc+U0);
 
     def calcResidualVelocity(self,BlockDiagAnswer,X,Xs,dtimpco,Lamstar, Dom, RPYEval):
@@ -252,10 +256,11 @@ class fiberCollection(object):
         XnLForBend = np.reshape(impcodt*Kalph,(self._Nfib*self._NXpf,3)); # X+dt*K*alpha
         # The bending force from time n is included in ExForces 
         TotalForce = self.evalBendForce(XnLForBend)+Lambdas+ExForces;   
-        U0 = self.evalU0(self._ptsCheb,t);
+        U0 = self.evalU0(X,t);
         Local = self.LocalVelocity(X,TotalForce);
         nonLocal = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval);
         res = (Local+nonLocal+U0+UAdd)-Kalph;
+        print('In check residuals, max Kalph %f and res %f' %(np.amax(np.abs(Kalph)),np.amax(np.abs(res))))
         return res;
         
     def Mobility(self,LamAlph,impcodt,X,Xs,Dom,RPYEval):
@@ -656,8 +661,8 @@ class SemiflexiblefiberCollection(fiberCollection):
     There are some additional methods required in this case. 
     """
 
-    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, kbT,eigValThres,nThreads=1,rigidFibs=False,dt=1e-3):
-        super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads,rigidFibs,dt);
+    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, kbT,nThreads=1,rigidFibs=False,dt=1e-3):
+        super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads,rigidFibs,dt);
         self._iT = 0;
         SPDMatrix = self._fiberDisc._RPYDirectQuad or self._fiberDisc._RPYOversample;
         if (self._nonLocal==1 and not SPDMatrix):

@@ -38,35 +38,19 @@ def makeStraightFibs(nFib,Lf,N,fibDisc,Ld=0):
 nFib=100         # number of fibers
 N=12          # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=1   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
+nonLocal=4   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
 nThr = 8;   # Number of OpenMP threads
 # Mobility options (can do SBT if all are set to false, otherwise some variant of RPY as described below)
 MobStr='NLOS64';
-RPYQuad = False;        # Special quadrature
+RPYQuad = True;        # Special quadrature
 RPYDirect = False;       # Direct Clenshaw-Curtis quadrature
-RPYOversample = True;  # Oversampled quad
+RPYOversample = False;  # Oversampled quad
 NupsampleForDirect = 64; # Number of pts for oversampled quad
 Ld=float(sys.argv[4]);        # length of the periodic domain
 mu=1            # fluid viscosity
 logeps = float(sys.argv[1]);
 eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3). The factor 4/exp(1.5) converts to actual fiber slenderness. 
-lpstar = 10;
-eigvalThres = 0.0;
-if (eps < 5e-3): # Only used for special quad
-    if (N==12):
-        eigvalThres = 3.2/Lf; 
-    elif (N==24):
-        eigvalThres = 5.0/Lf; 
-    elif (N==36):
-        eigvalThres = 6.7/Lf; 
-else:   # Only used for special quad
-    if (N==12):
-        eigvalThres = 1.6/Lf; 
-    elif (N==24):
-        eigvalThres = 1.0/Lf; 
-    elif (N==36):
-        eigvalThres = 0.34/Lf; 
-    
+lpstar = 10;    
 kbT = 4.1e-3;
 Eb=lpstar*kbT*Lf;         # fiber bending stiffness
 tfund = 0.003*4*np.pi*mu*Lf**4/(np.log(10**logeps)*Eb) 
@@ -89,7 +73,7 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,deltaLoc
     RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,NupsampleForDirect=NupsampleForDirect);
     
 # Initialize the master list of fibers
-allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,eigvalThres,nThreads=nThr);
+allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,nThreads=nThr);
 #fibList = makeStraightFibs(nFib,Lf,N,fibDisc,Ld);
 np.random.seed(seed);
 fibList = [None]*nFib;
@@ -116,7 +100,7 @@ for iT in range(stopcount):
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
         print('Fraction done %f' %((iT+1)/stopcount))
-    maxX, its, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString);
+    maxX, its, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString);
     itsNeeded[iT]=its;
 np.savetxt('SemiflexFlucts/ItsNeeded'+saveStr,itsNeeded)
 np.savetxt('SemiflexFlucts/LanczosNeeded'+saveStr,np.array(TIntegrator._nLanczos))

@@ -9,8 +9,11 @@ class SpatialDatabase(object):
     Spatial database object.
     This class is a spatial index of a collection of points in a (sheared) Domain (see Domain.py)
     Its purpose is to search for neighboring points efficiently. 
-    Children: cKDSpatial (uses ckD trees to find neighbors), LinkedListSpatial (uses linked list which
-    rn are written in native python). 
+    Children: CellLinkedList, which is a linked cell list implementation in mixed CPU/GPU format
+    See https://github.com/stochasticHydroTools/SlenderBody/blob/master/Python/Dependencies/NeighborSearch/nlist_py.cu
+
+    Other children (not used): cKDSpatial (uses ckD trees to find neighbors), 
+    LinkedListSpatial (uses linked list in native python), 
     """
     
     def __init__(self,pts,Dom,nThr=1):

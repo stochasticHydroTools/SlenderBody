@@ -1,4 +1,4 @@
-all: RPYKernelEvaluator.so FiberCollectionC.so DomainC.so CrossLinkForceEvaluator.so EndedCrossLinkedNetwork.so
+all: RPYKernelEvaluator.so FiberCollectionC.so DomainC.so CrossLinkForceEvaluator.so EndedCrossLinkedNetwork.so StericForceEvaluatorC.so
 
 CXX=g++
 PYTHON3=python3

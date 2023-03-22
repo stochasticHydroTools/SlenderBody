@@ -9,16 +9,15 @@ clear AllXTrajs
 %dt =0.8/2^(iDt);
 deltaLocal = 0.1; % part of the fiber to make ellipsoidal
 nFib = 3;
-N = 16; 
-NupsampleHydro = 32;
+N = 32; 
+NupsampleHydro = 40;
 L=2;   % microns
 mu=1;
-eps=1e-3;
+eps=1e-2;
 impcoeff = 1;
 exactRPY = 1;
 upsamp = 0; % -1 for direct, 0 for special quad, 1 for upsampled direct
 RectangularCollocation = 0; clamp0=0; twmod=0;
-includeFPonLHS = 0;
 a = exp(3/2)/4*eps*L; % match SBT
 gam0=1; omega=0; % shear flow
 Eb=0.01;
@@ -35,12 +34,11 @@ X_s = [ones(N,1) zeros(N,2); zeros(N,1) ones(N,1) zeros(N,1); ones(N,1) zeros(N,
 XMP=[0 -0.6 -0.04; 0 0 0; 0 0.6 0.06]'; 
 D = diffmat(N, 1, [0 L], 'chebkind1');
 saveEvery = 1;
-InitFiberVarsNew;
+InitFiberVars;
 AllXs = Xst;
 AllX = Xt;
 AllXMP = XMP;
 Xpts=[];
-eigThres=1e-5;
 makeMovie=0;
 if (makeMovie)
     f=figure;
@@ -57,8 +55,8 @@ AllXMP_p1 = zeros(3,nFib);
 AllXPrev = AllX;
 AllXsPrev = AllXs;
 AllXMPPrev = AllXMP;
-maxIts=20; % for the first 2 steps
-rigid=1;
+maxIts=100; % for the first 2 steps
+rigid=0;
 WtInvSingle = WTilde_Np1_Inverse(1:3:end,1:3:end);
 %% Computations
 for count=0:stopcount-1 
@@ -87,7 +85,7 @@ for count=0:stopcount-1
         AllLambdasPrev = AllLambdas;
     end
     [UShear,gSh] = EvalU0(gam0,omega,t+(1-impcoeff)*dt,XMob,'S');
-    while ((er > 1e-6 && count < 1/impcoeff && itercount < maxIts) || itercount < 1)
+    while ((er > 1e-10 && count < 1/impcoeff && itercount < maxIts) || itercount < 1)
         % Background flow, strain, external force
         % Compute nonlocal velocity
         ForceNL =Lamguess;

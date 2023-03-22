@@ -66,9 +66,9 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
 
 # Initialize the master list of fibers
 if (FluctuatingFibs):
-    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr);
+    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,eigValThres,nThreads=nThr,rigidFibs=rigidDetFibs);
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidDetFibs);
 
 Ewald = None;
 if (nonLocal==1):
@@ -137,7 +137,7 @@ for iT in range(stopcount):
         fixedg = maxStrain;
         allFibers._gam0=0; 
     mythist = time.time()
-    maxX, _, stressArray= TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+    maxX, _, stressArray, _= TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
         updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover,stress=True,fixedg=fixedg);
     Lamstress21[iT]= stressArray[0];
     Elstress21[iT] = stressArray[1];

@@ -5,7 +5,7 @@
 % Here Mtr is a 3N x N matrix which gives a 3D velocity at the N nodes from
 % a SCALAR parallel torque density. Likewise Mrt is an N x 3N matrix which
 % gives the scalar parallel rotation rate from the N 3D forces
-function [MTT, MTR, MRT, MRR,sNew] = getGrandMloc(N,Xs,Xss,a,L,mu,s0,delta)
+function [MTT, MTR, MRT, MRR,sNew] = AsymptoticLocalMobility(N,Xs,Xss,a,L,mu,s0,delta)
     sNew = RegularizeS(s0,delta,L);
     cs = log(sNew.*(L-sNew)./(4*a.^2)); 
     MTT = zeros(3*N); MTR = zeros(3*N,N); MRR = zeros(N);

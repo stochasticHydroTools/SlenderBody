@@ -4,15 +4,17 @@
 % https://arxiv.org/pdf/2007.11728.pdf
 deltaLocal = 1; % part of the fiber to make ellipsoidal
 nFib = 4;
-N = 20; 
-direct = 0;
-NupsampleHydro = 40;
+N = 23; 
+direct = 1;
+NupsampleHydro = N;
+upsamp=0;
 L=2;   % microns
 mu=1;
 eps=1e-3;
-impcoeff = 1/2;
+impcoeff = 1;
 exactRPY = 0;
-RectangularCollocation = 1; clamp0=0; twmod=0;
+rigid = 0;
+RectangularCollocation = 0; clamp0=0; twmod=0;
 includeFPonLHS = 0;
 a = exp(3/2)/4*eps*L; % match SBT
 Eb=1;
@@ -30,7 +32,7 @@ theta = (0:nFib-1)/nFib*2*pi;
 XMP=[d*cos(theta); d*sin(theta); 0*theta];
 D = diffmat(N, 1, [0 L], 'chebkind1');
 saveEvery = 1;
-InitFiberVarsNew;
+InitFiberVars;
 gravFDen = zeros(3*Nx,1); 
 gravFDen(3:3:end)=grav/L;
 GravForce = WTilde_Np1*gravFDen;

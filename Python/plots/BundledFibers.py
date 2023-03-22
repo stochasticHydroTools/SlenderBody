@@ -24,7 +24,7 @@ import sys
 sys.path.append("/Configs/")  
 
 def save_image(rt,iT,name):
-    rt.save_image("BundlingPaperPlots/Lp100/"+name+"_"+str(iT)+".png")
+    rt.save_image("BundlingPaperPlots/Lp17_Strain/"+name+"_"+str(iT)+".png")
     #rt.save_image("StrainedTop.png")
     print("rt completed!")
     rt.close()  
@@ -33,14 +33,14 @@ def main():
 
     # Make some data first:
     iT = int(float(sys.argv[1]))
-    t = 0.05*iT;
+    t = 0.02*iT;
     ChebGridKind = 2
     #t = 0.01*iT;
     #if (iT < 25):
     #    
     #else:
     #    g = 0.2;
-    g = 0;#0.2*sin(2*pi*t);
+    g = 0.25*sin(2*pi*t);
     nFib = 200;
     N = 13;
     Nuniform = 1000;
@@ -48,9 +48,9 @@ def main():
     Dom = PeriodicShearedDomain(Lp,Lp,Lp);
     Dom.setg(g);
     U = cf.ResamplingMatrix(Nuniform,N,'u',ChebGridKind)
-    name = 'SFBendLd2_Lp100.0_Dt0.0001';
-    Chebpts = np.loadtxt('BundlingPaperPlots/Lp100/'+name+'_'+str(iT+1)+'.txt');
-    Bundles = np.loadtxt('BundlingPaperPlots/Lp100/NewLabels_'+name+'.txt');
+    name = 'NLHydroFluctOm1Lp17.0Ld2Turn2.5';
+    Chebpts = np.loadtxt('BundlingPaperPlots/Lp17_Strain/'+name+'_'+str(iT+1)+'.txt');
+    Bundles = np.loadtxt('BundlingPaperPlots/Lp17_Strain/NewLabels_'+name+'.txt');
     Labels = Bundles[iT,:];
     NumBundles = np.amax(Labels);
     print('Number of bundles %d' %(NumBundles))
@@ -148,7 +148,7 @@ def main():
         CBindingSites = np.zeros((nFib*NCLuniform,3));
         for jFib in range(nFib):
              CBindingSites[jFib*NCLuniform:(jFib+1)*NCLuniform,:]=np.dot(U,Chebpts[jFib*N:(jFib+1)*N,:])
-        Links = np.loadtxt('BundlingPaperPlots/Lp100/Step'+str(iT)+'Links'+name+'_1.txt')
+        Links = np.loadtxt('BundlingPaperPlots/Lp17_Strain/Step'+str(iT)+'Links'+name+'_1.txt')
         nLinks = int(Links[0,0]);
         print(nLinks)
         PlotLinks = Links[1:,:];
@@ -222,7 +222,7 @@ def main():
     # Top view
     #optix.update_camera(eye=np.array([0,-3*Lp,-Lp/8])+Lp/2,target=np.array([Lp/2,Lp/2,Lp/2]))
     #optix.update_camera(eye=np.array([0,-3*Lp,-Lp/16])+Lp/2,target=np.array([0,0,0])+Lp/2)
-    TopView = False;
+    TopView = True;
     #
     if (TopView):
         # Ld = 3

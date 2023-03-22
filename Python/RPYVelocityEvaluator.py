@@ -75,9 +75,32 @@ class RPYVelocityEvaluator(object):
                 utot[iTarg,:]+= oneOvermu*(fval*forces[iSrc,:]+rdotf*(gval-fval)*rhat);
         return utot;
 
+    @staticmethod
+    @nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.float64,nb.float64))
+    def RPYMatrix(N,X,mu,a):
+        """
+        The dumb quadratic method to form the RPY matrix. 
+        """
+        M=np.zeros((3*N,3*N));
+        oneOvermu = 1.0/mu;
+        for iTarg in range(N):
+            for iSrc in range(N):
+                rvec = X[iTarg,:]-X[iSrc,:];
+                r = np.linalg.norm(rvec);
+                rhat = rvec/r;
+                rhat[np.isnan(rhat)]=0;
+                rhatrhat = np.dot(np.reshape(rhat,(3,1)),np.reshape(rhat,(1,3)))
+                if (r>2*a):
+                    fval = (2*a**2 + 3*r**2)/(24*pi*r**3);
+                    gval = (-2*a**2 + 3*r**2)/(12*pi*r**3);
+                else:
+                    fval = (32*a - 9*r)/(192*a**2*pi);
+                    gval = (16*a - 3*r)/(96*a**2*pi);
+                M[3*iTarg:3*(iTarg+1),3*iSrc:3*(iSrc+1)]= oneOvermu*(fval*np.identity(3)+(gval-fval)*rhatrhat);
+        return M;
 
 ## Some parameters specific to Ewald
-nearcut = 1e-10; # cutoff for near field interactions
+nearcut = 1e-4; # cutoff for near field interactions
 fartol = 1e-10; # far field tolerance for FINUFFT
 rcuttol = 1e-2; # accuracy of truncation distance for Ewald
 trouble_xi_step = 0.1; # if we have to increase Ewald parameter xi mid-run, how much should we increase by?

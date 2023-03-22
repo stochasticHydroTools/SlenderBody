@@ -1,13 +1,4 @@
-deltaLocal=0;
-clamp0=0;
-clampL=0;
-Eb = 1;
-twmod = 1;
-dt=0;
-makeMovie=0;
-nFib=1;
-tf=0;
-runN2plot=0;
+runN2plot=1;
 for eps=1e-2
 chebers=[];
 if (runN2plot)
@@ -26,7 +17,6 @@ for iN2 = 1:length(N2s)
 NForSmall=N2s(iN2);
 L=2;            % fiber length
 mu=1;%/(8*pi);    % fluid viscosity
-% eps=1e-2;
 a=eps*L;
 % Nodes for solution, plus quadrature and barycentric weights:
 [s,w,b] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE.
@@ -35,81 +25,77 @@ D = diffmat(N, 1, [0 L], 'chebkind1');
 % Fiber initialization
 q=7; 
 X_s = [cos(q*s.^3 .* (s-L).^3) sin(q*s.^3.*(s - L).^3) ones(N,1)]/sqrt(2);
-X = pinv(D)*X_s;
-X=X-barymat(0,s,b)*X;
-fibpts = X;
-theta0 = cos(4*pi*s/L);
-theta0 = theta0-barymat(L/2,s,b)*theta0;
-theta_s = D*theta0;
-InitFiberVars;
+Nx = N+1;
+[sNp1,wNp1,bNp1]=chebpts(Nx,[0 L],1); % Type 1 grid (rectangular spectral colloc)
+DNp1 = diffmat(Nx,[0 L],'chebkind1');
+RToNp1 = barymat(sNp1,s,b);
+IntDNp1 = pinv(DNp1);
+BMNp1 = stackMatrix(barymat(L/2,sNp1,bNp1));
+% Construct matrix that gives X on the N+1 grid from (X_s, X_MP)
+I=zeros(3*(N+1),3);
+for iR=1:N+1
+    I(3*(iR-1)+1:3*iR,1:3)=eye(3);   
+end
+XonNp1Mat = [(eye(3*(N+1))-repmat(BMNp1,N+1,1))*stackMatrix(IntDNp1*RToNp1) I];
+
+X = XonNp1Mat*[reshape(X_s',[],1);0;0;0];
+X = reshape(X,3,[])';
 % Upsampled mobility
-Mtt = zeros(3*N);
-for iC=1:3*N
-    fIn = zeros(3*N,1);
+if (N==60 || runN2plot)
+Mtt = zeros(3*Nx);
+for iC=1:3*Nx
+    fIn = zeros(3*Nx,1);
     fIn(iC)=1;
-    fInput = reshape(fIn,3,N)';
+    fInput = reshape(fIn,3,Nx)';
     % Subtract singular part for each s
-    Utt = 1/(8*pi*mu)*upsampleRPY(X,s,X,fInput,s,b,200,L,a);
-    Mtt(:,iC) = reshape(Utt',3*N,1);
+    Utt = 1/(8*pi*mu)*upsampleRPY(X,sNp1,X,fInput,sNp1,bNp1,200,L,a);
+    Mtt(:,iC) = reshape(Utt',3*Nx,1);
+end
 end
 
-% Approach 2: singularity subtraction & Tornberg
-XBC = UpsampleXBCMat*Xt + BCShift;
-fE= reshape(FE*XBC,3,N)';
-% Calculate twisting force according to BC
-Xss = stackMatrix(R4ToN*D_sp4^2)*XBC;
-Xsss = stackMatrix(R4ToN*D_sp4^3)*XBC;
-Xss = reshape(Xss,3,N)';
-Xsss = reshape(Xsss,3,N)';
-Mrpy = ExactRPYSpectralMobility(N,X,X_s,Xss,Xsss,a,L,mu,s,b,D,AllbS,AllbD,NForSmall);
+AllbS = precomputeStokesletInts(sNp1,L,a,Nx,1);
+AllbS_SBT = precomputeStokesletInts(sNp1,L,0,Nx,1);
+AllbD = precomputeDoubletInts(sNp1,L,a,Nx,1);
 
-% SBT mobility
-Msbt = getGrandMloc(N,reshape(X_s',3*N,1),Xss,a,L,mu,s,0);
-Msbt = Msbt+StokesletFinitePartMatrix(X,X_s,Xss,D,s,L,N,mu,Allb_trueFP);
+Mrpy = TransTransMobilityMatrix(X,a,L,mu,sNp1,bNp1,DNp1,AllbS,AllbD,NForSmall,0,0);
+Msbt = TransTransMobilityMatrix(X,a,L,mu,sNp1,bNp1,DNp1,AllbS_SBT,AllbD,NForSmall,1,0);
 
 % Calculate error on upsampled grid
 nzation = max(real(eig(Mrpy)));
 if (runN2plot)
-    nzation=1;
+    nzation=1/(8*pi*mu);
     startplotind=2*iN2-1;
     set(gca,'ColorOrderIndex',iN2)
-    h(startplotind)=semilogy(3*N-1:-1:0,sort(real(eig(Mrpy)))/nzation,'-');
+    semilogy(3*Nx-1:-1:0,sort(real(eig(Mrpy)))/nzation,'-');
     hold on
     set(gca,'ColorOrderIndex',iN2)
-    h(startplotind+1) =semilogy(3*N-1:-1:0,-sort(real(eig(Mrpy)))/nzation,'-.o');
+    semilogy(3*Nx-1:-1:0,-sort(real(eig(Mrpy)))/nzation,'-.o');
     xlabel('$k$','interpreter','latex')
-    ylabel('$\nu_k$','interpreter','latex')
     if (iN==length(Ns) && iN2==length(N2s))
-        h(2*length(N2s)+1) =semilogy(3*N-1:-1:0,sort(real(eig(Mtt)))/nzation,'-k');
+        semilogy(3*Nx-1:-1:0,sort(real(eig(Mtt)))/nzation,'-k');
     end
 else
-startplotind=5*iN-4;
 if (N > 45)
-    nzation=1;
-    h(end+1) =semilogy(3*N-1:-1:0,sort(real(eig(Mtt)))/nzation,'-k');
+    nzation=1/(8*pi*mu);
+    semilogy(3*Nx-1:-1:0,sort(real(eig(Mtt)))/nzation,'-k');
 else
-    nzation=1;
-    h(startplotind) =semilogy(3*N-1:-1:0,sort(real(eig(Mtt)))/nzation,'-k');
+    nzation=1/(8*pi*mu);
+    if (N==60)
+    semilogy(3*Nx-1:-1:0,sort(real(eig(Mtt)))/nzation,'-k');
+    hold on
+    end
+    semilogy(3*Nx-1:-1:0,sort(real(eig(Mrpy)))/nzation,'-');
     hold on
     set(gca,'ColorOrderIndex',iN)
-    h(startplotind+1) = semilogy(3*N-1:-1:0,sort(real(eig(Mrpy)))/nzation,'-');
+    semilogy(3*Nx-1:-1:0,-sort(real(eig(Mrpy)))/nzation,'-.o');
     set(gca,'ColorOrderIndex',iN)
-    h(startplotind+2) =semilogy(3*N-1:-1:0,-sort(real(eig(Mrpy)))/nzation,'-.o');
+    semilogy(3*Nx-1:-1:0,sort(real(eig(Msbt)))/nzation,'--');
     set(gca,'ColorOrderIndex',iN)
-    h(startplotind+3) =semilogy(3*N-1:-1:0,sort(real(eig(Msbt)))/nzation,'--');
-    set(gca,'ColorOrderIndex',iN)
-    h(startplotind+4) =semilogy(3*N-1:-1:0,-sort(real(eig(Msbt)))/nzation,':s');
+    semilogy(3*Nx-1:-1:0,-sort(real(eig(Msbt)))/nzation,':s');
     xlabel('$k$','interpreter','latex')
-    ylabel('$\nu_k$','interpreter','latex')
+    ylabel('$8 \pi \mu \nu_k$','interpreter','latex')
 end
 end
 end
 end
-if (runN2plot)
-    legend(h(1:2:end),'$N_2=6$','$N_2=4$','$N_2=8$','Oversampled RPY','interpreter','latex')
-else
-legend(h([2 4 7 9 12 14 16]),'RPY, $N=15$','SBT, $N=15$','RPY, $N=30$','SBT, $N=30$','RPY, $N=45$','SBT, $N=45$',...
-    'Over., $N=60$','interpreter','latex')
-end
-uistack(h(end),'bottom')
 end
