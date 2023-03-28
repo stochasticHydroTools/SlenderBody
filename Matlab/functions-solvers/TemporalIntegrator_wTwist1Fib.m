@@ -19,7 +19,7 @@ impcoeff=1;
 X3 = reshape(Xt,3,Nx)';
 Xs3 = reshape(Xst,3,N)';
 M = TransTransMobilityMatrix(X3,a,L,mu,sNp1,bNp1,DNp1,AllbS_Np1,...
-    AllbD_Np1,NForSmall,~exactRPY,deltaLocal);
+    AllbD_Np1,NForSmall,~exactRPY,deltaLocal,TransTransLDOnly);
 % Calculate velocity from torque for RHS
 UFromTorq = zeros(3*Nx,1);
 if (~noRotTransAtAll)

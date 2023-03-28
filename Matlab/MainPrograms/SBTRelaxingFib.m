@@ -5,28 +5,29 @@
 %close all;
 addpath('../functions-solvers')
 %PenaltyForceInsteadOfFlow = 1; kbT=0; ModifyBE=1; gam0=2000*kbT;
-exactRPY=1; 
-deltaLocal=0;
-noRotTransAtAll=0;
-nonLocalRotTrans=1;
-%N = 39;   
+exactRPY=0; 
+TransTransLDOnly=1; % Local drag only
+deltaLocal=1; % regularization for local drag
+upsamp=0; % no upsampling
+noRotTransAtAll=1;
+nonLocalRotTrans=0;
+N = 16;   
 RectangularCollocation = 1; 
 clamp0=0; 
-%twmod=0.1;
+twmod=0;
 L = 2;            
 eps = 1e-2;
 a = eps*L;
 Eb=1;           % Bending modulus
 mu=1;           % Viscosity
-makeMovie = 0;
+makeMovie = 1;
 if (makeMovie)
     f=figure;
     movieframes=getframe(f);
 end
 initZeroTheta=1;
-NupsampleHydro=100;
 nFib=1;
-%dt = 1e-4;
+dt = 1e-4;
 tf = 0.01;
 stopcount = floor(1e-6+tf/dt);
 impcoeff = 1;

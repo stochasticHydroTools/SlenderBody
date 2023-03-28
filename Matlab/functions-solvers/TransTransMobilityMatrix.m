@@ -8,7 +8,7 @@
 % nodes on (s-2a,s) and (s,s+2a). If NForSmall=-1, it will assume a straight
 % segement from (-2a,2a), and if NForSmall=0 it will us the asymptotic
 % representation of the integral from -2a to 2a
-function Mtt = TransTransMobilityMatrix(X,a,L,mu,s,b,D,AllbS,AllbD,NForSmall,asymp,delta)
+function Mtt = TransTransMobilityMatrix(X,a,L,mu,s,b,D,AllbS,AllbD,NForSmall,asymp,delta,LDOnly)
     [N,~]=size(X);
     Xs = D*X;
     Xss = D*Xs;
@@ -18,13 +18,18 @@ function Mtt = TransTransMobilityMatrix(X,a,L,mu,s,b,D,AllbS,AllbD,NForSmall,asy
     end
     Loc_Slt = getMlocStokeslet(N,Xs,a,L,mu,s,delta);
     Loc_Dblt = getMlocDoublet(N,Xs,a,L,mu,s,delta);
-    SletFP = StokesletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,AllbS);
-    Mtt = Loc_Slt+2*a^2/3*Loc_Dblt+SletFP;
+    Mtt = Loc_Slt+2*a^2/3*Loc_Dblt;
+    if (~LDOnly)
+        SletFP = StokesletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,AllbS);
+        Mtt = Mtt+SletFP;
+    end
     if (asymp)
         Rest = getMlocSmallParts(N,Xs,a,L,mu,s,delta);
     else
-        Rest = 1/(8*pi*mu)*upsampleRPYSmallMatrix(X,s,X,s,b,NForSmall,L,a) ...
-         + 2*a^2/3*DoubletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,AllbD);
+        Rest = 1/(8*pi*mu)*upsampleRPYSmallMatrix(X,s,X,s,b,NForSmall,L,a);
+        if (~LDOnly)
+            Rest = Rest+ 2*a^2/3*DoubletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,AllbD);
+        end
     end
     Mtt = Mtt+Rest;
 end
