@@ -148,6 +148,8 @@ class StericForceEvaluatorC {
             int iFib = iUniPt/_nUni;
             int jFib = jUniPt/_nUni;
             double ds = abs(_su[iuPtMod]-_su[juPtMod]);
+            // Donev: Why are you removing close points here? A fiber can interact with itself.
+            // What is the problem with not removing these points?
             // Remove points that are close (here too close means on the same fiber and the 
             // arclength between the points is 1.1*dcut). Not setting = dcut to avoid rounding. 
             bool isEligible=true;
@@ -218,6 +220,10 @@ class StericForceEvaluatorC {
             _Dom.calcShifted(dMP,g);
             double ract = sqrt(dot(dMP,dMP)); 
             if (ract < _SegmentCutoff){ 
+                // Donev: I am confused why this is not being done in the nList code itself
+                // That is, points/pairs should only be added to the list if they are within
+                // the cutoff in Euclidean space, to avoid wasting memory traffic on other pairs
+                // Why does client code for the neighbor search need to repeat this?
                 // ONLY PROCEED IF ract < actual cutoff (remove extra safety for sheared cell)
                 vec3 PeriodicShift;
                 for (int d =0; d < 3; d++){
@@ -253,6 +259,9 @@ class StericForceEvaluatorC {
                             XCheb2[3*iPt+iD] = ChebPts[jFib*3*_nXPerFib+3*iPt+iD];
                         }
                     }
+                    // Donev: This is too simplistic of a code
+                    // In the worst case when all the fibers are parallel and close by the cost
+                    // can be quadratic. Number of points to put down and pieces must depend on geometry in some way (nontrivial)
                     // Put down a quadrature grid around the closest points. The grid has 
                     // spacing _dsQuad and number of points _nQuadSegs. Here I am putting the 
                     // grid around the closest point (e.g, -3, -1, 1, 3 instead of -2, 0, 2)

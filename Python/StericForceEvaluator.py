@@ -164,7 +164,8 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         self._CppEvaluator.initSegmentVariables(fibDisc._L,Nsegments,self._CutoffSegmentSearch,self._RSegMP,self._RSegEP)
         SegMidpoints = self._CppEvaluator.getUniformPoints(X,'m');
         self._MidpointNeighborSearcher = CellLinkedList(SegMidpoints,Dom,nThreads);
-        # Initialize code pertaining to quadrature on the segments (number of points and ds) 
+        # Initialize code pertaining to quadrature on the segments (number of points and ds)
+        # Donev: Don't hard-wire 8 here: 
         NumberQuadPoints = 8; # must be even to avoid double counting endpoints
         dsInnerQuad = self._radius;
         self._CppEvaluator.initInterpolationVariables(fibDisc._sX, fibDisc.StackedValsToCoeffsMatrix(),NumberQuadPoints,dsInnerQuad);
