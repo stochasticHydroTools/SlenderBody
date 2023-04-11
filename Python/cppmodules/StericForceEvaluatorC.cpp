@@ -11,6 +11,11 @@
 #include "DomainC.cpp"
 #include "types.h"
 
+const double SMALL_NUM = 1e-10;
+const int MAX_NEWTON_ITS = 10;
+
+
+
 /**
 C++ class to evaluate steric forces
 **/
@@ -68,18 +73,25 @@ class StericForceEvaluatorC {
         std::memcpy(_RMidpoint.data(),pyRMidPoint.data(),pyRMidPoint.size()*sizeof(double));
     }
     
-    void initInterpolationVariables(npDoub sCheb, npDoub ValsToCoeffs, int nQuadSegs, double dsQuad){
+    void initInterpolationVariables(npDoub sCheb, npDoub ValsToCoeffs, npDoub DiffMat){
         /*
         Interpolation and quadrature variables. Chebyshev nodes, matrix that maps the values on the Cheb nodes to the
-        coefficients. Then nQuadSegs = number of quadrature points when we integrate over segments, 
-        dsQuad = the spacing between them.
+        coefficients.
         */
         _sC = vec(_nXPerFib);
         std::memcpy(_sC.data(),sCheb.data(),sCheb.size()*sizeof(double));
         _ValsToCoeffs = vec(ValsToCoeffs.size());
         std::memcpy(_ValsToCoeffs.data(),ValsToCoeffs.data(),ValsToCoeffs.size()*sizeof(double));
-        _nQuadSegs = nQuadSegs;   
-        _dsQuad = dsQuad;         
+        _DiffMat = vec(DiffMat.size());
+        std::memcpy(_DiffMat.data(),DiffMat.data(),DiffMat.size()*sizeof(double));         
+    }
+    
+    void initLegQuadVariables(int nLeg, npDoub xLeg, npDoub wLeg){
+        _nLeg = nLeg;
+         _LegPts = vec(xLeg.size());
+        std::memcpy(_LegPts.data(),xLeg.data(),xLeg.size()*sizeof(double));
+        _LegWts = vec(wLeg.size());
+        std::memcpy(_LegWts.data(),wLeg.data(),wLeg.size()*sizeof(double));
     }
         
 
@@ -165,7 +177,7 @@ class StericForceEvaluatorC {
                 _Dom.calcShifted(rvec,g);
                 double nr = normalize(rvec);
                 // Compute the potential at r 
-                double ForceMag = dUdr(nr);
+                double ForceMag = dUdrGaussian(nr);
                 // Multiplication due to rest length and densities
                 vec3 forceij;//, force1, force2, X1, X2;
                 for (int d =0; d < 3; d++){
@@ -245,61 +257,121 @@ class StericForceEvaluatorC {
                 // Compute closest distance between segments. This function returns the distance
                 // and the points on the segments (ClosePts) where the nearest point of interaction is. 
                 double segDist = DistanceBetweenSegments(Start1,End1,Start2,End2,ClosePts);
-                //std::cout << "Segment " << iSeg << " and " << jSeg << std::endl;
-                //std::cout << segDist << " , " << ClosePts[0] << " , " << ClosePts[1] << std::endl;
-                // TODO: Add a step here which uses Newton when the straight segments are close enough. 
-                // Now segments are close enough: compute the forces  
+                // Now segments are close enough: compute the forces 
+                // TODO: Add safety factor here based on curvature of segments 
+                // Identify the two fibers (for resampling near the closest point)
+                vec XCheb1(3*_nXPerFib);
+                vec XCheb2(3*_nXPerFib);
+                for (int iPt=0; iPt < _nXPerFib; iPt++){
+                    for (int iD=0; iD < 3; iD++){
+                        XCheb1[3*iPt+iD] = ChebPts[iFib*3*_nXPerFib+3*iPt+iD];
+                        XCheb2[3*iPt+iD] = ChebPts[jFib*3*_nXPerFib+3*iPt+iD]+PeriodicShift[iD];
+                    }
+                }
+                // Sample at midpoint to estimate curvature
                 if (segDist < _dcut){
-                    // Identify the two fibers (for resampling near the closest point)
-                    vec XCheb1(3*_nXPerFib);
-                    vec XCheb2(3*_nXPerFib);
-                    for (int iPt=0; iPt < _nXPerFib; iPt++){
-                        for (int iD=0; iD < 3; iD++){
-                            XCheb1[3*iPt+iD] = ChebPts[iFib*3*_nXPerFib+3*iPt+iD];
-                            XCheb2[3*iPt+iD] = ChebPts[jFib*3*_nXPerFib+3*iPt+iD];
+                    std::cout << "Segment " << iSeg << " and " << jSeg << std::endl;
+                    std::cout << segDist << " , " << ClosePts[0] << " , " << ClosePts[1] << std::endl;
+                    // Resolve with nonlinear solve to obtain closest points on segments 
+                    double curvDist = DistanceBetweenFiberParts(XCheb1,XCheb2,iSegMod, jSegMod, ClosePts);
+                    ClosePts[0]=(ClosePts[0]-iSegMod*_Lseg)/_Lseg;
+                    ClosePts[1]=(ClosePts[1]-jSegMod*_Lseg)/_Lseg;
+                    // Compute tangent vectors
+                    vec DX1(3*_nXPerFib), DX2(3*_nXPerFib);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,XCheb1,DX1);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,XCheb2,DX2);
+                    double s1star = ClosePts[0]*_Lseg+iSegMod*_Lseg;
+                    double s2star = ClosePts[1]*_Lseg+jSegMod*_Lseg;
+                    std::cout << ClosePts[0] << " , " << ClosePts[1] << std::endl;
+                    vec InterpRow1(_nXPerFib), InterpRow2(_nXPerFib);
+                    InterpolationRow(s1star,InterpRow1);
+                    InterpolationRow(s2star,InterpRow2);
+                    vec tau1(3), tau2(3);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DX1,tau1);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DX2,tau2);
+                    double Tau1DotTau2 = dot(tau1,tau2);
+                    int dir = 1;
+                    if (Tau1DotTau2 < 0){
+                        dir = -1;
+                    }
+                    // Walk along segments to identify box of close points (approximation of elliptical region)
+                    vec sSeg1Bds(2,ClosePts[0]), sSeg2Bds(2,ClosePts[1]);
+                    for (int Fib1EP=0; Fib1EP < 2; Fib1EP++){
+                        int Fib2EP = Fib1EP + ((dir-1)/(-2) % 2);
+                        double bddist = segDist;
+                        double segincr = _delta/_Lseg; // Stepping one standard deviation at a time
+                        bool EP1=false;
+                        bool EP2=false;
+                        if (abs(ClosePts[0]-Fib1EP) < SMALL_NUM){
+                            EP1 = true;
+                        } if (abs(ClosePts[1]-Fib2EP) < SMALL_NUM){
+                            EP2 = true;    
+                        }
+                        while (bddist < _dcut && !(EP1 && EP2)){
+                            if (!EP1){
+                                sSeg1Bds[Fib1EP]+=segincr*(2*Fib1EP-1);
+                                if (sSeg1Bds[Fib1EP] > 1){
+                                    sSeg1Bds[Fib1EP]=1;
+                                    EP1=true;
+                                } else if (sSeg1Bds[Fib1EP] < 0){
+                                    sSeg1Bds[Fib1EP]=0;
+                                    EP1=true;
+                                }
+                            } if (!EP2){
+                                sSeg2Bds[Fib1EP]+=dir*segincr*(2*Fib1EP-1);
+                                if (sSeg2Bds[Fib1EP] > 1){
+                                    sSeg2Bds[Fib1EP]=1;
+                                    EP2=true;
+                                } else if (sSeg2Bds[Fib1EP] < 0){
+                                    sSeg2Bds[Fib1EP]=0;
+                                    EP2=true;
+                                }
+                            } 
+                            double s1Now = sSeg1Bds[Fib1EP]*_Lseg+iSegMod*_Lseg;
+                            double s2Now = sSeg2Bds[Fib1EP]*_Lseg+jSegMod*_Lseg;
+                            InterpolationRow(s1Now,InterpRow1);
+                            InterpolationRow(s2Now,InterpRow2);
+                            vec X1qp(3), X2qp(3);
+                            BlasMatrixProduct(1, _nXPerFib, 3,1.0,0.0,InterpRow1,false,XCheb1,X1qp); 
+                            BlasMatrixProduct(1, _nXPerFib, 3,1.0,0.0,InterpRow2,false,XCheb2,X2qp); 
+                            vec3 rvec;
+                            for (int d=0; d < 3; d++){
+                                rvec[d] = X1qp[d]-X2qp[d];
+                            }
+                            // Compute force and add to both
+                            bddist = normalize(rvec);
                         }
                     }
-                    // Donev: This is too simplistic of a code
-                    // In the worst case when all the fibers are parallel and close by the cost
-                    // can be quadratic. Number of points to put down and pieces must depend on geometry in some way (nontrivial)
-                    // Put down a quadrature grid around the closest points. The grid has 
-                    // spacing _dsQuad and number of points _nQuadSegs. Here I am putting the 
-                    // grid around the closest point (e.g, -3, -1, 1, 3 instead of -2, 0, 2)
-                    // to avoid putting a quadrature point at the endpoint of the segment.
-                    // This prevents double counting segments.  
-                    vec Seg1Qpts, Seg2Qpts;
-                    for (int q=0; q < _nQuadSegs; q++){
-                        double Seg1Pt = (-_nQuadSegs*0.5+0.5+q)*_dsQuad/_Lseg+ClosePts[0];
-                        double Seg2Pt = (-_nQuadSegs*0.5+0.5+q)*_dsQuad/_Lseg+ClosePts[1];
-                        // If the quadrature point falls on the segment, add it to the list. 
-                        // Using push back; might be slow (check later)
-                        if (Seg1Pt > 0 && Seg1Pt < 1){
-                            Seg1Qpts.push_back(Seg1Pt);
-                        } if (Seg2Pt > 0 && Seg2Pt < 1){
-                            Seg2Qpts.push_back(Seg2Pt);
-                        }
+                    vec SortSeg2Bds(2);
+                    SortSeg2Bds[0]=std::min(sSeg2Bds[0],sSeg2Bds[1]);
+                    SortSeg2Bds[1]=std::max(sSeg2Bds[0],sSeg2Bds[1]);
+                    // Gauss-Legendre integration on segment intervals
+                    vec Seg1Qpts(_nLeg), Seg2Qpts(_nLeg), Seg1Wts(_nLeg), Seg2Wts(_nLeg);
+                    for (int q=0; q < _nLeg; q++){
+                        Seg1Qpts[q]=(_LegPts[q]+1.0)*0.5*(sSeg1Bds[1]-sSeg1Bds[0])+sSeg1Bds[0];
+                        Seg1Qpts[q] = Seg1Qpts[q]*_Lseg+iSegMod*_Lseg;
+                        Seg1Wts[q]=_LegWts[q]*0.5*(sSeg1Bds[1]-sSeg1Bds[0])*_Lseg;
+                        Seg2Qpts[q]=(_LegPts[q]+1.0)*0.5*(SortSeg2Bds[1]-SortSeg2Bds[0])+SortSeg2Bds[0];
+                        Seg2Qpts[q] = Seg2Qpts[q]*_Lseg+jSegMod*_Lseg;
+                        Seg2Wts[q]=_LegWts[q]*0.5*(SortSeg2Bds[1]-SortSeg2Bds[0])*_Lseg;
                     }
                     // Now do O(N^2) quadrature over the segment points
                     // For each segment point on the quadrature grid, I compute the 
                     // interpolation row (InterpRow), which is N x 1 and gives me the 
                     // row that samples X at the particular quadrature point
                     // then do the force calculation
-                    // Force(a) = -\sum_{q} InterpRow_{a} *ds*ds*dUdr(r)*rhat
-                    for (uint iS1Pt=0; iS1Pt < Seg1Qpts.size(); iS1Pt++){
-                        double siqp = Seg1Qpts[iS1Pt]*_Lseg+iSegMod*_Lseg;
+                    for (int iS1Pt=0; iS1Pt < _nLeg; iS1Pt++){
+                        double siqp = Seg1Qpts[iS1Pt];
                         vec InterpRow1(_nXPerFib);
                         InterpolationRow(siqp,InterpRow1);
                         vec X1qp(3);
                         BlasMatrixProduct(1, _nXPerFib, 3,1.0,0.0,InterpRow1,false,XCheb1,X1qp); 
-                        for (uint jS2Pt=0; jS2Pt < Seg2Qpts.size(); jS2Pt++){
-                            double sjqp = Seg2Qpts[jS2Pt]*_Lseg+jSegMod*_Lseg;
+                        for (int jS2Pt=0; jS2Pt < _nLeg; jS2Pt++){
+                            double sjqp = Seg2Qpts[jS2Pt];
                             vec InterpRow2(_nXPerFib);
                             InterpolationRow(sjqp,InterpRow2);
                             vec X2qp(3);
                             BlasMatrixProduct(1, _nXPerFib, 3,1.0,0.0,InterpRow2,false,XCheb2,X2qp); 
-                            for (int id=0; id < 3; id++){
-                                X2qp[id]+=PeriodicShift[id];
-                            }
                             vec3 rvec;
                             for (int d=0; d < 3; d++){
                                 rvec[d] = X1qp[d]-X2qp[d];
@@ -307,11 +379,11 @@ class StericForceEvaluatorC {
                             // Compute force and add to both
                             double nr = normalize(rvec);
                             // Compute the potential at r 
-                            double ForceMag = dUdr(nr);
+                            double ForceMag = dUdrGaussian(nr);
                             // Multiplication due to rest length and densities
                             vec3 forceij;//, force1, force2, X1, X2;
                             for (int d =0; d < 3; d++){
-                                forceij[d] = -ForceMag*rvec[d]*_dsQuad*_dsQuad;
+                                forceij[d] = -ForceMag*rvec[d]*Seg1Wts[iS1Pt]*Seg2Wts[jS2Pt];
                             }
                             for (int iPt=0; iPt < _nXPerFib; iPt++){
                                 for (int d =0; d < 3; d++){
@@ -332,7 +404,7 @@ class StericForceEvaluatorC {
                 nGood++;
             }
         }
-        std::cout << "Number good pairs " << nGood << std::endl;
+        //std::cout << "Number good pairs " << nGood << std::endl;
         return make1DPyArray(StericForces);
     }
     
@@ -344,9 +416,12 @@ class StericForceEvaluatorC {
     vec _RUniform, _su;
     DomainC _Dom;
     // Variables for segments
-    int _NsegPerFib, _nQuadSegs;            
-    double _SegmentCutoff, _L, _Lseg, _dsQuad;
-    vec _sC, _REndpoint, _RMidpoint, _ValsToCoeffs;
+    int _NsegPerFib;            
+    double _SegmentCutoff, _L, _Lseg;
+    vec _sC, _REndpoint, _RMidpoint, _ValsToCoeffs, _DiffMat;
+    // Variables for Legendre quad
+    int _nLeg;
+    vec _LegPts, _LegWts;
     
    double dUdr(double nr){
         /*
@@ -368,6 +443,170 @@ class StericForceEvaluatorC {
             return -_F0;
         } 
         return (-_F0*exp((_dcrit-nr)/_delta));
+    }
+    
+    double dUdrGaussian(double nr){
+        if (nr > _dcut){
+            return 0;
+        }
+        return (-_F0*exp(-nr*nr/(2*_delta*_delta)));
+    }
+    
+    double DistanceBetweenFiberParts(const vec &X1,const vec &X2,int iSegMod, int jSegMod, vec &ClosePts){
+        /* Nonlinear Newton solve to obtain distance between two fiber sections 
+        Section iSegMod [iSegMod*_Lseg, (iSegMod+1)*_Lseg] on fiber 1 
+        and Sec jSecMod [jSegMod*_Lseg, (jSegMod+1)*_Lseg] on fiber 2
+        */ 
+        // Initial guess for Newton
+        double s1star = ClosePts[0]*_Lseg+iSegMod*_Lseg;
+        double s2star = ClosePts[1]*_Lseg+jSegMod*_Lseg;
+        vec DX1(3*_nXPerFib), DX2(3*_nXPerFib), DSqX1(3*_nXPerFib), DSqX2(3*_nXPerFib);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,X1,DX1);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,X2,DX2);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX1,DSqX1);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX2,DSqX2);
+        // Step 1 : Newton solve to find close points on segment interior
+        vec Fcn(2,100);
+        int nIts = 0; 
+        vec rts(2);
+        rts[0] = 0;
+        rts[1] = 0;
+        vec Jac(4), Diff(2);
+        vec X1p(3), X2p(3), DX1p(3), DX2p(3), DSqX1p(3), DSqX2p(3),InterpRow1(_nXPerFib), InterpRow2(_nXPerFib);
+        while (sqrt(Fcn[0]*Fcn[0]+Fcn[1]*Fcn[1]) > SMALL_NUM && nIts < MAX_NEWTON_ITS){
+            nIts++;
+            InterpolationRow(rts[0],InterpRow1);
+            InterpolationRow(rts[1],InterpRow2);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DX1,DX1p);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DX2,DX2p);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DSqX1,DSqX1p);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DSqX2,DSqX2p);
+            
+            Fcn[0] = 2*dot(X1p,DX1p)-2*dot(DX1p,X2p);
+            Fcn[1] = 2*dot(X2p,DX2p)-2*dot(DX2p,X1p);
+            Jac[0] = 2*(dot(DX1p,DX1p)+dot(DSqX1p,X1p)-dot(DSqX1p,X2p));
+            Jac[2] = -2*dot(DX1p,DX2p);
+            Jac[1] = Jac[2];
+            Jac[3] = 2*(dot(DX2p,DX2p)+dot(DSqX2p,X2p)-dot(DSqX2p,X1p));
+
+            TwoByTwoMatrixSolve(Jac,Fcn,Diff);
+            //std::cout << rts[0] << " , " << rts[1] << std::endl;
+            //std::cout << Diff[0] << " , " << Diff[1] << std::endl;
+            rts[0]-=Diff[0];
+            rts[1]-=Diff[1];
+            //std::cout << rts[0] << " , " << rts[1] << std::endl;
+        }
+        vec3 disp;
+        for (int d=0; d<3; d++){
+            disp[d]=X1p[d]-X2p[d];
+        }
+        double distance = normalize(disp);
+        double seg1start = iSegMod*_Lseg;
+        double seg1end = seg1start+_Lseg;
+        double seg2start = jSegMod*_Lseg;
+        double seg2end = seg2start+_Lseg;
+        // If interior minimum is achieved, return
+        if (rts[0] > seg1start && rts[0] < seg1end && rts[1] > seg2start && rts[1] < seg2end){
+            ClosePts[0] = rts[0];
+            ClosePts[1] = rts[1];
+            return distance;
+        }
+        // Other possible minima
+        // Fix the endpoint of segment 1, and check for an interior min on segment 2
+        // and the endpoints of segment 2
+        vec exteriorDists, exteriorS1, exteriorS2;
+        double Fcn1D, DFcn;
+        for (int iSeg1EP=0; iSeg1EP<2; iSeg1EP++){
+            double s1boundary=seg1start+_Lseg*iSeg1EP;
+            Fcn1D = 100;
+            double s2rt = s2star;
+            InterpolationRow(s1boundary,InterpRow1);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
+            int nIts=0;
+            while (abs(Fcn1D) > SMALL_NUM && nIts < MAX_NEWTON_ITS){
+                InterpolationRow(s2rt,InterpRow2);
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DX2,DX2p);
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DSqX2,DSqX2p);
+                Fcn1D = 2*dot(X2p,DX2p)-2*dot(DX2p,X1p);
+                DFcn = 2*(dot(DX2p,DX2p)+dot(DSqX2p,X2p)-dot(DSqX2p,X1p));
+                s2rt = s2rt - Fcn1D/DFcn;
+            }
+            double distance = normalize(disp);
+            if (s2rt > seg2start && s2rt < seg2end){
+                // interior maximum
+                for (int d=0; d<3; d++){
+                    disp[d]=X1p[d]-X2p[d];
+                }
+                distance = normalize(disp);
+                exteriorDists.push_back(distance);
+                exteriorS1.push_back(s1boundary); 
+                exteriorS2.push_back(s2rt);
+            }
+            // Endpoint check
+            for (int iSeg2EP=0; iSeg2EP < 2; iSeg2EP++){
+                double s2boundary=seg2start+_Lseg*iSeg2EP;  
+                InterpolationRow(s2boundary,InterpRow2);  
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
+                for (int d=0; d<3; d++){
+                    disp[d]=X1p[d]-X2p[d];
+                }
+                distance = normalize(disp);
+                exteriorDists.push_back(distance);
+                exteriorS1.push_back(s1boundary); 
+                exteriorS2.push_back(s2boundary);
+            }
+        } // end loop over s1 boundary pts
+        // Fix the endpoint of segment 2, and check for an interior min on segment 1
+        // and the endpoints of segment 2
+        for (int iSeg2EP=0; iSeg2EP<2; iSeg2EP++){
+            double s2boundary=seg2start+_Lseg*iSeg2EP;
+            Fcn1D = 100;
+            double s1rt = s1star;
+            InterpolationRow(s2boundary,InterpRow2);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
+            int nIts=0;
+            while (abs(Fcn1D) > SMALL_NUM && nIts < MAX_NEWTON_ITS){
+                InterpolationRow(s1rt,InterpRow1);
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DX1,DX1p);
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DSqX1,DSqX1p);
+                Fcn1D = 2*dot(X1p,DX1p)-2*dot(DX1p,X2p);
+                DFcn = 2*(dot(DX1p,DX1p)+dot(DSqX1p,X1p)-dot(DSqX1p,X2p));
+                s1rt = s1rt - Fcn1D/DFcn;
+            }
+            double distance = normalize(disp);
+            if (s1rt > seg1start && s1rt < seg1end){
+                // interior maximum
+                for (int d=0; d<3; d++){
+                    disp[d]=X1p[d]-X2p[d];
+                }
+                distance = normalize(disp);
+                exteriorDists.push_back(distance);
+                exteriorS1.push_back(s1rt); 
+                exteriorS2.push_back(s2boundary);
+            }
+            for (int iSeg1EP=0; iSeg1EP < 2; iSeg1EP++){
+                double s1boundary=seg1start+_Lseg*iSeg1EP;  
+                InterpolationRow(s1boundary,InterpRow1);  
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
+                for (int d=0; d<3; d++){
+                    disp[d]=X1p[d]-X2p[d];
+                }
+                distance = normalize(disp);
+                exteriorDists.push_back(distance);
+                exteriorS1.push_back(s1boundary); 
+                exteriorS2.push_back(s2boundary);
+            }
+        } // end loop over s2 boundary pts
+        // FIND MINIMUM DIST AND S1 S2 AND RETURN
+        std::vector<double>::iterator it = std::min_element(std::begin(exteriorDists), std::end(exteriorDists));
+        int MinIndex = std::distance(std::begin(exteriorDists), it);
+        ClosePts[0] = exteriorS1[MinIndex];
+        ClosePts[1] = exteriorS2[MinIndex];
+        return exteriorDists[MinIndex];
     }
     
     double DistanceBetweenSegments(const vec3 &Start1,const vec3 &End1,const vec3 &Start2,const vec3 &End2, vec &ClosePts){
@@ -502,6 +741,7 @@ PYBIND11_MODULE(StericForceEvaluatorC, m) {
         .def("SetForceFcnParameters", &StericForceEvaluatorC::SetForceFcnParameters)
         .def("initSegmentVariables",&StericForceEvaluatorC::initSegmentVariables)
         .def("initInterpolationVariables",&StericForceEvaluatorC::initInterpolationVariables)
+        .def("initLegQuadVariables",&StericForceEvaluatorC::initLegQuadVariables)
         .def("ForcesFromGlobalUniformBlobs", &StericForceEvaluatorC::ForcesFromGlobalUniformBlobs)
         .def("ForceFromCloseSegments",&StericForceEvaluatorC::ForceFromCloseSegments);
 }
