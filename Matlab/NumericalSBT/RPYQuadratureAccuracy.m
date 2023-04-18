@@ -29,20 +29,20 @@ nsc = cos(4*s.^2);
 % more accurate
 % Generate refined answer
 Nref = 1600;
-%U_ref=1/(8*pi*mu)*upsampleRPY(X,s,X,f,s,b,Nref,L,a);
+U_ref=1/(8*pi*mu)*upsampleRPY(X,s,X,f,s,b,Nref,L,a);
 %U_ref=1/(8*pi*mu)*upsampleRPYRotTrans(X,s,X,nsc.*X_s,s,b,Nref,L,a);
 %U_ref=1/(8*pi*mu)*upsampleRPYRotTrans(X,s,X,f,s,b,Nref,L,a);
-U_ref=1/(8*pi*mu)*upsampleRPYRotRot(X,s,X,nsc.*X_s,s,b,Nref,L,a);
-U_ref = sum(U_ref.*X_s,2);
+%U_ref=1/(8*pi*mu)*upsampleRPYRotRot(X,s,X,nsc.*X_s,s,b,Nref,L,a);
+%U_ref = sum(U_ref.*X_s,2);
 
 % Approach 2: singularity subtraction & Tornberg
-asymp=1; delta=0;
-%Mtt = TransTransMobilityMatrix(X,a,L,mu,s,b,D,AllbS,AllbD,NForSmall,asymp,delta);
-%U2 = reshape(Mtt*reshape(f',3*N,1),3,N)';
+asymp=0; delta=0;
+Mtt = TransTransMobilityMatrix(X,a,L,mu,s,b,D,AllbS,AllbD,NForSmall,asymp,delta,0);
+U2 = reshape(Mtt*reshape(f',3*N,1),3,N)';
 %U2 = UFromN(X,nsc,D,AllbS,a,L,mu,s,b,1,NForSmall);
 %U2 = OmegaFromF(X,f,D,AllbS,a,L,mu,s,b,1,NForSmall);
-Mrr = RotRotMobilityMatrix(X,a,L,mu,s,b,D,AllbD,NForSmall,asymp,delta);
-U2 = Mrr*nsc;
+%Mrr = RotRotMobilityMatrix(X,a,L,mu,s,b,D,AllbD,NForSmall,asymp,delta);
+%U2 = Mrr*nsc;
 
 % Calculate error on upsampled grid
 [sup,wup] = chebpts(1000,[0 L]);

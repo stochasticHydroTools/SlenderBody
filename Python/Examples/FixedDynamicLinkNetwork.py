@@ -6,7 +6,7 @@ from Domain import PeriodicShearedDomain
 from TemporalIntegrator import BackwardEuler, MidpointDriftIntegrator
 from DiscretizedFiber import DiscretizedFiber
 from FileIO import prepareOutFile, writeArray
-from StericForceEvaluator import StericForceEvaluator
+from StericForceEvaluator import StericForceEvaluator, SegmentBasedStericForceEvaluator
 import numpy as np
 import chebfcns as cf
 from math import exp
@@ -55,35 +55,35 @@ Input.close();
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,\
     NupsampleForDirect=NupsampleForDirect,RPYSpecialQuad=RPYQuad,RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,
-    UseEnergyDisc=True,nptsUniform=Nuniformsites,FPIsLocal=(nonLocal>0));
-
+    nptsUniform=Nuniformsites);
+    
 # Initialize the master list of fibers
 if (FluctuatingFibs):
     allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs);
 else:
     allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs);
-
+    
 Ewald = None;
 if (nonLocal==1):
     totnumDir = fibDisc._nptsDirect*nFib;
     xi = 3*totnumDir**(1/3)/Ld; # Ewald param
-    Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);   
+    xiHalf = xi;
+    Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib,xiHalf);   
 
 # Initialize the fiber list (straight fibers)
 nStericPts = int(1/eps);
-FibDiameter = 2*eps*Lf;
-StericEval = None;
-if (Sterics):
-    StericEval = StericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, FibDiameter,nThr);
+#StericEval = StericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,nThr);
+Nseg=10;
+StericEval = SegmentBasedStericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,Nseg,nThr);
+if (not Sterics):
+    StericEval._DontEvalForce = True;
     
 np.random.seed(seed);
 fibList = [None]*nFib;
-if (Sterics):
-    allFibers.RSAFibers(fibList,Dom,StericEval,nDiameters=4);
-else:
-    allFibers.initFibList(fibList,Dom);
+allFibers.RSAFibers(fibList,Dom,StericEval,nDiameters=2);
+# allFibers.initFibList(fibList,Dom);
 
 # Initialize the network of cross linkers
 # New seed for CLs

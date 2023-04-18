@@ -87,7 +87,6 @@ class fiberCollection(object):
             svdRigidTol = self._kbT*dt/(svdRigid*svdRigid);
         else:
             svdRigidTol = svdTolerance;
-        print('Rigid tol is %1.2E' %svdRigidTol)
         self._FibColCpp = FiberCollectionC(nFibs,self._NXpf,self._NTaupf,nThreads,self._rigid,\
             self._fiberDisc._a,self._fiberDisc._L,self._mu,self._kbT,svdTolerance,svdRigidTol,self._fiberDisc._RPYSpecialQuad,\
             self._fiberDisc._RPYDirectQuad,self._fiberDisc._RPYOversample);
@@ -708,11 +707,6 @@ class SemiflexiblefiberCollection(fiberCollection):
             MMinusHalfEta = MHalfAndMinusHalf[3*self._Nfib*self._NXpf:];
         return MHalfEta, MMinusHalfEta;#, nLanczos;
     
-    def ComputeTotalVelocity(self,X,F,Dom,RPYEval):
-        Local = self.LocalVelocity(X,F);
-        nonLocal = self.nonLocalVelocity(X,F,Dom,RPYEval);
-        return Local+nonLocal;
-    
     def StepToMidpoint(self,MHalfEta,dt):
         """
         Step to the midpoint by inverting K. Specifically, we are computing
@@ -747,10 +741,11 @@ class SemiflexiblefiberCollection(fiberCollection):
             disp = deltaRFD*self._fiberDisc._L;
             RFDCoords = self._FibColCpp.InvertKAndStep(self._tanvecs,self._Midpoints,RandVec3,disp);
             X_RFD = RFDCoords[self._Nfib*self._NXpf:,:];
-            VelPlus = self.ComputeTotalVelocity(X_RFD,RandVec3,Dom,RPYEval);
+            # If everything is oversampled this can just be a call to nonlocalVel. Check. 
+            VelPlus = self.nonLocalVelocity(X_RFD,RandVec3,Dom,RPYEval,subSelf=False);
             BEForce = int(ModifyBE)*disp/self._kbT*LHalfBERand; # to cancel later
             # BE force is applied to M and not Mtilde; should give same statistics. 
-            VelMinus = self.ComputeTotalVelocity(self._ptsCheb,RandVec3-BEForce,Dom,RPYEval);
+            VelMinus = self.nonLocalVelocity(self._ptsCheb,RandVec3-BEForce,Dom,RPYEval,subSelf=False);
             DriftAndMBEVel = self._kbT/disp*(VelPlus-VelMinus);
         else:
             # This includes the velocity for modified backward Euler!

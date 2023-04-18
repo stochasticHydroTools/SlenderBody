@@ -199,6 +199,9 @@ class PeriodicShearedDomain(Domain):
             shift[0] = round(dvec[0]/self._Lx);
             dvec[0]-=shift[0]*self._Lx;
         return np.array(newvec);
+        
+    def EliminatePairsOfPointsOutsideRange(self,pairs,pts,rcut):
+        return self._cppDom.EliminatePairsOfPointsOutsideRange(pairs,pts,rcut,self._g);
 
     def MinPrimeShiftInPrimeCoords(self,rprime):
         """

@@ -5,11 +5,12 @@ kbT = 4.1e-3; % pN * um
 lp = 1*L;
 K_b = lp*kbT;
 a = 1e-2;
-nSamp = 1e6;
+eps=a/L;
+nSamp = 1e5;
 nSaveSamples = 0.8*nSamp;
 nTrial = 10;
 OversampCheb = 1;
-N = 12;
+N = 16;
 UConst = 7.5e-3*L;
 TauConst=0.04*sqrt(L/lp)*12/N;
 lpstar = (K_b)/kbT*1/L;
@@ -29,15 +30,10 @@ end
 Lmat = cos(acos(2*s/L-1).*(0:N-1));
 D = diffmat(N, 1, [0 L], 'chebkind1');
 Eb=K_b;           % Bending modulus
-mu=1; deltaLocal=0; nFib=1; clamp0=0; clampL=0; dt=1; tf=1; ...
-    twmod=0;strongthetaBC=0; makeMovie=0; theta0=zeros(N,1);
-fibpts = pinv(D)*X_s;
-fibpts = fibpts-barymat(L/2,s,b)*fibpts;
+nFib=1; RectangularCollocation=0; upsamp=0; mu=1;
+XMP=[0;0;0];
 InitFiberVars;
-
-load(strcat('CovN100KbTConst_Lp',num2str(lpstar),'.mat'));
-ResampForC = stackMatrix(barymat(xUni,s,b));
-ResampFromDouble = stackMatrix(barymat(xUni,sOversamp,bOversamp));
+load(strcat('CovN100KbTConst_Lp',num2str(1),'.mat'));
 ResampFromNp1 = stackMatrix(barymat(xUni,sNp1,bNp1));
 eigs2nd = eigVL; Vtrue2nd=Vtrue;
 EMat2nd = EMat;
@@ -51,20 +47,14 @@ EMatParams = XonNp1Mat'*EMat_Np1*XonNp1Mat;
 % Propose a move around the state and evaluate its energy
 EPrev = 0;
 nAcc=0;
-X = fibpts;
-X0=fibpts;
+X = reshape(Xt,3,Nx)';
+X0=X;
 Xs0=X_s;
-X0Double = reshape((RNToOversamp*X0)',[],1);
-X0_Np1 = reshape((RToNp1*X0)',[],1);
-X0=reshape(X0',[],1);
 Dinv = pinv(D);
-BM1 = BM(1:3:end,1:3:end);
-XMP = (BM1*X)';
 XMP0=XMP;
 if (penaltyCoeff==0)
-    X0=0*X0; Xs0=0*Xs0; X0Double=0*X0Double; X0_Np1 = 0*X0_Np1; XMP0=0*XMP0;
+    X0=0*X0; Xs0=0*Xs0; XMP0=0*XMP0;
 end
-BMoversamp = stackMatrix(barymat(L/2,sOversamp,bOversamp));
 AllMeanCoeffs = zeros(nTrial,3*N);
 AllMeanSecCoeffs = zeros(nTrial,3*length(xUni));
 AllMeanDevs = zeros(nTrial,1);
@@ -94,7 +84,7 @@ CovMat = zeros(3*length(xUni));
 for iSamp=1:nSamp
     DTau = TauConst*randn(N,3);
     DeltaMP = UConst*randn(3,1);
-    XsProp = rotateTau(X_s,DTau,Dinv,BM1);
+    XsProp = rotateTau(X_s,DTau);
     % Eval energy
     %dX = XProp-X0;
     % Upsample and integrate, then upsample again
@@ -169,13 +159,13 @@ AllMeanCoeffs(iTrial,:) = MeanSqCoeffs/nSaveSamples;
 AllMeanSecCoeffs(iTrial,:)=MeanSqSecCoeffs/nSaveSamples;
 AllMeanDevs(iTrial) = MeanDev/nSaveSamples;
 AllCovMats(:,:,iTrial)=CovMat/nSaveSamples;
-AllPositions(:,iTrial)=dX;
+%AllPositions(:,iTrial)=dX;
 toc
-%save(strcat('SpecMCMCFreeConstKbTFull_N',num2str(N),'_Lp',num2str(lpstar),'.mat'))
+save(strcat('SpecMCMCFreeConstKbT_N',num2str(N),'_Lp',num2str(lpstar),'.mat'))
 end
 %exit;
 
-function newXs = rotateTau(Xsin,Omega,Dinv,BM)
+function newXs = rotateTau(Xsin,Omega)
     nOm = sqrt(sum(Omega.*Omega,2));
     % Have to truncate somewhere to avoid instabilities
     k = Omega./nOm;

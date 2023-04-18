@@ -5,7 +5,7 @@ from scipy.spatial import cKDTree
 import numpy as np
 import time
 
-numberParticles = 80000
+numberParticles = 675*250
 lx = ly = lz = 2.4
 rcut = 0.07500000000000001
 
@@ -17,6 +17,7 @@ positions = np.array(np.random.rand(numberParticles, 3), precision)
 positions[:, 0] *= 2*lx
 positions[:, 1] *= 2*ly
 positions[:, 2] *= 2*lz
+Neighbs2=np.savetxt('Positions.txt',positions)
 
 nThr=16;
 """

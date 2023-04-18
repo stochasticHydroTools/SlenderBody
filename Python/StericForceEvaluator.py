@@ -43,6 +43,8 @@ class StericForceEvaluator(object):
         self._NeighborSearcher = CellLinkedList(Xuniform,Dom,nThreads);
         self._TwoFibNeighborSearcher = CellLinkedList(Xuniform[:2*self._NUni,:],Dom,nThreads);
         self.SetForceParameters(kbT);
+        self._DontEvalForce = False;
+        self._DontEvalContact = False;
     
     def SetForceParameters(self,kbT):
         """
@@ -53,12 +55,12 @@ class StericForceEvaluator(object):
         We choose F_0*delta*a^2 = 4*kBT, so this leaves the choice of delta, the 
         radius at which potential decays. 
         """
-        self._delta = self._radius/2;
-        self._dcrit = 2*self._radius;
-        nStds = 4;
-        self._CutoffDistance = nStds*self._delta+2*self._radius; 
-        F0 = 4*kbT/(self._delta*self._radius**2);
-        self._CppEvaluator.SetForceFcnParameters(self._dcrit,self._delta,F0,self._CutoffDistance)
+        nRadiusPerStd = 1;
+        self._delta = nRadiusPerStd*self._radius;
+        nStdsToCutoff = 4;
+        self._CutoffDistance = nStdsToCutoff*self._delta;
+        F0 = 4*kbT/(self._delta*self._radius**2)*np.sqrt(2/np.pi);
+        self._CppEvaluator.SetForceFcnParameters(self._delta,F0,self._CutoffDistance)
         
         
     def StericForces(self,X,Dom):
@@ -68,12 +70,17 @@ class StericForceEvaluator(object):
         and get a list of neighbors. Then, pass the list of neighbors to 
         C++ to compute forces. 
         """
-        tiii = time.time();
+        if (verbose > 0):
+            tiii = time.time();
+        if (self._DontEvalForce):
+            return 0
         ClosePts, UniformPts = self.CheckContacts(X,Dom,Cutoff=self._CutoffDistance);
-        print('Time for neighbor search %f ' %(time.time()-tiii))
-        tiii = time.time();
+        if (verbose > 0):
+            print('Time for neighbor search %f ' %(time.time()-tiii))
+            tiii = time.time();
         StericForce = self._CppEvaluator.ForcesFromGlobalUniformBlobs(ClosePts,UniformPts,Dom.getg());
-        print('Time for force calc %f ' %(time.time()-tiii))
+        if (verbose > 0):
+            print('Time for force calc %f ' %(time.time()-tiii))
         return StericForce;
         
         
@@ -87,7 +94,7 @@ class StericForceEvaluator(object):
         if (verbose > 0):
             thist = time.time();
         if (Cutoff is None):
-            Cutoff = self._FibSize;
+            Cutoff = 2*self._radius;
         # Eval uniform points
         Xuniform = self._CppEvaluator.getUniformPoints(X,'u');
         self._NeighborSearcher.updateSpatialStructures(Xuniform,Dom);
@@ -118,7 +125,7 @@ class StericForceEvaluator(object):
             Xj_uni = np.dot(self._Rupsamp,Xj);
             Xconcat = np.concatenate((Xi_uni,Xj_uni));
             self._TwoFibNeighborSearcher.updateSpatialStructures(Xconcat,Dom);
-            Cutoff = nDiameters*self._FibSize;
+            Cutoff = nDiameters*2*self._radius;
             uniNeighbs = self._TwoFibNeighborSearcher.selfNeighborList(Cutoff,self._NUni);
             uniNeighbs = uniNeighbs.astype(np.int64);
             # Filter the list of neighbors to exclude those on the same fiber
@@ -160,39 +167,65 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         self._sMP, self._RSegMP = fibDisc.UniformUpsamplingMatrix(Nsegments,'s');
         self._sEP, self._RSegEP = fibDisc.UniformUpsamplingMatrix(Nsegments+1,'u');
         self._Lseg=self._sEP[1]-self._sEP[0];
+        if (self._Lseg <= self._CutoffDistance):
+            raise ValueError('Segments have to be longer than cutoff')
         self._CutoffSegmentSearch = self._CutoffDistance + self._Lseg;
         self._CppEvaluator.initSegmentVariables(fibDisc._L,Nsegments,self._CutoffSegmentSearch,self._RSegMP,self._RSegEP)
         SegMidpoints = self._CppEvaluator.getUniformPoints(X,'m');
         self._MidpointNeighborSearcher = CellLinkedList(SegMidpoints,Dom,nThreads);
         # Initialize code pertaining to quadrature on the segments (number of points and ds)
-        # Donev: Don't hard-wire 8 here: 
-        NumberQuadPoints = 8; # must be even to avoid double counting endpoints
-        dsInnerQuad = self._radius;
-        self._CppEvaluator.initInterpolationVariables(fibDisc._sX, fibDisc.StackedValsToCoeffsMatrix(),NumberQuadPoints,dsInnerQuad);
+        self._CppEvaluator.initInterpolationVariables(fibDisc._sX, fibDisc.StackedValsToCoeffsMatrix(),fibDisc.DiffXMatrix());
+        NumQuadPointsPerStd = 1;
+        self.PretabulateGL(NumQuadPointsPerStd);
         
+    def PretabulateGL(self,NumQuadPointsPerStd):
+        """
+        Pretabulate the Gauss-Legendre points and weights for integration. This 
+        computes a maximum number of points if the whole segment were to be included
+        in the quadrature, then computes all grid sizes up to that size. The result goes
+        into a big array of points and weights which gets passed to C++. 
+        """
+        MaxPts = int(self._Lseg/self._delta*NumQuadPointsPerStd)+1;
+        TotNum = int((1+MaxPts)*MaxPts/2);
+        StartIndex=0;
+        AllGLPts = np.zeros(TotNum);
+        AllGLWts = np.zeros(TotNum);
+        for iNum in range(MaxPts):
+            x, w = np.polynomial.legendre.leggauss(iNum+1);
+            AllGLPts[StartIndex:StartIndex+iNum+1]=x;
+            AllGLWts[StartIndex:StartIndex+iNum+1]=w;
+            StartIndex+=iNum+1;
+        self._CppEvaluator.initLegQuadVariables(NumQuadPointsPerStd,AllGLPts,AllGLWts)
         
     def StericForces(self,X,Dom):
+        """
+        Compute steric forces in the segment-based algorithm
+        """
+        if (self._DontEvalForce):
+            return 0
         # Step 1: sample at midpoints and perform neighbor search
-        tiii = time.time();
+        if (verbose > 0):
+            tiii = time.time();
         SegMidpoints = self._CppEvaluator.getUniformPoints(X,'m');
         self._MidpointNeighborSearcher.updateSpatialStructures(SegMidpoints,Dom);
-        print(self._CutoffSegmentSearch)
         SegmentNeighbs = self._MidpointNeighborSearcher.selfNeighborList(self._CutoffSegmentSearch,1);
         SegmentNeighbs = SegmentNeighbs.astype(np.int64);
-        print('Time for neighbor search %f ' %(time.time()-tiii))
-        tiii = time.time();
+        if (verbose > 0):
+            print('Time for midpoint neighbor search %f ' %(time.time()-tiii))
+            tiii = time.time();
         # Remove adjacent segments
         Fibs = self.mapSegToFiber(SegmentNeighbs);
         delInds = np.arange(len(Fibs[:,0]));
         DeleteThis = np.logical_and(Fibs[:,0]==Fibs[:,1], abs(SegmentNeighbs[:,1]-SegmentNeighbs[:,0]) <=1)
         SegmentNeighbs = np.delete(SegmentNeighbs,delInds[DeleteThis],axis=0);
-        print('Time for post-process %f ' %(time.time()-tiii))
-        print(SegmentNeighbs.shape)
-        tiii = time.time();
+        if (verbose > 0):
+            print('Time for post-process to remove adjacent segments %f ' %(time.time()-tiii))
+            tiii = time.time();
         # Pass the list of segments to C++ for processiing (see the method there)
         SegEndpoints = self._CppEvaluator.getUniformPoints(X,'e')
         StericForce = self._CppEvaluator.ForceFromCloseSegments(SegmentNeighbs,X,SegMidpoints,SegEndpoints,Dom.getg())
-        print('Time for force calc %f ' %(time.time()-tiii))
+        if (verbose > 0):
+            print('Time for force calc %f ' %(time.time()-tiii))
         return StericForce
         
     def mapSegToFiber(self,segs):

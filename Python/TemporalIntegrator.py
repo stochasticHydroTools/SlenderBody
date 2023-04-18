@@ -10,7 +10,7 @@ from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
 itercap = 100; # cap on GMRES iterations if we converge all the way
-GMREStolerance=1e-3; # larger than GPU tolerance
+GMREStolerance=1e-6; # larger than GPU tolerance
 verbose = -1;
 
 # Documentation last updated: 03/12/2021
@@ -120,7 +120,7 @@ class TemporalIntegrator(object):
         
         # Set answer = block diagonal or proceed with GMRES
         giters = self.getMaxIters(iT)-1; # subtract the first application of mobility/preconditioner
-        if (giters==0 or isinstance(self._allFibers,SemiflexiblefiberCollection)):
+        if (giters==0):
             # Block diagonal acceptable 
             lamalph = BlockDiagAnswer;
             itsneeded = 0;
@@ -149,8 +149,13 @@ class TemporalIntegrator(object):
             lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
             print('RHS max %f' %np.amax(np.abs(RHS)))
             res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
+            print(np.amax(np.abs(res)))
             resno = Solution.resnorms
             print('Last residual %1.2E' %resno[len(resno)-1])
+            #np.savetxt('Resid.txt',Solution.resnorms)
+            #np.savetxt('LamAlph.txt',lamalph)
+            #import sys
+            #sys.exit()
             if (verbose > 0):
                 print('Time to solve GMRES and update alpha and lambda %f' %(time.time()-thist))
                 thist = time.time()
@@ -215,9 +220,13 @@ class TemporalIntegrator(object):
         
         nContacts = 0;
         if (StericEval is not None):
-            Touching, _ = StericEval.CheckContacts(XforNL,Dom);
+            Touching, _ = StericEval.CheckContacts(XforNL,Dom, excludeSelf=True);
             nContacts, _ = Touching.shape;
             forceExt +=StericEval.StericForces(XforNL,Dom);
+            #print('Number of contacts %d' %nContacts)
+            if (verbose > 0):
+                print('Time to calc steric force %f' %(time.time()-thist))
+                thist = time.time()
         
         # Solve for the (alpha, lambda) to update the fibers
         thist = time.time()
@@ -381,7 +390,7 @@ class MidpointDriftIntegrator(BackwardEuler):
             BlockOne = self._allFibers.getBlockOneSize();
             BlockTwo = systemSize - BlockOne;
             # Add velocity from external forcing
-            UExForce = self._allFibers.ComputeTotalVelocity(XMidtime,ExForce,Dom,Ewald);
+            UExForce = self._allFibers.nonLocalVelocity(XMidtime,ExForce,Dom,Ewald,subSelf=False);
             RHS = np.concatenate((UBrown+U0+UExForce,np.zeros(BlockTwo)));
             A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
                 X=XMidtime, Xs=TauMidtime, Dom=Dom,RPYEval=Ewald),dtype=np.float64);

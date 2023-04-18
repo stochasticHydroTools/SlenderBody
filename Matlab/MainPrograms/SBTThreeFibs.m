@@ -7,13 +7,14 @@
 clear AllXTrajs
 %for iDt=1:6
 %dt =0.8/2^(iDt);
-deltaLocal = 0.1; % part of the fiber to make ellipsoidal
+deltaLocal = 0; % part of the fiber to make ellipsoidal
 nFib = 3;
-N = 32; 
+N = 16; 
 NupsampleHydro = 40;
+LDOnly = 0;
 L=2;   % microns
 mu=1;
-eps=1e-2;
+eps=1e-3;
 impcoeff = 1;
 exactRPY = 1;
 upsamp = 0; % -1 for direct, 0 for special quad, 1 for upsampled direct
@@ -21,7 +22,7 @@ RectangularCollocation = 0; clamp0=0; twmod=0;
 a = exp(3/2)/4*eps*L; % match SBT
 gam0=1; omega=0; % shear flow
 Eb=0.01;
-dt=0.05;
+dt=0.0125;
 t=0;
 tf=2.4;
 xi=6;

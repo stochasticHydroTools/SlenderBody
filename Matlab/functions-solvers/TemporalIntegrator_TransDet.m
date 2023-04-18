@@ -22,7 +22,7 @@ else
         Binput = AllbS_TrueFP_Np1;
     end
     M = TransTransMobilityMatrix(OneXMob,a,L,mu,sNp1,bNp1,DNp1,Binput,...
-        AllbD_Np1,NForSmall,~exactRPY,deltaLocal);
+        AllbD_Np1,NForSmall,~exactRPY,deltaLocal,LDOnly);
     MWsym = 1/2*(M*WTilde_Np1_Inverse + WTilde_Np1_Inverse*M');
     MWsym = FilterM(1/2*(MWsym+MWsym'),eigThres);
 end

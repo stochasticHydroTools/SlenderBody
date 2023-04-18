@@ -1,4 +1,6 @@
 #include "types.h"
+#include <math.h>
+
 
 /**
     Chebyshev.cpp
@@ -51,6 +53,18 @@ void eval_Cheb3Dirs(const vec &fhat, double t, vec3 &results){
         }
     }
 }
+
+void EvalChebRow(double s, double L, vec &EvalMatrix){
+    /**
+    @param t = the double on [-1,1] where we evaluate the Chebyshev series 
+    **/  
+    // Compute the real valued theta
+    double theta = std::acos(2*s/L-1);
+    // Series
+    for (uint j=0; j < EvalMatrix.size(); j++){
+        EvalMatrix[j]=std::cos(1.0*j*theta);
+    }
+} 
 
 void DifferentiateCoefficients(const vec &Coefficients, int numDirs, vec &DCoefficients){
     /**

@@ -66,6 +66,9 @@ def theta(N,type,numPanels):
     elif (type=='u'):
         xu = np.linspace(-1.0,1.0,N);
         th=np.arccos(xu);
+    elif (type=='s'): # Uniformly spaced at midpoints (segments)
+        xu = np.arange(0.5,N)*2/N-1;
+        th=np.arccos(xu);
     elif (type=='L'): # Legendre
         xL, _ = np.polynomial.legendre.leggauss(N);
         th = np.arccos(xL);

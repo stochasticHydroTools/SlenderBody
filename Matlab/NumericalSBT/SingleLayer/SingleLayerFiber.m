@@ -3,17 +3,18 @@
 % Discretization on centerline
 addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
 clear;
-for Nthet = [12:4:32]
 BI=1;
 SBT=1;
+%% Solve with bundary integral method
+for Nthet = [16]
 trans=0;
 rot=1;
 if (BI)
 index=1;
 L = 2;
 a = 40e-3;
-Ns = 120:80:520;
-for N= Ns(Nthet/4-3)
+Ns = 200;
+for N= Ns
 mu = 1;
 dtheta = 2*pi/Nthet;
 [s,w,b]=chebpts(N,[-1 1],1);
@@ -21,7 +22,7 @@ Nc = 500;
 [sc,wc,bc]=chebpts(Nc,[-1 1],1);
 Rcompare = barymat(sc,s,b);
 D=diffmat(N,[0 L],'chebkind1');
-[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoFloren(s,b,L,D);
+[X,Xs,Xss,n1,n2,dn1,dn2] = fibGeoHelix(s,b,L,D);
 radius = a*sqrt(1-s.^2);
 rho = radius/a;
 Drho = -s./sqrt(1-s.^2);
@@ -124,8 +125,10 @@ for iEr=1:index-2
     NErrors(iEr) = sqrt(wc*(NErrorVec.*NErrorVec));
 end
 end
+%% Estimate error using forward SBT operator with various k
+% (assumes an ellipsoidal fiber)
 if (SBT)
-ks = [2 2.5 2.7 2.75 2.8 2.85 2.9 2.95 3 3.2];
+ks = [2 2.5 2.85 3];
 UEr = zeros(index-1,length(ks));
 OmEr = zeros(index-1,length(ks));
 normForceEr = zeros(index-1,length(ks));
@@ -140,16 +143,13 @@ NSBT=30;
 [sD,wD,bD]=chebpts(2*NSBT,[0 L],1);
 RToDouble = barymat(sD,s,b);
 Rdowncompare = barymat(s-1,sc,bc);
-%radius = a*sqrt(1-(2*s/L-1).^2);
-aRPY = a;%*exp(3/2)/4;
 D=diffmat(NSBT,[0 L],'chebkind1');
-[X,Xs,Xss,n1,n2,~,~] = fibGeoFloren(s-1,b,L,D);
+[X,Xs,Xss,n1,n2,~,~] = fibGeoHelix(s-1,b,L,D);
 XSB=X;
 warning('True finite part!')
 Allb = precomputeStokesletInts(s,L,0,NSBT,1);
 [MTT, MTR, MRT, MRR,sNew] = GrandJohnsonMob(NSBT,Xs,Xss,a,L,mu,s,k);
 SletFP = StokesletFinitePartMatrix(X,Xs,Xss,D,s,L,NSBT,mu,Allb);
-Xsss = D*Xss;
 fBI = Rdowncompare*FToCompare{getIndex};
 nBI = Rdowncompare*NToCompare{getIndex};
 if (trans && ~rot)
@@ -157,8 +157,8 @@ if (trans && ~rot)
     OmBI = zeros(NSBT,1);
 else
     UBI = reshape((MTT+SletFP)*reshape(fBI',3*NSBT,1) + MTR*nBI,3,NSBT)';
-    UBI= UBI + UFromNFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,nBI,D*nBI,Allb,mu);
-    OmBI = MRT*reshape(fBI',3*NSBT,1)+OmFromFFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,fBI,D*fBI,Allb,mu)+...
+    UBI= UBI + UFromNFPIntegral(X,D,s,NSBT,L,nBI,Allb,mu);
+    OmBI = MRT*reshape(fBI',3*NSBT,1)+OmFromFFPIntegral(X,D,s,NSBT,L,fBI,Allb,mu)+...
         MRR*nBI;
 end
 if (trans)
@@ -169,49 +169,6 @@ if (rot)
 end
 UEr(getIndex,ik) = sqrt(wD*sum((RToDouble*UBI).*(RToDouble*UBI),2));
 OmEr(getIndex,ik) = sqrt(wD*((RToDouble*OmBI).*(RToDouble*OmBI)));
-% Rotlet FP matrices column by column
-if (rot)
-    MTR_FP = zeros(3*NSBT,NSBT);
-    for iCol=1:NSBT
-        n = zeros(NSBT,1);
-        n(iCol)=1;
-        MTR_FP(:,iCol) = reshape(UFromNFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,n,D*n,Allb,mu)',3*NSBT,1);
-    end
-    MRT_FP = zeros(NSBT,3*NSBT);
-    for iCol=1:3*NSBT
-        f = zeros(3*NSBT,1);
-        f(iCol)=1;
-        f = reshape(f,3,NSBT)';
-        MRT_FP(:,iCol) = OmFromFFPIntegral(X,Xs,Xss,Xsss,s,NSBT,L,f,D*f,Allb,mu);
-    end
-    MSBT = MTT+SletFP;
-    U3 = zeros(NSBT,3);
-    USB = reshape(U3',3*NSBT,1);
-    OmSB = 1/a^2*ones(NSBT,1);
-    % Upsample fsbt to meaasure error
-    GrandMobility = [MTT+SletFP MTR+MTR_FP; MRT+MRT_FP MRR];
-    UOm = [USB; OmSB];
-    fn = GrandMobility \ UOm;
-    fSBT = reshape(fn(1:3*NSBT),3,[])';
-    npar = fn(3*NSBT+1:end);
-    Rup = barymat(sc+1,s,b);
-    fSBT_c = Rup*fSBT;
-    nSBT_c = Rup*npar;
-    % 2 norm difference in force and torque
-    forceEr = fSBT_c-FToCompare{getIndex};
-    normForceEr(getIndex,ik) = sqrt(wc*sum(forceEr.*forceEr,2));
-    TorqEr = nSBT_c-NToCompare{getIndex};
-    normTorqEr(getIndex,ik) = sqrt(wc*(TorqEr.^2));
-else
-    Rup = barymat(sc+1,s,b);
-    U3 = Uhelix(s-1,L);
-    USB = reshape(U3',3*NSBT,1);
-    fn = (MTT+SletFP) \ USB;
-    fSBT = reshape(fn(1:3*NSBT),3,[])';
-    fSBT_c = Rup*fSBT;
-    forceEr = fSBT_c-FToCompare{getIndex};
-    normForceEr(getIndex,ik) = sqrt(wc*sum(forceEr.*forceEr,2));
-end
 end
 end
 if (rot)
@@ -219,11 +176,13 @@ if (rot)
 end
 end
 clear M
-save(strcat('FloreGeo_a',num2str(a*1000),'Nt',num2str(Nthet),'.mat'))
+%save(strcat('FloreGeo_a',num2str(a*1000),'Nt',num2str(Nthet),'.mat'))
 end
-exit
+%exit
 % % 
 % % 
+
+%% Velocities and fiber geometries
 function U3 = Uhelix(s,L)
     N=length(s);
     nTurns=0.5;
@@ -275,22 +234,58 @@ function [X,Xs,Xss,n1,n2,dn1,dn2] = fibGeo(s,b,L,D)
     dn2 = zeros(N,3);
 end
 
-function TotInt = IntegrateEllipsoid(efflength,c,se,tau,theta,n1,n2)
-    syms spr tpr
-    prRhoHat = n1*cos(tpr)+n2*sin(tpr);
-    iRhoHat = n1*cos(theta)+n2*sin(theta);
-    ReVec = efflength*(spr-se)*tau+c*sqrt(1-spr.^2)*prRhoHat-c*sqrt(1-se.^2)*iRhoHat;
-    OneOverR = 1/sqrt(dot(ReVec,ReVec));
-    RRtOverR3 = ReVec'*ReVec./dot(ReVec,ReVec).^(3/2);
-    OneOverRIntegral = integral2(matlabFunction(OneOverR),-1,1,0,2*pi,'AbsTol',1e-12,'RelTol',1e-12);
-    RRtOverR3Int = zeros(3);
-    for iDim=1:3
-        for jDim=1:3
-            RRtOverR3Int(iDim,jDim) = ...
-                integral2(matlabFunction(RRtOverR3(iDim,jDim)),-1,1,0,2*pi,'AbsTol',1e-12,'RelTol',1e-12);
+%% SBT Evaluations
+% This function uses the method of Tornberg / Barnett / Klingenberg to
+% evaluate the finite part integral to spectral accuracy using the monomial
+% basis. This is the velocity from scalar torque.
+function Oonevel = UFromNFPIntegral(X,D,s0,N,L,n,Allbs,mu)
+    Oonevel = zeros(N,3);
+    Xs = D*X;
+    Xss = D*Xs;
+    Xsss = D*Xss;
+    nprime = D*n;
+    for iPt=1:N
+        nXs = norm(Xs(iPt,:));
+        b = Allbs(:,iPt);
+        gloc = zeros(N,3);
+        for jPt=1:N
+            R=X(iPt,:)-X(jPt,:);
+            nR=norm(R);
+            gloc(jPt,:) = (cross(n(jPt)*Xs(jPt,:),R)/nR^3*abs(s0(jPt)-s0(iPt))-...
+                1/(2*nXs^3)*cross(Xs(iPt,:),n(iPt)*Xss(iPt,:)))/(s0(jPt)-s0(iPt));
         end
+        gloc(iPt,:)=-nprime(iPt)/(2*nXs^3)*cross(Xss(iPt,:),Xs(iPt,:))...
+            -n(iPt)/(3*nXs^3)*cross(Xsss(iPt,:),Xs(iPt,:))...
+            -3/4*cross(Xs(iPt,:),Xss(iPt,:))*n(iPt)/nXs^5*dot(Xs(iPt,:),Xss(iPt,:));
+        Oonevel(iPt,:)=L/2*gloc'*b;
     end
-    TotInt = OneOverRIntegral*eye(3)+RRtOverR3Int;
+    Oonevel = 1/(8*pi*mu)*Oonevel;
 end
 
-    
+% This function uses the method of Tornberg / Barnett / Klingenberg to
+% evaluate the finite part integral to spectral accuracy using the monomial
+% basis. 
+% This is the integral that gives Omega from the force
+function Oonevel = OmFromFFPIntegral(X,D,s0,N,L,f,Allbs,mu)
+    Oonevel = zeros(N,1);
+    Xs = D*X;
+    Xss = D*Xs;
+    Xsss = D*Xss;
+    fprime=D*f;
+    for iPt=1:N
+        b = Allbs(:,iPt);
+        gloc = zeros(N,1);
+        nXs = norm(Xs(iPt,:));
+        for jPt=1:N
+            R=X(iPt,:)-X(jPt,:);
+            nR=norm(R);
+            gloc(jPt) = (dot(cross(R,Xs(iPt,:)),f(jPt,:))/nR^3*abs(s0(jPt)-s0(iPt))-...
+                1/(2*nXs^3)*dot(cross(Xs(iPt,:),Xss(iPt,:)),f(iPt,:)))/(s0(jPt)-s0(iPt));
+        end
+        gloc(iPt)= -1/(2*nXs^3)*(dot(fprime(iPt,:),cross(Xss(iPt,:),Xs(iPt,:)))+ ...
+            1/3*dot(f(iPt,:),cross(Xsss(iPt,:),Xs(iPt,:))))...
+            -3/4*dot(cross(Xs(iPt,:),Xss(iPt,:)),f(iPt,:))/nXs^5*dot(Xs(iPt,:),Xss(iPt,:));
+        Oonevel(iPt)=L/2*gloc'*b;
+    end
+    Oonevel = 1/(8*pi*mu)*Oonevel;
+end

@@ -308,7 +308,7 @@ class GPUEwaldSplitter(EwaldSplitter):
     ## ========================================
     ##          METHODS FOR INITIALIZATION
     ## ========================================
-    def __init__(self,a,mu,xi,PerDom,Npts):
+    def __init__(self,a,mu,xi,PerDom,Npts,xiHalf=None):
         """
         Constructor. Initialize the Ewald splitter. 
         Extra input variables: xi = Ewald splitting parameter,
@@ -319,6 +319,10 @@ class GPUEwaldSplitter(EwaldSplitter):
         self._Npts = Npts;
 
         self._xi = float(xi);
+        if (xiHalf is None):
+            self._xiHalf = self._xi;
+        else:
+            self._xiHalf = float(xiHalf);        
         self._PerLengths = PerDom.getPeriodicLens()
         self._currentDomain = PerDom;
         
@@ -330,6 +334,11 @@ class GPUEwaldSplitter(EwaldSplitter):
         self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
             LanczosTol=GPUtol,Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
         self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
+        
+        # Separate Ewald parameter for M^(1/2)
+        self._GPUParamsMHalf = uammd.PSEParameters(psi=self._xiHalf, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
+            LanczosTol=GPUtol,Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
+        self._GPUEwaldHalf = uammd.UAMMD(self._GPUParamsMHalf,self._Npts);
         
         # Calculate the truncation distance for Ewald
         print('%.2E GPU tolerance' %GPUtol)
@@ -388,9 +397,9 @@ class GPUEwaldSplitter(EwaldSplitter):
         # It is really important that the result array has the same floating precision as the compiled uammd, otherwise
         # python will just silently pass by copy and the results will be lost
         MHalfW=np.zeros(3*self._Npts, np.float64);
-        self._GPUEwald.setShearStrain(self._currentDomain.getg())
+        self._GPUEwaldHalf.setShearStrain(self._currentDomain.getg())
         # In UAMMD, setting temperature = 0.5 will return M^(1/2)*W - we can add the kBT prefactor later. 
-        self._GPUEwald.computeHydrodynamicDisplacements(positions,forces,MHalfW,temperature=0.5,prefactor = 1.0)
+        self._GPUEwaldHalf.computeHydrodynamicDisplacements(positions,forces,MHalfW,temperature=0.5,prefactor = 1.0)
         return MHalfW;#, self._GPUEwald.getNumLanczosIterations();
     
     def updateFarFieldArrays(self):

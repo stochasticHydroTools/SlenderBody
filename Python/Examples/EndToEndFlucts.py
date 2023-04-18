@@ -38,13 +38,13 @@ def makeStraightFibs(nFib,Lf,N,fibDisc,Ld=0):
 nFib=100         # number of fibers
 N=12          # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=4   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
+nonLocal=1   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
 nThr = 8;   # Number of OpenMP threads
 # Mobility options (can do SBT if all are set to false, otherwise some variant of RPY as described below)
 MobStr='NLOS64';
-RPYQuad = True;        # Special quadrature
+RPYQuad = False;        # Special quadrature
 RPYDirect = False;       # Direct Clenshaw-Curtis quadrature
-RPYOversample = False;  # Oversampled quad
+RPYOversample = True;  # Oversampled quad
 NupsampleForDirect = 64; # Number of pts for oversampled quad
 Ld=float(sys.argv[4]);        # length of the periodic domain
 mu=1            # fluid viscosity

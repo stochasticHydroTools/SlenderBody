@@ -1,6 +1,6 @@
 addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
 kbT = 4.1e-3;
-lpstar = 10;
+lpstar = 1;
 L = 2;
 Eb = lpstar*L*kbT;
 SplitScheme = 1;
@@ -8,33 +8,27 @@ impcoeff=1;
 ModifyBE=1;
 IdForM = 0;
 eps = 1e-3;
-N = 12;
+N = 16;
 upsamp = 0 ;
 if (eps == 1e-3)
 if (N==12)
-    eigThres = 3.2/L;
     dts = [0.0301; 0.0163; 3.65e-3];
 elseif (N==24)
-    eigThres = 5.0/L;
     dts = [1.99e-3; 1.08e-3; 0.554e-3];
 elseif (N==36)
-    eigThres = 6.7/L;
     dts = [0.2245e-3; 0.1449e-3; 0.0387e-3];
 end
 elseif (eps==1e-2)
 if (N==12)
-    eigThres = 1.6/L;
     dts = [0.0665; 0.0319; 0.0100];
 elseif (N==24)
-    eigThres = 1.0/L;
     dts = [0.00554; 0.00314; 0.00191];
 elseif (N==36)
-    eigThres = 0.34/L;
     dts = [1.08e-3; 0.742e-3; 0.436e-3];
 end
 end
 %load(strcat('EndEndkbT_Lp',num2str(lpstar),'_N_',num2str(N),'.mat'))
-loadPython=0;
+loadPython=1;
 
 nTrial= 10;
 nSample = 100;
@@ -44,13 +38,12 @@ gam0=0;
 RectangularCollocation=0;
 %tf = 10*Timescales(7);
 mu = 1;
-tf = 0.01*mu*L^4/(log(eps^(-1))*Eb);
-for iDT=3
-dt = dts(iDT);
-dt=tf/1000;
-dt = 0.005324395527187673;
-tf=100*dt;
-saveEvery = 1;
+tfund = 0.003*4*pi*mu*L^4/(log(eps^(-1))*Eb);
+tf=10*tfund;
+dts=[0.02 0.01 0.005 0.002];
+for iDT=1:4
+dt = dts(iDT)*tfund;
+saveEvery = max(0.01/dts(iDT),1);
 nBins = 1000;
 
 AllEndToEndDists = zeros(nTrial,nBins);
@@ -66,18 +59,17 @@ if (~loadPython)
 else
     seedIndex = nSample*(iTrial-1)+iSample;
     logeps = -log10(eps);
-    FileString = strcat('Eps',num2str(logeps),'.0EndToEnd_N',num2str(N),'_Lp',num2str(lpstar),...
-        '.0_dt',num2str(iDT),'_',num2str(seedIndex),'.txt');
+    FileString = strcat('LocsEps',num2str(logeps),'.0EndToEnd_N',num2str(N),'_Ld10_Lp',num2str(lpstar),...
+        '.0_dtf',num2str(dts(iDT)),'_',num2str(seedIndex),'.txt');
     Xpts = load(FileString);
     if (sum(isnan(Xpts)) > 0)
         error('NaN location!')
     end
     Nx = N+1;
     [sNp1,wNp1,bNp1]=chebpts(Nx,[0 L],2);
-    nSaves = length(Xpts)/(N+1);
 end
 nSaves = length(Xpts)/(N+1);
-StartIndex = 1;%floor(Timescales(7)/dt)+1;
+StartIndex = min(1/dts(iDT)+1,101);
 saveXPerpInds = ceil([0.05*nSaves 0.1*nSaves 0.2*nSaves 0.5*nSaves nSaves]);
 EndEndDists=zeros(nSaves,3);
 COMvec = zeros(nSaves,3);
@@ -122,31 +114,32 @@ for iT=StartIndex:nSaves
 end
 %AllTrajectories{iTrial,iSample}=Xpts;
 AllEndToEnds{iTrial,iSample}=EndEndDists;
-AllRotateDots{iTrial,iSample}=RotateDot;
-AllCOMDisps{iTrial,iSample}=COMvec;
-AllXPerpSq{iTrial,iSample}=XPerpSq;
+%AllRotateDots{iTrial,iSample}=RotateDot;
+%AllCOMDisps{iTrial,iSample}=COMvec;
+%AllXPerpSq{iTrial,iSample}=XPerpSq;
 end
 end
-AllEndToEndsToAnalyze{iDT}=AllEndToEnds;
+%AllEndToEndsToAnalyze{iDT}=AllEndToEnds;
 PlotEndToEndDists{iDT} = AllEndToEndDists;
-PlotMiddleHalfDists{iDT}  = AllMiddleHalfDists;
-PlotEndToMiddleDists{iDT}  = AllEndToMiddleDists;
-PlotEndToQuarterDists{iDT}  = AllEndToQuarterDists;
-PlotRotateDots{iDT} = AllRotateDots;
-PlotCOMDisps{iDT} = AllCOMDisps;
-PlotXPerpSq{iDT} = AllXPerpSq;
+%PlotMiddleHalfDists{iDT}  = AllMiddleHalfDists;
+%PlotEndToMiddleDists{iDT}  = AllEndToMiddleDists;
+%PlotEndToQuarterDists{iDT}  = AllEndToQuarterDists;
+%PlotRotateDots{iDT} = AllRotateDots;
+%PlotCOMDisps{iDT} = AllCOMDisps;
+%PlotXPerpSq{iDT} = AllXPerpSq;
 %save(strcat('EndEndkbT_Lp',num2str(lpstar),'_N_',num2str(N),'.mat'))
 %exit;
-if (upsamp==1)
-    MobStr='Ref';
-elseif (upsamp==-1)
-    MobStr='Direct';
-elseif (upsamp==-2)
-    MobStr='LocDrag';
-else
-    MobStr='Quad';
-end
+% if (upsamp==1)
+%     MobStr='Ref';
+% elseif (upsamp==-1)
+%     MobStr='Direct';
+% elseif (upsamp==-2)
+%     MobStr='LocDrag';
+% else
+%     MobStr='Quad';
+% end
 logeps=-log10(eps);
-save(strcat('nnRelaxing',MobStr,'N',num2str(N),'Eps',num2str(logeps),'Lp1.mat'))
+%save(strcat('nnRelaxing',MobStr,'N',num2str(N),'Eps',num2str(logeps),'Lp1.mat'))
+save(strcat('EndEndkbT_Lp',num2str(lpstar),'_N_',num2str(N),'.mat'))
 end
 %exit;

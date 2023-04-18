@@ -5,6 +5,8 @@
 #include<exception>
 
 
+const double ZERO_TOL = 1e-10;
+
 void throwLapackeError(int info, std::string functionName){
   throw std::runtime_error("LAPACKE Failed in function "+
 			   functionName +
@@ -21,6 +23,14 @@ double dot(const vec3 &a, const vec3 &b){
     return a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
 }
 
+double dot(const vec &a, const vec &b){
+    double sum=0;
+    for (uint i=0; i < a.size(); i++){
+        sum+=a[i]*b[i];
+    }
+    return sum;
+}
+
 void cross(const vec3 &a, const vec3 &b, vec3 &result){
     result = {a[1]*b[2]-a[2]*b[1],-a[0]*b[2]+a[2]*b[0],a[0]*b[1]-b[0]*a[1]};
 }
@@ -34,7 +44,7 @@ void plus(const vec &a, double alpha, const vec &b, double beta, vec &result){
 
 double normalize(vec3 &rvec){
     double r = sqrt(dot(rvec,rvec));
-    if (r > 1e-10){
+    if (r > ZERO_TOL){
         double rinv = 1.0/r;
         rvec[0]*=rinv;
         rvec[1]*=rinv;
@@ -42,6 +52,22 @@ double normalize(vec3 &rvec){
     }
     return r;
 }
+
+bool TwoByTwoMatrixSolve(const vec &A, const vec &b, vec &x){
+    double aa = A[0];
+    double bb = A[1];
+    double cc = A[2];
+    double dd = A[3];
+    double det = aa*dd-bb*cc;
+    if (abs(det) < ZERO_TOL){
+        //throw std::runtime_error("2 x 2 matrix solve failed - determinant is zero");
+        return false;
+    }
+    double detInv = 1.0/det;
+    x[0] = detInv*(dd*b[0]-bb*b[1]);
+    x[1] = detInv*(-cc*b[0]+aa*b[1]);
+    return true;
+}   
 
 void BlasMatrixProduct(int m, int p, int n,double alpha, double beta,const vec &a, bool transA, const vec &b, vec &c){
     /* C-> alpha*A*B+beta*C

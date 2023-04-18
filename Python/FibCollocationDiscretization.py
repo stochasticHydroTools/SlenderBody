@@ -12,6 +12,8 @@ from RPYVelocityEvaluator import RPYVelocityEvaluator
 aRPYFac = exp(1.5)/4        # equivalent RPY blob radius a = aRPYFac*epsilon*L;
 # Some definitions that are not specific to any particular discretization
 numBCs = 4; # number of boundary conditions
+SpecialQuadEigenvalueSafetyFactor = 1;
+
 class FibCollocationDiscretization(object):
 
     """ 
@@ -234,11 +236,20 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             StraightFiber = np.concatenate((np.reshape(sUp,(NToUpsamp,1)),np.zeros((NToUpsamp,1)),np.zeros((NToUpsamp,1))),axis=1);
             MRPY = RPYVelocityEvaluator.RPYMatrix(NToUpsamp,StraightFiber,self._mu,self._a)
             MRPYOversamp = np.dot(OversamplingWtsMat.T,np.dot(MRPY,OversamplingWtsMat));
-            self._EigValThres = np.min(np.linalg.eigvalsh(MRPYOversamp));
+            self._EigValThres = SpecialQuadEigenvalueSafetyFactor*np.min(np.linalg.eigvalsh(MRPYOversamp));
         print('Eigenvalue threshold %1.2E' %self._EigValThres)
     
-    def UniformUpsamplingMatrix(self,Nunipts):
-        return cf.ResamplingMatrix(Nunipts, self._Nx,'u',self._XGridType);    
+    def UniformUpsamplingMatrix(self,Nunipts,typ='u'):
+        if (typ=='u'):
+            ds = self._L/(Nunipts-1);
+            su = np.arange(0,Nunipts)*ds;
+        else:
+            ds = self._L/Nunipts;
+            su = np.arange(0.5,Nunipts)*ds;
+        return su, cf.ResamplingMatrix(Nunipts, self._Nx,typ,self._XGridType);  
+    
+    def DiffXMatrix(self):
+        return self._DXGrid; 
     
     def calcXFromXsAndMP(self,Xs,XMP):
         return np.dot(self._XonNp1Mat,np.concatenate((Xs,XMP)));  
@@ -309,7 +320,12 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         """
         self._BendMatX0 = np.dot(self._D4BCForce,X0);
         if (abs(penaltyParam) < 1e-10):
-            self._BendMatX0 = 0*self._BendMatX0;    
+            self._BendMatX0 = 0*self._BendMatX0;  
+    
+    def StackedValsToCoeffsMatrix(self):  
+        CToV = cf.CoeffstoValuesMatrix(self._Nx,self._Nx,self._XGridType);
+        VToC = np.linalg.inv(CToV);
+        return VToC;
     
     def initFPMatrix(self):
         """
