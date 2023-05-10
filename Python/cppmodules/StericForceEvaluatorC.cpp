@@ -13,6 +13,9 @@
 
 const double SMALL_NUM = 1e-12;
 const int MAX_NEWTON_ITS = 10;
+const double DISTANCE_EPS = 1e-10;
+const double COND_MAX = 1e6;
+const double MAX_DESCENT_NORM_OVERL=0.1;
 
 
 
@@ -173,6 +176,14 @@ class StericForceEvaluatorC {
                     rvec[d] = uniPts[3*iUniPt+d]-uniPts[3*jUniPt+d];
                 }
                 // Periodic shift to find periodic copies that are actually interacting
+                double wt1 = _deltasu;
+                if (iuPtMod==0 || iuPtMod==(_nUni-1)){
+                    wt1=0.5*_deltasu;
+                }
+                double wt2 = _deltasu;
+                if (juPtMod==0 || juPtMod==(_nUni-1)){
+                    wt2=0.5*_deltasu;
+                }
                 _Dom.calcShifted(rvec,g);
                 double nr = normalize(rvec);
                 // Compute the potential at r 
@@ -180,7 +191,7 @@ class StericForceEvaluatorC {
                 // Multiplication due to rest length and densities
                 vec3 forceij;//, force1, force2, X1, X2;
                 for (int d =0; d < 3; d++){
-                    forceij[d] = -ForceMag*rvec[d]*_deltasu*_deltasu;
+                    forceij[d] = -ForceMag*rvec[d]*wt1*wt2;
                 }
                 for (int iPt=0; iPt < _nXPerFib; iPt++){
                     for (int d =0; d < 3; d++){
@@ -199,12 +210,13 @@ class StericForceEvaluatorC {
         return make1DPyArray(StericForces);
     }
     
+    /*
     py::array ForceFromCloseSegments(npInt pySegpairs, npDoub pyXCheb, npDoub pyMidpoints, npDoub pyEndpoints, double g){
-        /*
+        
         Find steric forces from SEGMENTS. This is a fairly complicated algorithm. The inputs are the pairs 
         of segments which could be interacting (comes from neighbor search), the Chebyshev points of all fibers,
         the midpoints of the segments, the endpoints of the segments, and the strain in the domain. 
-        */
+        
         // Convert numpy to C++ vector
         intvec SegmentPairs(pySegpairs.size());
         std::memcpy(SegmentPairs.data(),pySegpairs.data(),pySegpairs.size()*sizeof(int));
@@ -380,6 +392,157 @@ class StericForceEvaluatorC {
         //std::cout << "Number good pairs " << nGood << std::endl;
         return make1DPyArray(StericForces);
     }
+    */
+    
+    py::array IntervalsOfInteraction(npInt pySegpairs, npDoub pyXCheb, npDoub pyMidpoints, npDoub pyEndpoints, double g){
+        /*
+        Find intervals of interaction from possible segments. The inputs are the pairs 
+        of segments which could be interacting (comes from neighbor search), the Chebyshev points of all fibers,
+        the midpoints of the segments, the endpoints of the segments, and the strain in the domain. 
+        */
+        // Convert numpy to C++ vector
+        intvec SegmentPairs(pySegpairs.size());
+        std::memcpy(SegmentPairs.data(),pySegpairs.data(),pySegpairs.size()*sizeof(int));
+        vec ChebPts(pyXCheb.size());
+        std::memcpy(ChebPts.data(), pyXCheb.data(),pyXCheb.size()*sizeof(double));
+        vec SegMPs(pyMidpoints.size());
+        std::memcpy(SegMPs.data(),pyMidpoints.data(),pyMidpoints.size()*sizeof(double));
+        vec SegEPs(pyEndpoints.size());
+        std::memcpy(SegEPs.data(),pyEndpoints.data(),pyEndpoints.size()*sizeof(double));
+
+        int nPairs = SegmentPairs.size()/2;
+        vec InteractionIntervals(9*nPairs,-1); 
+        double NewtonTol = _delta*0.01;
+        // 9 entries in this array: (iFib, start_i, end_i, jFib, start_j, end_j, PeriodicShift (3))
+        #pragma omp parallel for num_threads(_nThreads)
+        for (int iPair=0; iPair < nPairs; iPair++){
+            // Each pair is a pair of segments. This part identifies the start and endpoint
+            // of the segments we're considering, as well as what fiber they're on, etc. 
+            int iSeg = SegmentPairs[2*iPair];
+            int jSeg = SegmentPairs[2*iPair+1];
+            vec3 Start1, End1, Start2, End2, dMP;
+            // Determine correct periodic copy
+            for (int id=0; id < 3; id++){
+                dMP[id] = SegMPs[3*iSeg+id]-SegMPs[3*jSeg+id];
+            }
+            _Dom.calcShifted(dMP,g);
+            vec3 PeriodicShift;
+            for (int d =0; d < 3; d++){
+                PeriodicShift[d] = SegMPs[3*iSeg+d]-SegMPs[3*jSeg+d]-dMP[d];
+            }
+            int iFib = iSeg/_NsegPerFib;
+            int iSegMod = iSeg-iFib*_NsegPerFib;
+            int jFib = jSeg/_NsegPerFib;
+            int jSegMod = jSeg-jFib*_NsegPerFib;
+            int StartSeg1 = iFib*(_NsegPerFib+1) + iSegMod;
+            int StartSeg2 = jFib*(_NsegPerFib+1) + jSegMod;
+            for (int id=0; id < 3; id++){
+                Start1[id] = SegEPs[3*StartSeg1+id];
+                End1[id] = SegEPs[3*StartSeg1+3+id];
+                Start2[id] = SegEPs[3*StartSeg2+id]+PeriodicShift[id];
+                End2[id] = SegEPs[3*StartSeg2+3+id]+PeriodicShift[id];
+            }
+            vec ClosePts(2);
+            // Compute closest distance between segments. This function returns the distance
+            // and the points on the segments (ClosePts) where the nearest point of interaction is. 
+            double segDist = DistanceBetweenSegments(Start1,End1,Start2,End2,ClosePts);
+            // Now segments are close enough: compute the forces 
+            // Identify the two fibers (for resampling near the closest point)
+            vec XCheb1(3*_nXPerFib);
+            vec XCheb2(3*_nXPerFib);
+            for (int iPt=0; iPt < _nXPerFib; iPt++){
+                for (int iD=0; iD < 3; iD++){
+                    XCheb1[3*iPt+iD] = ChebPts[iFib*3*_nXPerFib+3*iPt+iD];
+                    XCheb2[3*iPt+iD] = ChebPts[jFib*3*_nXPerFib+3*iPt+iD]+PeriodicShift[iD];
+                }
+            }
+            vec SegMP1(3), SegMP2(3), CurvMP1(3), CurvMP2(3), curv1(3), curv2(3);
+            for (int d=0; d < 3; d++){
+                SegMP1[d] = 0.5*(Start1[d]+End1[d]);
+                SegMP2[d] = 0.5*(Start2[d]+End2[d]);
+            }
+            vec InterpRow1(_nXPerFib), InterpRow2(_nXPerFib);
+            // Sample at midpoint to estimate curvature
+            double sMP1 = 0.5*_Lseg+iSegMod*_Lseg;
+            double sMP2 = 0.5*_Lseg+jSegMod*_Lseg;
+            InterpolationRow(sMP1,InterpRow1);
+            InterpolationRow(sMP2,InterpRow2);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,XCheb1,CurvMP1);
+            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,XCheb2,CurvMP2);
+            for (int d=0; d < 3; d++){
+                curv1[d] = SegMP1[d]-CurvMP1[d];
+                curv2[d] = SegMP2[d]-CurvMP2[d];
+            }
+            double curvdist1 = sqrt(dot(curv1,curv1));
+            double curvdist2 = sqrt(dot(curv2,curv2));
+            // If curved pieces of fibers could be interacting, proceed to Newton solve.
+            if (segDist < _dcut+curvdist1+curvdist2){
+                // Resolve with nonlinear solve to obtain closest points on segments 
+                ClosePts[0]=ClosePts[0]*_Lseg+iSegMod*_Lseg;
+                ClosePts[1]=ClosePts[1]*_Lseg+jSegMod*_Lseg;
+                if (iFib==0){
+                    std::cout << "iFib " << iFib << " jFib " << jFib << " guess (" << ClosePts[0] << " , " << ClosePts[1] << ") " <<  std::endl;
+                }
+                bool verbose =false;
+                double curvDist = DistanceBetweenFiberParts(XCheb1,XCheb2,NewtonTol, ClosePts,verbose);
+                if (iFib==0){
+                    std::cout << "iFib " << iFib << " jFib " << jFib << " rts (" << ClosePts[0] << " , " << ClosePts[1] << " , " << curvDist << ") " << std::endl;
+                }
+                if (curvDist < _dcut){
+                    double s1star = ClosePts[0];
+                    double s2star = ClosePts[1];
+                    InterpolationRow(s1star,InterpRow1);
+                    InterpolationRow(s2star,InterpRow2);
+                    // Compute tangent vectors, take dot product to estimate additional arclength
+                    vec DX1(3*_nXPerFib), DX2(3*_nXPerFib), DSqX1(3*_nXPerFib), DSqX2(3*_nXPerFib);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,XCheb1,DX1);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,XCheb2,DX2);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX1,DSqX1);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX2,DSqX2);
+                    vec pt1(3), pt2(3), tau1(3), tau2(3), curv1(3), curv2(3);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,XCheb1,pt1);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,XCheb2,pt2);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DX1,tau1);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DX2,tau2);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DSqX1,curv1);
+                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DSqX2,curv2);
+                    vec disp(3);
+                    for (int d=0; d<3; d++){
+                        disp[d]=pt1[d]-pt2[d];
+                    }
+                    // Approximation of distance 
+                    // distance^2 - r^2 = a s1^2 + bs2^2 + 2 e s1 s2 + 2 c s1 + 2 d s2 + f
+                    double aa = dot(tau1,tau1)+dot(disp,curv1);
+                    double bb = dot(tau2,tau2)-dot(disp,curv2);
+                    double cc = dot(disp,tau1); // zero unless @ EP
+                    double dd = -dot(disp,tau2); // zero unless @ EP
+                    double ee = -dot(tau1,tau2);
+                    double ff = dot(disp,disp)-_dcut*_dcut;
+                    double s1disc = sqrt(pow(8*dd*ee-8*cc*bb,2)-4*(4*ee*ee-4*aa*bb)*(4*dd*dd-4*bb*ff));
+                    double s1plus = ((8*cc*bb-8*dd*ee)+s1disc)/(8*ee*ee-8*aa*bb);
+                    double s1minus= ((8*cc*bb-8*dd*ee)-s1disc)/(8*ee*ee-8*aa*bb);
+                    double Deltas1 = std::max(abs(s1plus),abs(s1minus));
+                    double s2disc = sqrt(pow(8*cc*ee-8*aa*dd,2)-4*(4*ee*ee-4*aa*bb)*(4*cc*cc-4*aa*ff));
+                    double s2plus = ((8*dd*aa-8*cc*ee)+s2disc)/(8*ee*ee-8*aa*bb);
+                    double s2minus = ((8*dd*aa-8*cc*ee)-s2disc)/(8*ee*ee-8*aa*bb);
+                    double Deltas2 = std::max(abs(s2minus),abs(s2plus));
+                    InteractionIntervals[9*iPair] = iFib;
+                    InteractionIntervals[9*iPair+1] = std::max(s1star-Deltas1,0.0);
+                    InteractionIntervals[9*iPair+2] = std::min(s1star+Deltas1,_L);
+                    InteractionIntervals[9*iPair+3] = jFib;
+                    InteractionIntervals[9*iPair+4] = std::max(s2star-Deltas2,0.0);
+                    InteractionIntervals[9*iPair+5] = std::min(s2star+Deltas2,_L);
+                    for (int d=0; d < 3; d++){
+                        InteractionIntervals[9*iPair+6+d]=PeriodicShift[d];
+                    }
+                } // end if curv dist < cutoff
+            } // end if linear distance < cutoff + safety
+        } // end loop over pairs
+        //std::cout << "Number of pairs " << nPairs << std::endl;
+        //std::cout << "Segments under curve " << nUnderCurve << std::endl;
+        //std::cout << "Number good pairs " << nGood << std::endl;
+        return makePyByNineArray(InteractionIntervals);
+    }
     
     private:
 
@@ -403,30 +566,33 @@ class StericForceEvaluatorC {
         return (-_F0*exp(-nr*nr/(2*_delta*_delta)));
     }
     
-    double DistanceBetweenFiberParts(const vec &X1,const vec &X2,int iSegMod, int jSegMod, vec &ClosePts){
-        /* Nonlinear Newton solve to obtain distance between two fiber sections 
-        Section iSegMod [iSegMod*_Lseg, (iSegMod+1)*_Lseg] on fiber 1 
-        and Sec jSecMod [jSegMod*_Lseg, (jSegMod+1)*_Lseg] on fiber 2
+    double DistanceBetweenFiberParts(const vec &X1,const vec &X2, double tol, vec &ClosePts,bool verbose){
+        /* Nonlinear Newton solve to obtain distance between two fibers
         */ 
         // Initial guess for Newton
-        double s1star = ClosePts[0]*_Lseg+iSegMod*_Lseg;
-        double s2star = ClosePts[1]*_Lseg+jSegMod*_Lseg;
+        double s1star = ClosePts[0];
+        double s2star = ClosePts[1];
         vec DX1(3*_nXPerFib), DX2(3*_nXPerFib), DSqX1(3*_nXPerFib), DSqX2(3*_nXPerFib);
         BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,X1,DX1);
         BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,X2,DX2);
         BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX1,DSqX1);
         BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX2,DSqX2);
-        // Step 1 : Newton solve to find close points on segment interior
-        vec Fcn(2,100);
+        vec Gradient(2,100);
         int nIts = 0; 
         vec rts(2);
         rts[0] = s1star;
         rts[1] = s2star;
-        vec Jac(4), Diff(2);
-        vec X1p(3), X2p(3), DX1p(3), DX2p(3), DSqX1p(3), DSqX2p(3),InterpRow1(_nXPerFib), InterpRow2(_nXPerFib);
-        bool successfulSolve= true;
-        while (sqrt(Fcn[0]*Fcn[0]+Fcn[1]*Fcn[1]) > SMALL_NUM && nIts < MAX_NEWTON_ITS && successfulSolve){
+        vec Jac(4), DescentDirection(2);
+        vec dist(3), X1p(3), X2p(3), DX1p(3), DX2p(3), DSqX1p(3), DSqX2p(3),InterpRow1(_nXPerFib), InterpRow2(_nXPerFib);
+        double dist_before=_L;
+        double distance = _L;
+        while (sqrt(dot(Gradient,Gradient)) > tol && nIts < MAX_NEWTON_ITS){
             nIts++;
+            if (verbose){
+                std::cout << "Iter " << nIts << std::endl;
+            }
+            
+            // Compute distance, gradient, and Hessian
             InterpolationRow(rts[0],InterpRow1);
             InterpolationRow(rts[1],InterpRow2);
             BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
@@ -436,133 +602,116 @@ class StericForceEvaluatorC {
             BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DSqX1,DSqX1p);
             BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DSqX2,DSqX2p);
             
-            Fcn[0] = 2*dot(X1p,DX1p)-2*dot(DX1p,X2p);
-            Fcn[1] = 2*dot(X2p,DX2p)-2*dot(DX2p,X1p);
+            for (int d=0; d < 3; d++){
+                dist[d]=X1p[d]-X2p[d];
+            }
+            dist_before = sqrt(dot(dist,dist));
+            if (verbose){
+                std::cout << "distance " << dist_before << std::endl;
+            }
+            Gradient[0] = 2*dot(X1p,DX1p)-2*dot(DX1p,X2p);
+            Gradient[1] = 2*dot(X2p,DX2p)-2*dot(DX2p,X1p);
             Jac[0] = 2*(dot(DX1p,DX1p)+dot(DSqX1p,X1p)-dot(DSqX1p,X2p));
             Jac[2] = -2*dot(DX1p,DX2p);
             Jac[1] = Jac[2];
             Jac[3] = 2*(dot(DX2p,DX2p)+dot(DSqX2p,X2p)-dot(DSqX2p,X1p));
-
-            successfulSolve = TwoByTwoMatrixSolve(Jac,Fcn,Diff);
-            //std::cout << rts[0] << " , " << rts[1] << std::endl;
-            //std::cout << Diff[0] << " , " << Diff[1] << std::endl;
-            rts[0]-=Diff[0];
-            rts[1]-=Diff[1];
-            //std::cout << rts[0] << " , " << rts[1] << std::endl;
-        }
-        double seg1start = iSegMod*_Lseg;
-        double seg1end = seg1start+_Lseg;
-        double seg2start = jSegMod*_Lseg;
-        double seg2end = seg2start+_Lseg;
-        vec3 disp;
-        if (successfulSolve){
-            for (int d=0; d<3; d++){
-                disp[d]=X1p[d]-X2p[d];
+            if (verbose){
+                std::cout << "Jacobian 11 " << Jac[0] << std::endl;
             }
-            double distance = normalize(disp);
-            // If interior minimum is achieved, return
-            if (rts[0] > seg1start && rts[0] < seg1end && rts[1] > seg2start && rts[1] < seg2end){
-                ClosePts[0] = rts[0];
-                ClosePts[1] = rts[1];
-                return distance;
+            
+            // Eigenvalue decomposition of Jacobian
+            vec EigVals(2), EigVecs(4);
+            SymmetrizeAndDecomposePositive(2, Jac, 0, EigVecs, EigVals);
+            if (verbose){
+                std::cout << "Hessian eigs " << EigVals[0]  << " , " << EigVals[1] << std::endl;
             }
-        }
-        // Other possible minima
-        // Fix the endpoint of segment 1, and check for an interior min on segment 2
-        // and the endpoints of segment 2
-        vec exteriorDists, exteriorS1, exteriorS2;
-        double Fcn1D, DFcn;
-        for (int iSeg1EP=0; iSeg1EP<2; iSeg1EP++){
-            double s1boundary=seg1start+_Lseg*iSeg1EP;
-            Fcn1D = 100;
-            double s2rt = s2star;
-            InterpolationRow(s1boundary,InterpRow1);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
-            int nIts=0;
-            while (abs(Fcn1D) > SMALL_NUM && nIts < MAX_NEWTON_ITS){
-                nIts++;
-                InterpolationRow(s2rt,InterpRow2);
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DX2,DX2p);
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DSqX2,DSqX2p);
-                Fcn1D = 2*dot(X2p,DX2p)-2*dot(DX2p,X1p);
-                DFcn = 2*(dot(DX2p,DX2p)+dot(DSqX2p,X2p)-dot(DSqX2p,X1p));
-                s2rt = s2rt - Fcn1D/DFcn;
+            double maxEigInd=0;
+            double minEigInd=1;
+            if (EigVals[1] > EigVals[0]){
+                maxEigInd=1;
+                minEigInd=0;
             }
-            double distance = normalize(disp);
-            if (s2rt > seg2start && s2rt < seg2end){
-                // interior maximum
-                for (int d=0; d<3; d++){
-                    disp[d]=X1p[d]-X2p[d];
+            if (EigVals[maxEigInd] < 0){
+                std::cout << "Breaking out of Newton - Hessian is negative definite!" << std::endl;
+                break;
+            } else if (EigVals[minEigInd] < EigVals[maxEigInd]/COND_MAX){
+                EigVals[minEigInd] = EigVals[maxEigInd]/COND_MAX;
+            }
+            if (verbose){
+                std::cout << "Hessian eigs " << EigVals[0]  << " , " << EigVals[1] << std::endl;
+                std::cout << "Hessian eigvecs " << EigVecs[0]  << " , " << EigVecs[1] << std::endl;
+            }
+            vec TwoByTwoIdentity(4), HessianInv(4); // initialize to identity
+            TwoByTwoIdentity[0]=1;
+            TwoByTwoIdentity[3]=1;
+            ApplyMatrixPowerFromEigDecomp(2, -1.0, EigVecs, EigVals, TwoByTwoIdentity, HessianInv);
+            if (verbose){
+                std::cout << "HessianInv row1 " << HessianInv[0] << " , " << HessianInv[1] << std::endl;
+            }
+            // Define boundary set and project off 
+            for (int d=0; d < 2; d++){
+                if ((rts[d] < DISTANCE_EPS && Gradient[d] > 0) || (rts[d] > _L-DISTANCE_EPS && Gradient[d] < 0)){
+                    // Zero out the entry in the gradient and the row and column of the Hessian
+                    for (int HEntry=0; HEntry < 3; HEntry++){
+                        HessianInv[HEntry+d]=0;
+                    }
+                    Gradient[d]=0;
                 }
-                distance = normalize(disp);
-                exteriorDists.push_back(distance);
-                exteriorS1.push_back(s1boundary); 
-                exteriorS2.push_back(s2rt);
             }
-            // Endpoint check
-            for (int iSeg2EP=0; iSeg2EP < 2; iSeg2EP++){
-                double s2boundary=seg2start+_Lseg*iSeg2EP;  
-                InterpolationRow(s2boundary,InterpRow2);  
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
-                for (int d=0; d<3; d++){
-                    disp[d]=X1p[d]-X2p[d];
+            if (verbose){
+                std::cout << "HessianInv 11 " << HessianInv[0] << std::endl;
+            }
+            BlasMatrixProduct(2,2,1,-1.0, 0.0,HessianInv, false, Gradient, DescentDirection);
+            if (verbose){
+                std::cout << "DescentDirection 11 " << DescentDirection[0] << std::endl;
+            }
+            double normDD = sqrt(dot(DescentDirection,DescentDirection));
+            if (normDD > MAX_DESCENT_NORM_OVERL*_L){
+                for (int d=0; d < 2; d++){
+                    DescentDirection[d]*=  MAX_DESCENT_NORM_OVERL*_L/normDD;
                 }
-                distance = normalize(disp);
-                exteriorDists.push_back(distance);
-                exteriorS1.push_back(s1boundary); 
-                exteriorS2.push_back(s2boundary);
-            }
-        } // end loop over s1 boundary pts
-        // Fix the endpoint of segment 2, and check for an interior min on segment 1
-        // and the endpoints of segment 2
-        for (int iSeg2EP=0; iSeg2EP<2; iSeg2EP++){
-            double s2boundary=seg2start+_Lseg*iSeg2EP;
-            Fcn1D = 100;
-            double s1rt = s1star;
-            InterpolationRow(s2boundary,InterpRow2);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
-            int nIts=0;
-            while (abs(Fcn1D) > SMALL_NUM && nIts < MAX_NEWTON_ITS){
-                nIts++;
-                InterpolationRow(s1rt,InterpRow1);
+            }     
+            // Armijo back tracking line search
+            bool armijo=false;
+            double alpha=1;
+            double GradDotDescent = dot(DescentDirection,Gradient);
+            while (!armijo && alpha > SMALL_NUM){
+                if (alpha < SMALL_NUM){
+                    alpha=0;
+                }
+                vec rtguess(2);
+                for (int d=0; d < 2; d++){
+                    rtguess[d]=rts[d]+alpha*DescentDirection[d];
+                    // Projection
+                    if (rtguess[d] < 0){
+                        rtguess[d]=0;
+                    } else if (rtguess[d] > _L){
+                        rtguess[d]=_L;
+                    }
+                }
+                // Evaluate function
+                InterpolationRow(rtguess[0],InterpRow1);
+                InterpolationRow(rtguess[1],InterpRow2);
                 BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DX1,DX1p);
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DSqX1,DSqX1p);
-                Fcn1D = 2*dot(X1p,DX1p)-2*dot(DX1p,X2p);
-                DFcn = 2*(dot(DX1p,DX1p)+dot(DSqX1p,X1p)-dot(DSqX1p,X2p));
-                s1rt = s1rt - Fcn1D/DFcn;
-            }
-            double distance = normalize(disp);
-            if (s1rt > seg1start && s1rt < seg1end){
-                // interior maximum
-                for (int d=0; d<3; d++){
-                    disp[d]=X1p[d]-X2p[d];
+                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
+                for (int d=0; d < 3; d++){
+                    dist[d]=X1p[d]-X2p[d];
                 }
-                distance = normalize(disp);
-                exteriorDists.push_back(distance);
-                exteriorS1.push_back(s1rt); 
-                exteriorS2.push_back(s2boundary);
-            }
-            for (int iSeg1EP=0; iSeg1EP < 2; iSeg1EP++){
-                double s1boundary=seg1start+_Lseg*iSeg1EP;  
-                InterpolationRow(s1boundary,InterpRow1);  
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
-                for (int d=0; d<3; d++){
-                    disp[d]=X1p[d]-X2p[d];
+                distance = sqrt(dot(dist,dist));
+                // The Armijo parameter is 1/2
+                if (dist_before - distance >=-0.5*alpha*GradDotDescent){
+                    armijo=true;
+                    for (int d=0; d < 2; d++){
+                        rts[d]=rtguess[d];
+                    }
+                } else {
+                    alpha=alpha/2;
                 }
-                distance = normalize(disp);
-                exteriorDists.push_back(distance);
-                exteriorS1.push_back(s1boundary); 
-                exteriorS2.push_back(s2boundary);
-            }
-        } // end loop over s2 boundary pts
-        // FIND MINIMUM DIST AND S1 S2 AND RETURN
-        std::vector<double>::iterator it = std::min_element(std::begin(exteriorDists), std::end(exteriorDists));
-        int MinIndex = std::distance(std::begin(exteriorDists), it);
-        ClosePts[0] = exteriorS1[MinIndex];
-        ClosePts[1] = exteriorS2[MinIndex];
-        return exteriorDists[MinIndex];
+            } // End Armijo
+        } // End Newton
+        ClosePts[0] = rts[0];
+        ClosePts[1] = rts[1];
+        return distance;
     }
     
     double DistanceBetweenSegments(const vec3 &Start1,const vec3 &End1,const vec3 &Start2,const vec3 &End2, vec &ClosePts){
@@ -657,6 +806,22 @@ class StericForceEvaluatorC {
         // Multiply by the values -> coefficient matrix
         BlasMatrixProduct(1, _nXPerFib, _nXPerFib,1.0,0.0,EvalCoeffs,false,_ValsToCoeffs,InterpRow); 
     }
+    
+    npDoub makePyByNineArray(vec &cppvec){
+        ssize_t              ndim    = 2;
+        std::vector<ssize_t> shape   = { (long) cppvec.size()/9 , 9 };
+        std::vector<ssize_t> strides = { sizeof(double)*9 , sizeof(double) };
+
+        // return 2-D NumPy array
+        return py::array(py::buffer_info(
+        cppvec.data(),                       /* data as contiguous array  */
+        sizeof(double),                          /* size of one scalar        */
+        py::format_descriptor<double>::format(), /* data type                 */
+        ndim,                                    /* number of dimensions      */
+        shape,                                   /* shape of the matrix       */
+        strides                                  /* strides for each axis     */
+        ));
+    }
         
 
     npDoub makePyDoubleArray(vec &cppvec){
@@ -697,7 +862,7 @@ PYBIND11_MODULE(StericForceEvaluatorC, m) {
         .def("initInterpolationVariables",&StericForceEvaluatorC::initInterpolationVariables)
         .def("initLegQuadVariables",&StericForceEvaluatorC::initLegQuadVariables)
         .def("ForcesFromGlobalUniformBlobs", &StericForceEvaluatorC::ForcesFromGlobalUniformBlobs)
-        .def("ForceFromCloseSegments",&StericForceEvaluatorC::ForceFromCloseSegments);
+        .def("IntervalsOfInteraction",&StericForceEvaluatorC::IntervalsOfInteraction);
 }
 
 
