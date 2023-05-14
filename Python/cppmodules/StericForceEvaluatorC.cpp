@@ -14,7 +14,7 @@
 const double SMALL_NUM = 1e-12;
 const int MAX_NEWTON_ITS = 10;
 const double DISTANCE_EPS = 1e-10;
-const double COND_MAX = 1e3;
+const double COND_MAX = 1e6;
 const double MAX_DESCENT_NORM_OVERL=0.1;
 
 
@@ -92,7 +92,7 @@ class StericForceEvaluatorC {
         std::memcpy(_DiffMat.data(),DiffMat.data(),DiffMat.size()*sizeof(double));         
     }
     
-    void initLegQuadVariables(int NPtsPerStd, npDoub xLeg, npDoub wLeg){
+    void initLegQuadVariables(double NPtsPerStd, npDoub xLeg, npDoub wLeg){
         _NPtsPerStd = NPtsPerStd;
          _LegPts = vec(xLeg.size());
         std::memcpy(_LegPts.data(),xLeg.data(),xLeg.size()*sizeof(double));
@@ -334,7 +334,8 @@ class StericForceEvaluatorC {
         std::memcpy(SegEPs.data(),pyEndpoints.data(),pyEndpoints.size()*sizeof(double));
 
         int nPairs = SegmentPairs.size()/2;
-        vec InteractionIntervals(9*nPairs,-1); 
+        int nCol=9;
+        vec InteractionIntervals(nCol*nPairs,-1); 
         // 9 entries in this array: (iFib, start_i, end_i, jFib, start_j, end_j, PeriodicShift (3))
         #pragma omp parallel for num_threads(_nThreads)
         for (int iPair=0; iPair < nPairs; iPair++){
@@ -434,21 +435,40 @@ class StericForceEvaluatorC {
                     double ee = -dot(tau1,tau2);
                     double ff = dot(disp,disp)-_dcut*_dcut;
                     double s1disc = sqrt(pow(8*dd*ee-8*cc*bb,2)-4*(4*ee*ee-4*aa*bb)*(4*dd*dd-4*bb*ff));
+                    if (isnan(s1disc)){
+                        s1disc=0;
+                    }
                     double s1plus = ((8*cc*bb-8*dd*ee)+s1disc)/(8*ee*ee-8*aa*bb);
                     double s1minus= ((8*cc*bb-8*dd*ee)-s1disc)/(8*ee*ee-8*aa*bb);
                     double Deltas1 = std::max(abs(s1plus),abs(s1minus));
                     double s2disc = sqrt(pow(8*cc*ee-8*aa*dd,2)-4*(4*ee*ee-4*aa*bb)*(4*cc*cc-4*aa*ff));
+                    if (isnan(s2disc)){
+                        s2disc=0;
+                    }
                     double s2plus = ((8*dd*aa-8*cc*ee)+s2disc)/(8*ee*ee-8*aa*bb);
                     double s2minus = ((8*dd*aa-8*cc*ee)-s2disc)/(8*ee*ee-8*aa*bb);
                     double Deltas2 = std::max(abs(s2minus),abs(s2plus));
-                    InteractionIntervals[9*iPair] = iFib;
-                    InteractionIntervals[9*iPair+1] = std::max(s1star-Deltas1,0.0);
-                    InteractionIntervals[9*iPair+2] = std::min(s1star+Deltas1,_L);
-                    InteractionIntervals[9*iPair+3] = jFib;
-                    InteractionIntervals[9*iPair+4] = std::max(s2star-Deltas2,0.0);
-                    InteractionIntervals[9*iPair+5] = std::min(s2star+Deltas2,_L);
+                    InteractionIntervals[nCol*iPair] = iFib;
+                    InteractionIntervals[nCol*iPair+1] = std::max(s1star-Deltas1,0.0);
+                    InteractionIntervals[nCol*iPair+2] = std::min(s1star+Deltas1,_L);
+                    InteractionIntervals[nCol*iPair+3] = jFib;
+                    InteractionIntervals[nCol*iPair+4] = std::max(s2star-Deltas2,0.0);
+                    InteractionIntervals[nCol*iPair+5] = std::min(s2star+Deltas2,_L);
+                    if (isnan(Deltas1) || isnan(Deltas2)){
+                        std::cout << iFib << std::endl;
+                        std::cout << jFib << std::endl;
+                        std::cout << s1star << std::endl;
+                        std::cout << s2star << std::endl;
+                        std::cout << aa << std::endl;
+                        std::cout << bb << std::endl;
+                        std::cout << cc << std::endl;
+                        std::cout << dd << std::endl;
+                        std::cout << ee << std::endl;
+                        std::cout << ff << std::endl;
+                        throw std::runtime_error("Nan delta");
+                    }
                     for (int d=0; d < 3; d++){
-                        InteractionIntervals[9*iPair+6+d]=PeriodicShift[d];
+                        InteractionIntervals[nCol*iPair+6+d]=PeriodicShift[d];
                     }
                 } // end if curv dist < cutoff
             } // end if linear distance < cutoff + safety
@@ -456,61 +476,48 @@ class StericForceEvaluatorC {
         //std::cout << "Number of pairs " << nPairs << std::endl;
         //std::cout << "Segments under curve " << nUnderCurve << std::endl;
         //std::cout << "Number good pairs " << nGood << std::endl;
-        return makePyByNineArray(InteractionIntervals);
+        return makeNineByArray(InteractionIntervals);
     }
     
-    py::array MergeRepeatedIntervals(npDoub pyRepeatedPairs, npInt pynAdditionalIntervals){
+    py::array MergeRepeatedIntervals(npDoub pyRepeatedPairs){
         /*
         Merge repeated intervals of interaction. The inputs are RepeatedPairs, which is a
-        list of intervals. The first N intervals are those that repeat after entry N. 
-        The entries in nAdditionalIntervals, which is an N x 1 array, tell us how many times
-        each of the repeated pairs repeats (after entry N). 
+        list of intervals sorted such that (iFib,jFib) repeats in order of increasing s1 (the
+        start of the interval on iFib). 
         Each row of RepeatedPairs has 9 entries in this array: (iFib, start_i, end_i, jFib, start_j, end_j, PeriodicShift (3))
         */
         // Convert numpy to C++ vector
         vec RepeatedPairs(pyRepeatedPairs.size());
         std::memcpy(RepeatedPairs.data(), pyRepeatedPairs.data(),pyRepeatedPairs.size()*sizeof(double));
-        intvec nAdditionalIntervals(pynAdditionalIntervals.size());
-        std::memcpy(nAdditionalIntervals.data(),pynAdditionalIntervals.data(),pynAdditionalIntervals.size()*sizeof(int));
+        int nCol=9;
+        int nIntervals = RepeatedPairs.size()/nCol;
+        int iInterval = 0;
 
-        int nPairs = nAdditionalIntervals.size();
         vec NewPairs;
-        int StartRepeats=nPairs;
-        for (int iPair=0; iPair < nPairs; iPair++){
-            // Sort intervals by increasing x1
-            int nTotalInts = 1+nAdditionalIntervals[iPair];
-            intvec PairInts(nTotalInts,iPair);
-            vec Starts1s(nTotalInts,RepeatedPairs[9*iPair+1]);
-            for (int iInt=0; iInt < nAdditionalIntervals[iPair]; iInt++){
-                PairInts[iInt+1]= StartRepeats+iInt;
-                Starts1s[iInt+1] = RepeatedPairs[9*PairInts[iInt+1]+1];
-            }
-            StartRepeats+=nAdditionalIntervals[iPair];
-            // Now we have a vector of the indices and a vector of the s1 locations
-            // corresponding to those indices. Now we just need to sort
-            
-            // THIS SORT STEP IS NOT RIGHT AND IT'S VERY ANNOYING. 
-            // There is some memory leak here
-            //std::sort(PairInts.begin(), PairInts.end(), compare_indirect_index <decltype(Starts1s)> ( Starts1s ) );
+        while (iInterval < nIntervals){
+            int iFib0 = RepeatedPairs[nCol*iInterval];
+            int jFib0 = RepeatedPairs[nCol*iInterval+3];
             // Push back the first interval
-            vec JoinedIntervals(9);
-            for (int iE=0; iE < 9; iE++){
-                JoinedIntervals[iE]=RepeatedPairs[PairInts[0]*9+iE];
+            vec JoinedIntervals(nCol);
+            for (int iE=0; iE < nCol; iE++){
+                JoinedIntervals[iE]=RepeatedPairs[iInterval*nCol+iE];
             }
             //std::cout << JoinedIntervals[1] << std::endl;
             int nJoined=1;
-            for (int iInt = 0; iInt < nAdditionalIntervals[iPair]; iInt++){
-                int indToCheck = PairInts[iInt+1];
-                double s1start = RepeatedPairs[9*indToCheck+1];
-                double s1end = RepeatedPairs[9*indToCheck+2];
-                double s2start = RepeatedPairs[9*indToCheck+4];
-                double s2end = RepeatedPairs[9*indToCheck+5];
+            iInterval++;
+            int iFib = RepeatedPairs[nCol*iInterval];
+            int jFib = RepeatedPairs[nCol*iInterval+3];
+            while (iFib == iFib0 && jFib==jFib0){
+                double s1start = RepeatedPairs[nCol*iInterval+1];
+                double s1end = RepeatedPairs[nCol*iInterval+2];
+                double s2start = RepeatedPairs[nCol*iInterval+4];
+                double s2end = RepeatedPairs[nCol*iInterval+5];
                 bool DisjointFromAll = true;
                 for (int jInt = 0; jInt < nJoined; jInt++){
-                    double Rs1start = JoinedIntervals[9*jInt+1];
-                    double Rs1end = JoinedIntervals[9*jInt+2];
-                    double Rs2start = JoinedIntervals[9*jInt+4];
-                    double Rs2end = JoinedIntervals[9*jInt+5];
+                    double Rs1start = JoinedIntervals[nCol*jInt+1];
+                    double Rs1end = JoinedIntervals[nCol*jInt+2];
+                    double Rs2start = JoinedIntervals[nCol*jInt+4];
+                    double Rs2end = JoinedIntervals[nCol*jInt+5];
                     // Determine if intervals are disjoint
                     // We are checking overlap between 
                     // [s1start,s1end] x [Rs1start, Rs1end] AND 
@@ -523,22 +530,25 @@ class StericForceEvaluatorC {
                         // in increasing order of s1, there will be no double
                         // counting
                         DisjointFromAll= false;
-                        JoinedIntervals[9*jInt+1] = std::min(s1start,Rs1start);
-                        JoinedIntervals[9*jInt+2] = std::max(s1end,Rs1end);
-                        JoinedIntervals[9*jInt+4] = std::min(s2start,Rs2start);
-                        JoinedIntervals[9*jInt+5] = std::max(s2end,Rs2end);
+                        JoinedIntervals[nCol*jInt+1] = std::min(s1start,Rs1start);
+                        JoinedIntervals[nCol*jInt+2] = std::max(s1end,Rs1end);
+                        JoinedIntervals[nCol*jInt+4] = std::min(s2start,Rs2start);
+                        JoinedIntervals[nCol*jInt+5] = std::max(s2end,Rs2end);
                     }
                 }
                 if (DisjointFromAll) { 
-                    for (int iE=0; iE < 9; iE++){
-                        JoinedIntervals.push_back(RepeatedPairs[indToCheck*9+iE]);
+                    for (int iE=0; iE < nCol; iE++){
+                        JoinedIntervals.push_back(RepeatedPairs[iInterval*nCol+iE]);
                     }
                     nJoined++;
                 }
+                iInterval++;
+                iFib = RepeatedPairs[nCol*iInterval];
+                jFib = RepeatedPairs[nCol*iInterval+3];
             } // end loop over intervals for a pair
             NewPairs.insert(NewPairs.end(),JoinedIntervals.begin(),JoinedIntervals.end());
         } // end loop over pairs
-        return makePyByNineArray(NewPairs);
+        return makeNineByArray(NewPairs);
     }
     
     private:
@@ -553,7 +563,7 @@ class StericForceEvaluatorC {
     double _SegmentCutoff, _L, _Lseg, _NewtonTol;
     vec _sC, _REndpoint, _RMidpoint, _ValsToCoeffs, _DiffMat;
     // Variables for Legendre quad
-    int _NPtsPerStd;
+    double _NPtsPerStd;
     vec _LegPts, _LegWts;
     
     double dUdrGaussian(double nr){
@@ -783,10 +793,10 @@ class StericForceEvaluatorC {
         return data[a]>data[b];
     }
     
-    npDoub makePyByNineArray(vec &cppvec){
+    npDoub makeNineByArray(vec &cppvec){
         ssize_t              ndim    = 2;
         std::vector<ssize_t> shape   = { (long) cppvec.size()/9 , 9 };
-        std::vector<ssize_t> strides = { sizeof(double)*9 , sizeof(double) };
+        std::vector<ssize_t> strides = {9*sizeof(double) , sizeof(double) };
 
         // return 2-D NumPy array
         return py::array(py::buffer_info(

@@ -4,7 +4,7 @@ from warnings import warn
 from SpatialDatabase import CellLinkedList
 from StericForceEvaluatorC import StericForceEvaluatorC
 import time
-verbose = 1;
+verbose = -1;
 
 # Documentation last updated: 02/25/2023
 
@@ -91,6 +91,8 @@ class StericForceEvaluator(object):
         (optional, if not passed code will use the size of the fibers), and 
         whether to exclude the self term from the interactions
         """
+        if (self._DontEvalContact):
+            return np.zeros((0,2)), 0;
         if (verbose > 0):
             thist = time.time();
         if (Cutoff is None):
@@ -105,10 +107,10 @@ class StericForceEvaluator(object):
             delInds = np.arange(len(Fibs[:,0]));
             ClosePts = np.delete(uniNeighbs,delInds[Fibs[:,0]==Fibs[:,1]],axis=0);
             return ClosePts, Xuniform;
-        return uniNeighbs, Xuniform
         if (verbose > 0):
             print('Neighbor search and organize time %f ' %(time.time()-thist))  
             thist = time.time();
+        return uniNeighbs, Xuniform
     
     def CheckIntersectWithPrev(self,fibList,iFib,Dom,nDiameters):
         """
@@ -160,7 +162,7 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
     
     """
     
-    def __init__(self,nFib,Nx,Nunisites,fibDisc,X,Dom,radius,kbT,Nsegments,nThreads=1):
+    def __init__(self,nFib,Nx,Nunisites,fibDisc,X,Dom,radius,kbT,Nsegments,NumQuadPointsPerStd=1,nThreads=1):
         super().__init__(nFib,Nx,Nunisites,fibDisc,X,Dom,radius,kbT,nThreads);
         # Initialize parts of the code pertaining to SEGMENTS
         self._Nseg = Nsegments;
@@ -175,7 +177,6 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         self._MidpointNeighborSearcher = CellLinkedList(SegMidpoints,Dom,nThreads);
         # Initialize code pertaining to quadrature on the segments (number of points and ds)
         self._CppEvaluator.initInterpolationVariables(fibDisc._sX, fibDisc.StackedValsToCoeffsMatrix(),fibDisc.DiffXMatrix());
-        NumQuadPointsPerStd = 1;
         self.PretabulateGL(NumQuadPointsPerStd);
         
     def PretabulateGL(self,NumQuadPointsPerStd):
@@ -185,7 +186,7 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         in the quadrature, then computes all grid sizes up to that size. The result goes
         into a big array of points and weights which gets passed to C++. 
         """
-        MaxPts = int(self._Lseg/self._delta*NumQuadPointsPerStd)+1;
+        MaxPts = int((self._Lseg*self._Nseg)/self._delta*NumQuadPointsPerStd)+1;
         TotNum = int((1+MaxPts)*MaxPts/2);
         StartIndex=0;
         AllGLPts = np.zeros(TotNum);
@@ -221,12 +222,44 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         if (verbose > 0):
             print('Time for post-process to remove adjacent segments %f ' %(time.time()-tiii))
             tiii = time.time();
-        # Pass the list of segments to C++ for processiing (see the method there)
+        # Step 2: Use Newton's method to identify regions on the fibers that are interacting
+        # This will return some repeats
         SegEndpoints = self._CppEvaluator.getUniformPoints(X,'e')
-        StericForce = self._CppEvaluator.ForceFromCloseSegments(SegmentNeighbs,X,SegMidpoints,SegEndpoints,Dom.getg())
+        InteractionInts = self._CppEvaluator.IntervalsOfInteraction(SegmentNeighbs,X,SegMidpoints,SegEndpoints,Dom.getg())
         if (verbose > 0):
-            print('Time for force calc %f ' %(time.time()-tiii))
-        return StericForce
+            print('Time for to find intervals of interaction %f ' %(time.time()-tiii))
+            tiii = time.time();
+        # Step 3: Use Python machinery to remove repeats, then C++ to merge intervals for quadrature
+        InteractionInts = InteractionInts[InteractionInts[:,0]!=-1,:] # C++ returns rows of -1 when the pair is not interacting
+        # The unique row that gets chosen is different between Matlab and C++. For this reason the
+        # difference between the two codes will be larger than machine precision
+        TolForUniqueRow = self._CppEvaluator.getNewtonTol()*10;
+        IntegerInteractionInts = InteractionInts/TolForUniqueRow;
+        IntegerInteractionInts = IntegerInteractionInts.astype(int);
+        _,inds=np.unique(IntegerInteractionInts,return_index=True,axis=0);
+        nPairs = len(inds);
+        InteractionInts=InteractionInts[inds,:];
+        iFibjFib = np.concatenate(([InteractionInts[:,0]],[InteractionInts[:,3]]),axis=0).T
+        iFibjFib, UniqueInds, numberOfPairs = np.unique(iFibjFib, return_index=True, return_counts=True,axis=0);
+        ExactlyOnePairs = InteractionInts[UniqueInds[numberOfPairs==1],:];
+        RepeatedPairs = InteractionInts[np.concatenate((UniqueInds[numberOfPairs>1],np.setdiff1d(np.arange(nPairs),UniqueInds))),:];
+        # Sort the repeated pairs
+        # Sort by (iFib, jFib, s1start) in that order
+        RepeatedPairs = RepeatedPairs[RepeatedPairs[:,1].argsort()] # First sort doesn't need to be stable.
+        RepeatedPairs = RepeatedPairs[RepeatedPairs[:,3].argsort(kind='mergesort')]
+        RepeatedPairs = RepeatedPairs[RepeatedPairs[:,0].argsort(kind='mergesort')]
+        MergedRepeats = self._CppEvaluator.MergeRepeatedIntervals(RepeatedPairs)
+        AllIntervals = np.concatenate((ExactlyOnePairs,MergedRepeats),axis=0)
+        if (verbose > 0):
+            print('Time for to python post-process %f ' %(time.time()-tiii))
+            tiii = time.time();
+        # Step 4: Calculate forces from intervals
+        iFibjFib = AllIntervals[:,[0, 3]];
+        ArclengthIntervals =  AllIntervals[:,[1,2,4,5]];
+        Forces = self._CppEvaluator.ForceFromIntervals(iFibjFib, X, AllIntervals[:,6:9],ArclengthIntervals);
+        if (verbose > 0):
+            print('Time for to compute forces %f ' %(time.time()-tiii))
+        return Forces
         
     def mapSegToFiber(self,segs):
         """
