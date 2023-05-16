@@ -54,6 +54,35 @@ void eval_Cheb3Dirs(const vec &fhat, double t, vec3 &results){
     }
 }
 
+void RecursiveCheb3Eval(const vec &fhat, double t, vec3 &results){
+    /**
+    Evaluate three Chebyshev polynomials in each of 3 directions (x,y,z)
+    This method is used to evaluate centerline velocities and force densties. 
+    @param fhat = the coefficients of the Chebyshev serieses (as a row stacked vector)
+    @param t = the double on [-1,1] where we evaluate the Chebyshev series
+    @param results = the value of the Chebyshev series as a 3 vector at the coordinate t 
+    (modified here). This method uses recursive evaluation (faster)
+    **/
+
+    double pjm2=1.0;
+    double pjm1=t;
+    int N = fhat.size()/3;
+    
+    for (int d=0; d < 3; d++){
+        results[d]=fhat[d]*pjm2+fhat[3+d]*pjm1;
+    }
+        
+    for (int j = 1; j < N-1; j++){
+        double pj= 2*t*pjm1-pjm2;
+        for (int d=0; d < 3; d++){
+            results[d]+=fhat[3*(j+1)+d]*pj;
+        }
+        pjm2=pjm1;
+        pjm1=pj;
+    }
+
+}
+
 void EvalChebRow(double s, double L, vec &EvalMatrix){
     /**
     @param t = the double on [-1,1] where we evaluate the Chebyshev series 

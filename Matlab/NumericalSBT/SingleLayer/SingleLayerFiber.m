@@ -2,7 +2,7 @@
 % with Johnson
 % Discretization on centerline
 addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
-clear;
+%clear;
 BI=1;
 SBT=1;
 %% Solve with bundary integral method
@@ -12,7 +12,7 @@ rot=1;
 if (BI)
 index=1;
 L = 2;
-a = 40e-3;
+a = 80e-3;
 Ns = 200;
 for N= Ns
 mu = 1;
@@ -30,6 +30,7 @@ Drho = -s./sqrt(1-s.^2);
 Nt=Nthet*N;
 M = zeros(3*Nt);
 U3 = zeros(Nt,3);
+X3 = zeros(Nt,3);
 TanVecs = zeros(Nt,3);
 RhoHats = zeros(Nt,3);
 for iN=1:N
@@ -49,55 +50,57 @@ for iN=1:N
         rhohat_s = dn1(iN,:)*cos(itheta)+dn2(iN,:)*sin(itheta);
         Xi = Xic + radius(iN)*iRhoHat;
         X3(iindex,:)=Xi;
-        % Compute effective spheriod
-        efflength = 1+a*rho(iN)*dot(Xs(iN,:),rhohat_s);
-        %findase = @(cse)([cse(1)*sqrt(1-cse(2)^2)-a*rho(iN) cse(1)*cse(2)/sqrt(1-cse(2)^2)+a*Drho(iN)]);
-        %cseroots = fsolve(findase,[a s(iN)]);
-        %c = cseroots(1); se = cseroots(2);
-        if (abs(Drho(iN)) > 1e-10)
-            se = (rho(iN) - sqrt(rho(iN)^2 + 4*Drho(iN)^2))/(2*Drho(iN));
-            c = a*rho(iN)/sqrt(1-se^2);
-        else
-            se = 0;
-            c = a*rho(iN);
-        end
-        ecc = sqrt(1-c^2/efflength^2);
-        Rat=log((1+ecc)/(1-ecc));
-        ResistancePar = 16*pi*efflength*ecc^3*mu/((1+ecc^2)*Rat-2*ecc);
-        ResistancePerp = 32*pi*efflength*ecc^3*mu/((3*ecc^2-1)*Rat+2*ecc);
-        ParCoeff = 4*pi/ResistancePar;
-        PerpCoeff = 4*pi/ResistancePerp;
-        Ans2 = ParCoeff*Xs(iN,:)'*Xs(iN,:)+PerpCoeff*(eye(3)-Xs(iN,:)'*Xs(iN,:));
-        sprime = se;
-        Xisph = efflength*(sprime-se)*Xs(iN,:)+c*sqrt(1-sprime^2)*iRhoHat+Xic;
-        for jN=1:N
-            for jT=1:Nthet
-                jindex = (jN-1)*Nthet+jT;
-                Xjc = X(jN,:);
-                jtheta = jT*dtheta;
-                jRhoHat = n1(jN,:)*cos(jtheta)+n2(jN,:)*sin(jtheta);
-                Xj = Xjc + radius(jN)*jRhoHat;
-                sprime = s(jN);
-                Xjsph = efflength*(sprime-se)*Xs(iN,:)+c*sqrt(1-sprime^2)*jRhoHat+Xic;
-                R = Xi-Xj;
-                Re = Xisph-Xjsph;
-                nR = norm(R);
-                nRe = norm(Re);
-                nRs(jN)=nR;
-                nRes(jN)=nRe;
-                if (nR > 1e-12)
-                    M(3*iindex-2:3*iindex,3*jindex-2:3*jindex) = 1/(8*pi*mu)*(eye(3)/nR+R'*R/nR^3)...
-                        *w(jN)*dtheta;
-                end
-                if (nRe > 1e-12)
-                    M(3*iindex-2:3*iindex,3*iindex-2:3*iindex) = M(3*iindex-2:3*iindex,3*iindex-2:3*iindex)...
-                        -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*w(jN)*dtheta;
-                end
-            end
-        end
-        M(3*iindex-2:3*iindex,3*iindex-2:3*iindex) =M(3*iindex-2:3*iindex,3*iindex-2:3*iindex)+Ans2;
     end
 end
+%         % Compute effective spheriod
+%         efflength = 1+a*rho(iN)*dot(Xs(iN,:),rhohat_s);
+%         %findase = @(cse)([cse(1)*sqrt(1-cse(2)^2)-a*rho(iN) cse(1)*cse(2)/sqrt(1-cse(2)^2)+a*Drho(iN)]);
+%         %cseroots = fsolve(findase,[a s(iN)]);
+%         %c = cseroots(1); se = cseroots(2);
+%         if (abs(Drho(iN)) > 1e-10)
+%             se = (rho(iN) - sqrt(rho(iN)^2 + 4*Drho(iN)^2))/(2*Drho(iN));
+%             c = a*rho(iN)/sqrt(1-se^2);
+%         else
+%             se = 0;
+%             c = a*rho(iN);
+%         end
+%         ecc = sqrt(1-c^2/efflength^2);
+%         Rat=log((1+ecc)/(1-ecc));
+%         ResistancePar = 16*pi*efflength*ecc^3*mu/((1+ecc^2)*Rat-2*ecc);
+%         ResistancePerp = 32*pi*efflength*ecc^3*mu/((3*ecc^2-1)*Rat+2*ecc);
+%         ParCoeff = 4*pi/ResistancePar;
+%         PerpCoeff = 4*pi/ResistancePerp;
+%         Ans2 = ParCoeff*Xs(iN,:)'*Xs(iN,:)+PerpCoeff*(eye(3)-Xs(iN,:)'*Xs(iN,:));
+%         sprime = se;
+%         Xisph = efflength*(sprime-se)*Xs(iN,:)+c*sqrt(1-sprime^2)*iRhoHat+Xic;
+%         for jN=1:N
+%             for jT=1:Nthet
+%                 jindex = (jN-1)*Nthet+jT;
+%                 Xjc = X(jN,:);
+%                 jtheta = jT*dtheta;
+%                 jRhoHat = n1(jN,:)*cos(jtheta)+n2(jN,:)*sin(jtheta);
+%                 Xj = Xjc + radius(jN)*jRhoHat;
+%                 sprime = s(jN);
+%                 Xjsph = efflength*(sprime-se)*Xs(iN,:)+c*sqrt(1-sprime^2)*jRhoHat+Xic;
+%                 R = Xi-Xj;
+%                 Re = Xisph-Xjsph;
+%                 nR = norm(R);
+%                 nRe = norm(Re);
+%                 nRs(jN)=nR;
+%                 nRes(jN)=nRe;
+%                 if (nR > 1e-12)
+%                     M(3*iindex-2:3*iindex,3*jindex-2:3*jindex) = 1/(8*pi*mu)*(eye(3)/nR+R'*R/nR^3)...
+%                         *w(jN)*dtheta;
+%                 end
+%                 if (nRe > 1e-12)
+%                     M(3*iindex-2:3*iindex,3*iindex-2:3*iindex) = M(3*iindex-2:3*iindex,3*iindex-2:3*iindex)...
+%                         -1/(8*pi*mu)*(eye(3)/nRe+Re'*Re/nRe^3)*w(jN)*dtheta;
+%                 end
+%             end
+%         end
+%         M(3*iindex-2:3*iindex,3*iindex-2:3*iindex) =M(3*iindex-2:3*iindex,3*iindex-2:3*iindex)+Ans2;
+%     end
+% end
 Allf = reshape(M \ reshape(U3',3*Nt,1),3,Nt)';
 % Integrate over theta to get centerline force and parallel torque
 favg = zeros(N,3);
@@ -128,7 +131,7 @@ end
 %% Estimate error using forward SBT operator with various k
 % (assumes an ellipsoidal fiber)
 if (SBT)
-ks = [2 2.5 2.85 3];
+ks = [1 2 2.5 2.85 3];
 UEr = zeros(index-1,length(ks));
 OmEr = zeros(index-1,length(ks));
 normForceEr = zeros(index-1,length(ks));

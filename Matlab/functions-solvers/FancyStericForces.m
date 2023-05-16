@@ -49,8 +49,6 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
     %% Use Newton to identify which segments are truly interacting 
     % and then use quadratic approximation to find domain to integrate over
     [nPairs,~] =size(AllPairs);
-    ToIntegrate=[];
-    ToIntegrateRows=[];
     AllPairsAndIntervals=[];
     tic
     for iPair=1:nPairs
@@ -81,10 +79,8 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
             nUnderCurve=nUnderCurve+1;
             s1star = sSeg1*Lseg+(iSegMod-1)*Lseg;
             s2star = sSeg2*Lseg+(jSegMod-1)*Lseg;
-            [distance,s1star,s2star]=DistanceTwoFibCurves(X1,X2,s1star,s2star,L,s,b,D,tol/5);
+            [distance,s1star,s2star]=DistanceTwoFibCurves(X1,X2,s1star,s2star,L,s,b,D,tol/10);
             if (distance < cutoff)
-                ToIntegrate =[ToIntegrate; iFib jFib s1star s2star];
-                ToIntegrateRows = [ToIntegrateRows; iFib jFib floor(s1star/tol) floor(s2star/tol)];
                 pt1 = barymat(s1star,s,b)*X1;
                 pt2 = barymat(s2star,s,b)*X2;
                 disp = pt1-pt2;
@@ -100,10 +96,16 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
                 ee = -dot(tau1,tau2);
                 ff = dot(disp,disp)-cutoff^2;
                 s1disc = sqrt((8*dd*ee-8*cc*bb)^2-4*(4*ee^2-4*aa*bb)*(4*dd^2-4*bb*ff));
+                if (abs(imag(s1disc)) > 0)
+                    s1disc=0;
+                end
                 s1plus = ((8*cc*bb-8*dd*ee)+s1disc)/(8*ee^2-8*aa*bb);
                 s1minus= ((8*cc*bb-8*dd*ee)-s1disc)/(8*ee^2-8*aa*bb);
                 Deltas1 = max(abs(s1plus),abs(s1minus));
                 s2disc = sqrt((8*cc*ee-8*aa*dd)^2-4*(4*ee^2-4*aa*bb)*(4*cc^2-4*aa*ff));
+                if (abs(imag(s2disc)) > 0)
+                    s2disc=0;
+                end
                 s2plus = ((8*dd*aa-8*cc*ee)+s2disc)/(8*ee^2-8*aa*bb);
                 s2minus = ((8*dd*aa-8*cc*ee)-s2disc)/(8*ee^2-8*aa*bb);
                 %s2plus = 1/(2*bb)*(-2*dd-2*ee*s1plus);
@@ -113,7 +115,7 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
                 s2Interval = [max(s2star-Deltas2,0) min(s2star+Deltas2,L)];
                 AllPairsAndIntervals = [AllPairsAndIntervals;...
                     iFib s1Interval jFib s2Interval PeriodicShifts(iPair,:)];
-%                 if (iFib==13 && jFib==66)
+%                 if (iFib==28 && jFib==146)
 %                 Rpl=barymat((0:0.001:L)',s,b);
 %                 plot3(Rpl*X1(:,1),Rpl*X1(:,2),Rpl*X1(:,3),'LineWidth',1)
 %                 hold on
@@ -123,7 +125,7 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
 %                 Rpl=barymat((s2Interval(1):0.001:s2Interval(2))',s,b);
 %                 plot3(Rpl*X2(:,1),Rpl*X2(:,2),Rpl*X2(:,3),'LineWidth',5)
 %                 plot3(pt1(1),pt1(2),pt1(3),'o')
-%                 plot3(pt2(1),pt2(2),pt2(3),'o')
+%                 plot3(pt1(1),pt1(2),pt1(3),'o')
 %                 keyboard
 %                 end
             end
@@ -132,7 +134,8 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
     toc
     
     %% Remove duplicates, and merge intervals for quadrature
-    [~,inds] = unique(ToIntegrateRows,'rows');
+    IntArray = floor(AllPairsAndIntervals/tol);
+    [~,inds] = unique(IntArray,'rows');
     AllPairsAndIntervals= AllPairsAndIntervals(inds,:);
     % Take unions where there are multiple different intervals
     iFibjFib=[AllPairsAndIntervals(:,1) AllPairsAndIntervals(:,4)];
@@ -148,10 +151,13 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
         % Remove from the unique version (to add back later)
         NewPairsAndIntervals(iFib==NewPairsAndIntervals(:,1) & ...
             jFib==NewPairsAndIntervals(:,4),:)=[];
-        % Sort intervals by where they start in x direction
+        % Sort intervals by where they start in x direction (AUTOMATIC)
         IntervalsToSort = AllPairsAndIntervals(iFib==iFibjFib(:,1) ...
             & jFib==iFibjFib(:,2),:);
         [~,inds]=sort(IntervalsToSort(:,2),'ascend');
+%         if (max(abs(inds-(1:length(IntervalsToSort(:,2)))')) > 0)
+%             keyboard
+%         end
         IntervalsToSort=IntervalsToSort(inds,:);
         JoinedIntervals=IntervalsToSort(1,:);
         nJoined=1;

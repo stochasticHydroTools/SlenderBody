@@ -76,8 +76,8 @@ XForMrrp2 = RNp1ToPsip2*reshape(Xt(1:3*Nx),3,[])';
 XForMrr = RNp1ToPsi*reshape(Xt(1:3*Nx),3,[])';
 
 asympRR=1;
-Mrr_Psip2 = RotRotMobilityMatrix(XForMrrp2,a,L,mu,sPsip2,bPsip2,DPsip2,[],[],1,deltaLocal);
-Mrr = RotRotMobilityMatrix(XForMrr,a,L,mu,sPsi,bPsi,DPsi,[],[],1,deltaLocal);
+Mrr_Psip2 = RotRotMobilityMatrix(XForMrrp2,a,Lfacs(1)*L,mu,sPsip2,bPsip2,DPsip2,[],[],1,deltaLocal);
+Mrr = RotRotMobilityMatrix(XForMrr,a,Lfacs(1)*L,mu,sPsi,bPsi,DPsi,[],[],1,deltaLocal);
 BCanswers = zeros(12*nFib,1);
 % s = 0 end: can be either free or clamped
 XBCMat =  FreeBCMatrix(0,sNp5,bNp5,DNp5);
@@ -137,6 +137,12 @@ end
 if (twmod==0 || initZeroTheta)
     theta0 = zeros(nFib*N,1);
     theta_s = zeros(nFib*Npsi,1);
+elseif (exist('nTurnsPerMicron','var'))
+    theta_s = nTurnsPerMicron*2*pi*ones(Npsi,1);
+    theta0 = pinv(D)*RPsiToN*theta_s;
+    theta0 = theta0-barymat(L/2,s,b)*theta0;
+    theta0 = repmat(theta0,nFib,1);
+    theta_s = repmat(theta_s,nFib,1);
 else
     theta_s = TurnFreq/twmod*pinv(DPsi)*(Mrr \ ones(Npsi,1));
     theta_s = theta_s-barymat(L,sPsi,bPsi)*theta_s;

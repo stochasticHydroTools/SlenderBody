@@ -259,7 +259,7 @@ class fiberCollection(object):
         Local = self.LocalVelocity(X,TotalForce);
         nonLocal = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval);
         res = (Local+nonLocal+U0+UAdd)-Kalph;
-        print('In check residuals, max Kalph %f and res %f' %(np.amax(np.abs(Kalph)),np.amax(np.abs(res))))
+        #print('In check residuals, max Kalph %f and res %f' %(np.amax(np.abs(Kalph)),np.amax(np.abs(res))))
         return res;
         
     def Mobility(self,LamAlph,impcodt,X,Xs,Dom,RPYEval):

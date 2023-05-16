@@ -10,7 +10,7 @@ from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
 itercap = 100; # cap on GMRES iterations if we converge all the way
-GMREStolerance=1e-6; # larger than GPU tolerance
+GMREStolerance=1e-3; # larger than GPU tolerance
 verbose = -1;
 
 # Documentation last updated: 03/12/2021
@@ -135,7 +135,11 @@ class TemporalIntegrator(object):
             Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
                    ExForces=np.zeros(BlockOne)),dtype=np.float64);
             SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
-            Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=GMREStolerance,maxiter=giters)
+            gtol = GMREStolerance;
+            if (iT%1000==0):
+                gtol=1e-6;
+                giters=100;
+            Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=gtol,maxiter=giters)
             lamalphT = Solution.xk;
             itsneeded = len(Solution.resnorms)
             if (verbose > 0): 
@@ -147,12 +151,14 @@ class TemporalIntegrator(object):
                 resno = Solution.resnorms
                 print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
             lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
-            print('RHS max %f' %np.amax(np.abs(RHS)))
+            #print('RHS max %f' %np.amax(np.abs(RHS)))
             res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
-            print(np.amax(np.abs(res)))
+            #print(np.amax(np.abs(res)))
             resno = Solution.resnorms
-            print('Last residual %1.2E' %resno[len(resno)-1])
-            #np.savetxt('Resid.txt',Solution.resnorms)
+            #print(resno)
+            #print('Last residual %1.2E' %resno[len(resno)-1])
+            if (iT%1000==0):
+                np.savetxt('Resid'+str(iT)+'.txt',Solution.resnorms)
             #np.savetxt('LamAlph.txt',lamalph)
             #import sys
             #sys.exit()

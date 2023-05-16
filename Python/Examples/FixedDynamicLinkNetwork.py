@@ -74,11 +74,13 @@ if (nonLocal==1):
 
 # Initialize the fiber list (straight fibers)
 nStericPts = int(1/eps);
-#StericEval = StericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,nThr);
-Nseg=10;
-StericEval = SegmentBasedStericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,Nseg,nThr);
+if (NsegForSterics > 0):
+    StericEval = SegmentBasedStericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,NsegForSterics,nThreads=nThr);
+else: 
+    StericEval = StericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,nThr);
 if (not Sterics):
     StericEval._DontEvalForce = True;
+    StericEval._DontEvalContact = True;
     
 np.random.seed(seed);
 fibList = [None]*nFib;
@@ -104,7 +106,11 @@ else:
 # Number of GMRES iterations for nonlocal solves
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
-TIntegrator.setMaxIters(1);
+if (nonLocal==1):
+    TIntegrator.setMaxIters(2);
+else:
+    TIntegrator.setMaxIters(1);
+
 
 # Prepare the output file and write initial locations
 np.random.seed(seed);

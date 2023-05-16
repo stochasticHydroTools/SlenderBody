@@ -4,7 +4,7 @@ from warnings import warn
 from SpatialDatabase import CellLinkedList
 from StericForceEvaluatorC import StericForceEvaluatorC
 import time
-verbose = -1;
+verbose = 1;
 
 # Documentation last updated: 02/25/2023
 
@@ -188,6 +188,8 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         """
         MaxPts = int((self._Lseg*self._Nseg)/self._delta*NumQuadPointsPerStd)+1;
         TotNum = int((1+MaxPts)*MaxPts/2);
+        print(NumQuadPointsPerStd)
+        print(TotNum)
         StartIndex=0;
         AllGLPts = np.zeros(TotNum);
         AllGLWts = np.zeros(TotNum);

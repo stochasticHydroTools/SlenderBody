@@ -1,4 +1,4 @@
-import finufftpy as fi
+#import finufftpy as fi
 import numpy as np
 import numba as nb 
 from RPYKernelEvaluator import RPYKernelEvaluator as RPYcpp

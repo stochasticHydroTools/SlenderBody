@@ -379,19 +379,21 @@ class StericForceEvaluatorC {
                     XCheb2[3*iPt+iD] = ChebPts[jFib*3*_nXPerFib+3*iPt+iD]+PeriodicShift[iD];
                 }
             }
-            vec SegMP1(3), SegMP2(3), CurvMP1(3), CurvMP2(3), curv1(3), curv2(3);
+            // Compute Chebyshev coefficients
+            vec XHat1(3*_nXPerFib);
+            vec XHat2(3*_nXPerFib);
+            BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,XCheb1,XHat1);
+            BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,XCheb2,XHat2);
+            vec3 SegMP1, SegMP2, CurvMP1, CurvMP2, curv1, curv2;
             for (int d=0; d < 3; d++){
                 SegMP1[d] = 0.5*(Start1[d]+End1[d]);
                 SegMP2[d] = 0.5*(Start2[d]+End2[d]);
             }
-            vec InterpRow1(_nXPerFib), InterpRow2(_nXPerFib);
             // Sample at midpoint to estimate curvature
             double sMP1 = 0.5*_Lseg+iSegMod*_Lseg;
             double sMP2 = 0.5*_Lseg+jSegMod*_Lseg;
-            InterpolationRow(sMP1,InterpRow1);
-            InterpolationRow(sMP2,InterpRow2);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,XCheb1,CurvMP1);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,XCheb2,CurvMP2);
+            RecursiveCheb3Eval(XHat1,2*sMP1/_L-1,CurvMP1);
+            RecursiveCheb3Eval(XHat2,2*sMP2/_L-1,CurvMP2);
             for (int d=0; d < 3; d++){
                 curv1[d] = SegMP1[d]-CurvMP1[d];
                 curv2[d] = SegMP2[d]-CurvMP2[d];
@@ -407,22 +409,27 @@ class StericForceEvaluatorC {
                 if (curvDist < _dcut){
                     double s1star = ClosePts[0];
                     double s2star = ClosePts[1];
-                    InterpolationRow(s1star,InterpRow1);
-                    InterpolationRow(s2star,InterpRow2);
+                    double t1star = s1star*2/_L-1;
+                    double t2star = s2star*2/_L-1;
                     // Compute tangent vectors, take dot product to estimate additional arclength
                     vec DX1(3*_nXPerFib), DX2(3*_nXPerFib), DSqX1(3*_nXPerFib), DSqX2(3*_nXPerFib);
+                    vec DX1Hat(3*_nXPerFib), DX2Hat(3*_nXPerFib), DSqX1Hat(3*_nXPerFib), DSqX2Hat(3*_nXPerFib);
                     BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,XCheb1,DX1);
                     BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,XCheb2,DX2);
                     BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX1,DSqX1);
                     BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX2,DSqX2);
-                    vec pt1(3), pt2(3), tau1(3), tau2(3), curv1(3), curv2(3);
-                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,XCheb1,pt1);
-                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,XCheb2,pt2);
-                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DX1,tau1);
-                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DX2,tau2);
-                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DSqX1,curv1);
-                    BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DSqX2,curv2);
-                    vec disp(3);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DX1,DX1Hat);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DX2,DX2Hat);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DSqX1,DSqX1Hat);
+                    BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DSqX2,DSqX2Hat);
+                    vec3 pt1, pt2, tau1, tau2, curv1, curv2;
+                    RecursiveCheb3Eval(XHat1,t1star,pt1);
+                    RecursiveCheb3Eval(XHat2,t2star,pt2);
+                    RecursiveCheb3Eval(DX1Hat,t1star,tau1);
+                    RecursiveCheb3Eval(DX2Hat,t2star,tau2);
+                    RecursiveCheb3Eval(DSqX1Hat,t1star,curv1);
+                    RecursiveCheb3Eval(DSqX2Hat,t2star,curv2);
+                    vec3 disp;
                     for (int d=0; d<3; d++){
                         disp[d]=pt1[d]-pt2[d];
                     }
@@ -454,19 +461,6 @@ class StericForceEvaluatorC {
                     InteractionIntervals[nCol*iPair+3] = jFib;
                     InteractionIntervals[nCol*iPair+4] = std::max(s2star-Deltas2,0.0);
                     InteractionIntervals[nCol*iPair+5] = std::min(s2star+Deltas2,_L);
-                    if (isnan(Deltas1) || isnan(Deltas2)){
-                        std::cout << iFib << std::endl;
-                        std::cout << jFib << std::endl;
-                        std::cout << s1star << std::endl;
-                        std::cout << s2star << std::endl;
-                        std::cout << aa << std::endl;
-                        std::cout << bb << std::endl;
-                        std::cout << cc << std::endl;
-                        std::cout << dd << std::endl;
-                        std::cout << ee << std::endl;
-                        std::cout << ff << std::endl;
-                        throw std::runtime_error("Nan delta");
-                    }
                     for (int d=0; d < 3; d++){
                         InteractionIntervals[nCol*iPair+6+d]=PeriodicShift[d];
                     }
@@ -584,27 +578,39 @@ class StericForceEvaluatorC {
         BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,X2,DX2);
         BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX1,DSqX1);
         BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_DiffMat,false,DX2,DSqX2);
+        // Chebyshev coefficients
+        vec X1Hat(3*_nXPerFib), X2Hat(3*_nXPerFib), DX1Hat(3*_nXPerFib), DX2Hat(3*_nXPerFib);
+        vec DSqX1Hat(3*_nXPerFib), DSqX2Hat(3*_nXPerFib);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,X1,X1Hat);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,X2,X2Hat);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DX1,DX1Hat);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DX2,DX2Hat);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DSqX1,DSqX1Hat);
+        BlasMatrixProduct(_nXPerFib,_nXPerFib,3,1.0,0.0,_ValsToCoeffs,false,DSqX2,DSqX2Hat);
         vec Gradient(2,100);
         int nIts = 0; 
         vec rts(2);
         rts[0] = s1star;
         rts[1] = s2star;
         vec Jac(4), DescentDirection(2);
-        vec dist(3), X1p(3), X2p(3), DX1p(3), DX2p(3), DSqX1p(3), DSqX2p(3),InterpRow1(_nXPerFib), InterpRow2(_nXPerFib);
+        double t1, t2;
+        vec3 dist, X1p, X2p, DX1p, DX2p, DSqX1p, DSqX2p;
         double dist_before=_L;
         double distance = _L;
         while (sqrt(dot(Gradient,Gradient)) > _NewtonTol && nIts < MAX_NEWTON_ITS){
             nIts++;
             
             // Compute distance, gradient, and Hessian
-            InterpolationRow(rts[0],InterpRow1);
-            InterpolationRow(rts[1],InterpRow2);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DX1,DX1p);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DX2,DX2p);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,DSqX1,DSqX1p);
-            BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,DSqX2,DSqX2p);
+            t1 = 2*rts[0]/_L-1;
+            t2 = 2*rts[1]/_L-1;
+            // Evaluate from coefficients
+            RecursiveCheb3Eval(X1Hat,t1,X1p);
+            RecursiveCheb3Eval(X2Hat,t2,X2p);
+            RecursiveCheb3Eval(DX1Hat,t1,DX1p);
+            RecursiveCheb3Eval(DX2Hat,t2,DX2p);
+            RecursiveCheb3Eval(DSqX1Hat,t1,DSqX1p);
+            RecursiveCheb3Eval(DSqX2Hat,t2,DSqX2p);
+            
             
             for (int d=0; d < 3; d++){
                 dist[d]=X1p[d]-X2p[d];
@@ -672,10 +678,10 @@ class StericForceEvaluatorC {
                     }
                 }
                 // Evaluate function
-                InterpolationRow(rtguess[0],InterpRow1);
-                InterpolationRow(rtguess[1],InterpRow2);
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow1,false,X1,X1p);
-                BlasMatrixProduct(1,_nXPerFib,3,1.0,0.0,InterpRow2,false,X2,X2p);
+                t1 = 2*rtguess[0]/_L-1;
+                t2 = 2*rtguess[1]/_L-1;
+                RecursiveCheb3Eval(X1Hat,t1,X1p);
+                RecursiveCheb3Eval(X2Hat,t2,X2p);
                 for (int d=0; d < 3; d++){
                     dist[d]=X1p[d]-X2p[d];
                 }

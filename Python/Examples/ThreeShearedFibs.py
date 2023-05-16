@@ -54,10 +54,10 @@ allFibers.initFibList(fibList,Dom);
 allFibers.fillPointArrays();
 
 # Initialize Ewald for non-local velocities
-#Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
-totnumDir = fibDisc._nptsDirect*nFib;
-xi = 3*totnumDir**(1/3)/Ld; # Ewald param
-Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
+Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
+#totnumDir = fibDisc._nptsDirect*nFib;
+#xi = 3*totnumDir**(1/3)/Ld; # Ewald param
+#Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
 
 # Initialize the temporal integrator
 TIntegrator = BackwardEuler(allFibers);
@@ -67,8 +67,8 @@ TIntegrator = BackwardEuler(allFibers);
 TIntegrator.setMaxIters(giters);
 
 # Prepare the output file and write initial locations
-FileString='Eps3SqDblSigThreeSh_N'+str(N)+'_dt'+str(dt)+'.txt';
-#FileString='ThreeShChk.txt'
+#FileString='Eps3SqDblSigThreeSh_N'+str(N)+'_dt'+str(dt)+'.txt';
+FileString='ThreeShChk.txt'
 allFibers.writeFiberLocations(FileString,'w');
 
 # Time loop
