@@ -250,6 +250,9 @@ void ApplyMatrixPowerFromEigDecomp(int n, double power, const vec &V, const vec 
     // Halving the eigenvalues
     for (int i = 0; i < n; i++) {
         if (s[i] <= 0){// square root of nonzero eigenvalues
+            std::cout << "Number of eigenvalues " << n << std::endl;
+            std::cout << "The negative one " << i << std::endl;
+            std::cout << "The first two " << s[0] << " , " << s[1] << std::endl;
             throw std::runtime_error("Eigenvalues should be positive always here!");
         } else {
             sPow[i] = pow(s[i],power);

@@ -137,12 +137,19 @@ end
 if (twmod==0 || initZeroTheta)
     theta0 = zeros(nFib*N,1);
     theta_s = zeros(nFib*Npsi,1);
-elseif (exist('nTurnsPerMicron','var'))
-    theta_s = nTurnsPerMicron*2*pi*ones(Npsi,1);
-    theta0 = pinv(D)*RPsiToN*theta_s;
-    theta0 = theta0-barymat(L/2,s,b)*theta0;
-    theta0 = repmat(theta0,nFib,1);
-    theta_s = repmat(theta_s,nFib,1);
+elseif (exist('NFromFormin','var'))
+    theta0 = zeros(nFib*N,1);
+    theta_s = zeros(nFib*Npsi,1);
+    for iFib=1:nFib
+        if (Lprime(iFib)> 0)
+            theta_s((iFib-1)*Npsi+1:Npsi*iFib) = NFromFormin/twmod;
+        else
+            theta_s((iFib-1)*Npsi+1:Npsi*iFib) = zeros(Npsi,1);
+        end
+    end
+    theta0this = pinv(D)*RPsiToN*theta_s((iFib-1)*Npsi+1:Npsi*iFib) ;
+    theta0this = theta0this-barymat(L/2,s,b)*theta0this;
+    theta0((iFib-1)*N+1:N*iFib) = theta0this;
 else
     theta_s = TurnFreq/twmod*pinv(DPsi)*(Mrr \ ones(Npsi,1));
     theta_s = theta_s-barymat(L,sPsi,bPsi)*theta_s;

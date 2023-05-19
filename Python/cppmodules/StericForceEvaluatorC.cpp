@@ -67,7 +67,7 @@ class StericForceEvaluatorC {
         _NsegPerFib = Nsegments;
         _L = L;
         _Lseg = _L/_NsegPerFib;
-        _NewtonTol = _delta*0.01;
+        _NewtonTol = _delta/_L*0.01;
         _RMidpoint = vec(pyRMidPoint.size());
         _REndpoint = vec(pyREndPoint.size());
         _SegmentCutoff = SegmentCutoff;
@@ -634,7 +634,9 @@ class StericForceEvaluatorC {
             }
             if (EigVals[maxEigInd] < 0){
                 std::cout << "Breaking out of Newton - Hessian is negative definite!" << std::endl;
-                break;
+                ClosePts[0] = rts[0];
+                ClosePts[1] = rts[1];
+                return dist_before;
             } else if (EigVals[minEigInd] < EigVals[maxEigInd]/COND_MAX){
                 EigVals[minEigInd] = EigVals[maxEigInd]/COND_MAX;
             }

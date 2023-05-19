@@ -74,7 +74,7 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
         Curv2MP = barymat(0.5*Lseg+(jSegMod-1)*Lseg,s,b)*X2;
         c1 = norm(Curv1MP-Seg1MP);
         c2 = norm(Curv2MP-Seg2MP);
-        tol = delta/10;
+        tol = (delta/L)/10;
         if (distance < cutoff+c1+c2)
             nUnderCurve=nUnderCurve+1;
             s1star = sSeg1*Lseg+(iSegMod-1)*Lseg;

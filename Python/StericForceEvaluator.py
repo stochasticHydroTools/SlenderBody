@@ -4,7 +4,7 @@ from warnings import warn
 from SpatialDatabase import CellLinkedList
 from StericForceEvaluatorC import StericForceEvaluatorC
 import time
-verbose = 1;
+verbose = -1;
 
 # Documentation last updated: 02/25/2023
 
