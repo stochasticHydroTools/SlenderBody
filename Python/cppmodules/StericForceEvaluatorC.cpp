@@ -406,7 +406,11 @@ class StericForceEvaluatorC {
                 ClosePts[0]=ClosePts[0]*_Lseg+iSegMod*_Lseg;
                 ClosePts[1]=ClosePts[1]*_Lseg+jSegMod*_Lseg;
                 double curvDist = DistanceBetweenFiberParts(XCheb1,XCheb2, ClosePts);
-                if (curvDist < _dcut){
+                bool samePoint = false;
+                if (iFib==jFib && abs(ClosePts[0]-ClosePts[1]) < 10*_NewtonTol){
+                    samePoint = true;
+                }
+                if (curvDist < _dcut && !samePoint){
                     double s1star = ClosePts[0];
                     double s2star = ClosePts[1];
                     double t1star = s1star*2/_L-1;
@@ -632,7 +636,7 @@ class StericForceEvaluatorC {
                 maxEigInd=1;
                 minEigInd=0;
             }
-            if (EigVals[maxEigInd] < 0){
+            if (EigVals[maxEigInd] <= 0){
                 std::cout << "Breaking out of Newton - Hessian is negative definite!" << std::endl;
                 ClosePts[0] = rts[0];
                 ClosePts[1] = rts[1];

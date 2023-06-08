@@ -80,7 +80,11 @@ function [StericForce,NewPairsAndIntervals] = FancyStericForces(X,L,N,Nseg,s,b,a
             s1star = sSeg1*Lseg+(iSegMod-1)*Lseg;
             s2star = sSeg2*Lseg+(jSegMod-1)*Lseg;
             [distance,s1star,s2star]=DistanceTwoFibCurves(X1,X2,s1star,s2star,L,s,b,D,tol/10);
-            if (distance < cutoff)
+            samePoint = 0;
+            if (iFib==jFib && abs(s1star-s2star) < tol)
+                samePoint=1;
+            end
+            if (distance < cutoff && ~samePoint)
                 pt1 = barymat(s1star,s,b)*X1;
                 pt2 = barymat(s2star,s,b)*X2;
                 disp = pt1-pt2;

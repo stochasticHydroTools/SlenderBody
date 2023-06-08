@@ -15,11 +15,11 @@ function [StericForce,NewPairsAndIntervals] = StericForces(X,Runi,a,kbT,su,nFib,
     end
     % Neighbor search
     if (Ld > 0)
-        %NList = load('NeighborsT235_1.txt');
-        %warning('Loading python neighbors!')
+        NList = load('Neighbors.txt');
+        warning('Loading python neighbors!')
         AllPairs=[];
-        for iPt=1:Nu*nFib
-            %iPt = NList(iPair,1)+1;
+        for iPair=1:length(NList)
+            iPt = NList(iPair,1)+1;
             iFib = floor((iPt-1)/Nu)+1;
             inds1 = (iFib-1)*N+1:iFib*N;
             iPtMod = iPt-(iFib-1)*Nu;
@@ -27,7 +27,7 @@ function [StericForce,NewPairsAndIntervals] = StericForces(X,Runi,a,kbT,su,nFib,
             if (iPtMod==1 || iPtMod==Nu)
                 wtiPt = ds_u/2;
             end
-            for jPt=iPt+1:Nu*nFib
+            for jPt=NList(iPair,2)+1
                 jFib = floor((jPt-1)/Nu)+1;
                 inds2 = (jFib-1)*N+1:jFib*N;
                 jPtMod = jPt-(jFib-1)*Nu;
@@ -52,7 +52,7 @@ function [StericForce,NewPairsAndIntervals] = StericForces(X,Runi,a,kbT,su,nFib,
                         StericForce(inds2,:)=StericForce(inds2,:)-Force.*R2';
                         AllPairs=[AllPairs; iFib (iPtMod-1)*ds_u jFib (jPtMod-1)*ds_u];
                     else
-                        %keyboard
+                        keyboard
                     end
                 end
             end

@@ -102,6 +102,7 @@ class StericForceEvaluator(object):
         self._NeighborSearcher.updateSpatialStructures(Xuniform,Dom);
         uniNeighbs = self._NeighborSearcher.selfNeighborList(Cutoff,1);
         uniNeighbs = uniNeighbs.astype(np.int64);
+        np.savetxt('Neighbors.txt',uniNeighbs)
         if (excludeSelf):
             Fibs = self.mapUniPtToFiber(uniNeighbs);
             delInds = np.arange(len(Fibs[:,0]));
@@ -253,7 +254,7 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         MergedRepeats = self._CppEvaluator.MergeRepeatedIntervals(RepeatedPairs)
         AllIntervals = np.concatenate((ExactlyOnePairs,MergedRepeats),axis=0)
         if (verbose > 0):
-            print('Time for to python post-process %f ' %(time.time()-tiii))
+            print('Time for python post-process %f ' %(time.time()-tiii))
             tiii = time.time();
         # Step 4: Calculate forces from intervals
         iFibjFib = AllIntervals[:,[0, 3]];
