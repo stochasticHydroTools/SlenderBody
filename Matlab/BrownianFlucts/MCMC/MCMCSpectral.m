@@ -6,7 +6,7 @@ lp = 1*L;
 K_b = lp*kbT;
 a = 1e-2;
 eps=a/L;
-nSamp = 1e5;
+nSamp = 1e3;
 nSaveSamples = 0.8*nSamp;
 nTrial = 10;
 OversampCheb = 1;
@@ -33,11 +33,16 @@ Eb=K_b;           % Bending modulus
 nFib=1; RectangularCollocation=0; upsamp=0; mu=1;
 XMP=[0;0;0];
 InitFiberVars;
-load(strcat('CovN100KbTConst_Lp',num2str(1),'.mat'));
-ResampFromNp1 = stackMatrix(barymat(xUni,sNp1,bNp1));
-eigs2nd = eigVL; Vtrue2nd=Vtrue;
-EMat2nd = EMat;
+if (PenaltyForceInsteadOfFlow)
+    load(strcat('CovN100KbTConst_Lp',num2str(1),'.mat'));
+    eigs2nd = eigVL; Vtrue2nd=Vtrue;
+    EMat2nd = EMat;
+else
+    Nu = 1/eps+1;
+    xUni = (0:Nu-1)'*a;
+end
 SampleInds = [0 1/4 1/2 3/4 1]*(length(xUni)-1)+1;
+ResampFromNp1 = stackMatrix(barymat(xUni,sNp1,bNp1));
 nBins = 1000;
 
 
