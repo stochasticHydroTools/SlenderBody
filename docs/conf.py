@@ -35,7 +35,6 @@ sys.path.insert(0, os.path.abspath('../Python/'))
 # Add any Sphinx extension module names here, as strings. They can be extensions
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'sphinx.ext.mathjax', 'sphinx.ext.napoleon']
-autodoc_mock_imports = ['_tkinter']
 autodoc_member_order = 'bysource';
 toc_object_entries_show_parents  = 'hide';
 #autoclass_content = 'both';
