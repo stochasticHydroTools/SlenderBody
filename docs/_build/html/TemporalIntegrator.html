@@ -1,0 +1,687 @@
+
+<!DOCTYPE html>
+
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="generator" content="Docutils 0.18.1: http://docutils.sourceforge.net/" />
+
+    <title>Members &#8212; SPARCLE 1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css" />
+    <link rel="stylesheet" type="text/css" href="_static/classic.css" />
+    
+    <script data-url_root="./" id="documentation_options" src="_static/documentation_options.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/sphinx_highlight.js"></script>
+    <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="&lt;no title&gt;" href="fiberCollection.html" />
+    <link rel="prev" title="Python Classes" href="PythonClasses.html" /> 
+  </head><body>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             accesskey="I">index</a></li>
+        <li class="right" >
+          <a href="fiberCollection.html" title="&lt;no title&gt;"
+             accesskey="N">next</a> |</li>
+        <li class="right" >
+          <a href="PythonClasses.html" title="Python Classes"
+             accesskey="P">previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SPARCLE 1.0 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="PythonClasses.html" accesskey="U">Python Classes</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Members</a></li> 
+      </ul>
+    </div>  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          <div class="body" role="main">
+            
+  <dl class="py class">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TemporalIntegrator.</span></span><span class="sig-name descname"><span class="pre">TemporalIntegrator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator" title="Permalink to this definition">¶</a></dt>
+<dd><p>Class to do temporal integration.
+There are three possibilities implemented:</p>
+<ol class="arabic simple">
+<li><p>Backward Euler - first order accuracy for deterministic fibers</p></li>
+<li><p>Crank Nicolson - “second order” accuracy for deterministic fibers. However,
+this temporal integrator is very sensitive because it uses linear multistep formulas
+to get higher-order accuracy. We do not use it any more for this reason.</p></li>
+<li><p>Midpoint Drift integrator - for filaments with semiflexible bending fluctuations.</p></li>
+</ol>
+<p>This abstract class is a first order explicit method. Because of the stiffness
+of the bending force, such a method is not really practical, and so the point of the
+abstract class is to declare a list of methods.</p>
+<p>For more details on temporal integration, see Sections 6.4 and 7.3 (deterministic fibers)
+and 8.2 (fluctuating fibers) of Maxian’s PhD thesis.</p>
+<section id="members">
+<h1>Members<a class="headerlink" href="#members" title="Permalink to this heading">¶</a></h1>
+<dl class="simple">
+<dt>self._allFibers: fiberCollection object</dt><dd><p>This allows us to perform updates on the entire set of fibers</p>
+</dd>
+<dt>self._CLNetwork: EndedCrossLinkedNetwork object</dt><dd><p>This allows us to perform updates on the set of dynamic cross linkers</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Constructor. Initialize the objects that we will be working with.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fibCol</strong> (<em>fiberCollection object</em>) – </p></li>
+<li><p><strong>CLNetwork</strong> (<em>EndedCrossLinkedNetwork object</em><em>, </em><em>optional</em>) – Only input if we are considering fibers with cross linkers. If CLNetwork
+is None, the code will only update the fibers.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.getXandXsNonLoc">
+<span class="sig-name descname"><span class="pre">getXandXsNonLoc</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.getXandXsNonLoc" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the positions and tangent vectors for the nonlocal hydro.
+Specifically, depending on the temporal integrator, sometimes
+we evaluate <span class="math notranslate nohighlight">\(M_{NL}\left(X_{NL}\right)\)</span>, where <span class="math notranslate nohighlight">\(X_{NL}\)</span> are
+the positions we use for nonlocal hydrodynamics. In a first-order
+method, we simply use <span class="math notranslate nohighlight">\(X_{NL}=X^n\)</span> (the current positions), so this
+is really nothing fancy.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Returns<span class="colon">:</span></dt>
+<dd class="field-odd"><p>The positions <span class="math notranslate nohighlight">\(X\)</span> and tangent vectors <span class="math notranslate nohighlight">\(\tau\)</span> that we will
+use for nonlocal hydrodynamics.</p>
+</dd>
+<dt class="field-even">Return type<span class="colon">:</span></dt>
+<dd class="field-even"><p>(array, array)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.getLamNonLoc">
+<span class="sig-name descname"><span class="pre">getLamNonLoc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iT</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.getLamNonLoc" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get the constraint forces <span class="math notranslate nohighlight">\(\Lambda\)</span> for the nonlocal hydro. In some
+of our deterministic methods, we time-lag the forces <span class="math notranslate nohighlight">\(\Lambda\)</span> to
+input to the nonlocal hydrodynamics. In a first order method, this
+simply gets the <span class="math notranslate nohighlight">\(\Lambda\)</span> from the end of the previous time step.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>iT</strong> (<em>int</em>) – The time step index</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The constraint forces <span class="math notranslate nohighlight">\(\Lambda\)</span> that we use as an initial guess
+for the nonlocal hydrodynamics.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>array</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.setMaxIters">
+<span class="sig-name descname"><span class="pre">setMaxIters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">nIters</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.setMaxIters" title="Permalink to this definition">¶</a></dt>
+<dd><p>Pass in the maximum number of GMRES iterations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>nIters</strong> (<em>int</em>) – Set to 1 to do block diagonal solves only. Every number
+larger than 1 then gives an additional GMRES iteration.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.getMaxIters">
+<span class="sig-name descname"><span class="pre">getMaxIters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iT</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.getMaxIters" title="Permalink to this definition">¶</a></dt>
+<dd><p>The maximum number of GMRES iterations at a given time step.
+In a first-order method, at the first time step
+we set the maximum number of iterations
+to a large number, so that we converge GMRES all the way at <span class="math notranslate nohighlight">\(t=0\)</span>.
+After that, we set the cap at self._maxGMIters</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><p><strong>iT</strong> (<em>int</em>) – The time step index (really we just need to know if it’s zero or not)</p>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The maximum number of GMRES iterations we perform at this time step</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.gettval">
+<span class="sig-name descname"><span class="pre">gettval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.gettval" title="Permalink to this definition">¶</a></dt>
+<dd><p>Get time value for this time step. This is useful when we have
+functions of time, like strain and background flow.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>iT</strong> (<em>int</em>) – Time step index</p></li>
+<li><p><strong>dt</strong> (<em>double</em>) – Time step size</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The time argument for functions of time. In a first order method,
+this is simply iT*dt.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>double</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.NetworkUpdate">
+<span class="sig-name descname"><span class="pre">NetworkUpdate</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">Dom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">t</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tstep</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixedg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.NetworkUpdate" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is the method to update the CL network by calling
+the corresponding update method in self._CLNetwork.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>Dom</strong> (<em>Domain object</em>) – To set the periodicity of the cross linking</p></li>
+<li><p><strong>t</strong> (<em>double</em>) – The current simulation time</p></li>
+<li><p><strong>tstep</strong> (<em>double</em>) – Time step to take for the network update</p></li>
+<li><p><strong>fixedg</strong> (<em>double</em><em>, </em><em>optional</em>) – If set, it will fix the strain of the network at the input
+value. Otherwise, the strain is set by what the background
+flow at time <span class="math notranslate nohighlight">\(t\)</span> dictates.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.SolveForFiberAlphaLambda">
+<span class="sig-name descname"><span class="pre">SolveForFiberAlphaLambda</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">XforNL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">XsforNL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tvalSolve</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">forceExt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lamStar</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Dom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ewald</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.SolveForFiberAlphaLambda" title="Permalink to this definition">¶</a></dt>
+<dd><p>This method solves the saddle point system for lambda and alpha. It is for deterministic
+fibers, and is based on first solving the saddle point system
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+-M_L &amp; K + c \Delta t M_L L K \\
+K^T &amp; 0
+\end{pmatrix}
+\begin{pmatrix}
+\widetilde{\Lambda} \\
+\widetilde{\alpha}
+\end{pmatrix} =
+\end{split}\]</div>
+
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+M_L \left(-LX^n + F_{ext}\right)+M_{NL} \left(\Lambda^*-LX^* + F_{ext}\right)+U_0 \\
+0
+\end{pmatrix}
+\end{split}\]</div>
+
+This represents a system where the nonlocal hydrodynamics uses a time-lagged “guess”
+for <span class="math notranslate nohighlight">\(\Lambda=\Lambda^*\)</span> and <span class="math notranslate nohighlight">\(X=X^*\)</span>. Thus the nonlocal hydrodynamics is handled
+explicitly. In the case when all of the hydrodynamics is local, i.e., <span class="math notranslate nohighlight">\(M=M_L\)</span>, the solution
+of this sytem is the dynamics we are interested in. So we set <span class="math notranslate nohighlight">\(\alpha=\widetilde{\alpha}\)</span>
+and move on.</p>
+<p>When there is nonlocal hydrodynamics, it is possible (for denser suspensions)
+that the above method will not be stable. In this case we instead want to treat the
+nonlocal hydrodynamic bending force implicitly and solve the saddle point system
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+-M &amp; K + c \Delta t M L K \\
+K^T &amp; 0
+\end{pmatrix}
+\begin{pmatrix}
+\Lambda \\
+\alpha
+\end{pmatrix} =
+\end{split}\]</div>
+
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+M \left(-LX^n + F_{ext}\right)+U_0 \\
+0
+\end{pmatrix}
+\end{split}\]</div>
+
+where <span class="math notranslate nohighlight">\(M=M_L+M_{NL}\)</span>, i.e., there is no difference here between the local and nonlocal
+mobilities. Because the nonlocal mobility is involved in a linear system, this system
+has to be solved iteratively via GMRES. To do this, we subtract the system above
+from the system preceding it, so that the “residual” system we are solving is given by
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+-M &amp; K + c \Delta t M L K \\
+K^T &amp; 0
+\end{pmatrix}
+\begin{pmatrix}
+\Delta \Lambda \\
+\Delta \alpha
+\end{pmatrix} =
+\end{split}\]</div>
+
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+M_{NL} \left(-L\left(X^n +c K \widetilde{\alpha} - X^*\right)+\widetilde{\Lambda}-\Lambda^*\right) \\
+0
+\end{pmatrix}
+\end{split}\]</div>
+
+where <span class="math notranslate nohighlight">\(\Delta \alpha = \alpha - \widetilde{\alpha}\)</span> and likewise for <span class="math notranslate nohighlight">\(\Lambda\)</span>.
+What we do in practice is to perform a fixed number of GMRES iterations to estimate
+<span class="math notranslate nohighlight">\(\Delta \Lambda\)</span> and <span class="math notranslate nohighlight">\(\Delta \alpha\)</span> (necessary for stability and not accuracy).
+The number of iterations is set using the getMaxIters method above.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>XforNL</strong> (<em>array</em>) – The positions <span class="math notranslate nohighlight">\(X\)</span> that are arguments for the mobilities. In the equations above,
+we have <span class="math notranslate nohighlight">\(M=M(X)\)</span>. This argument specifies the <span class="math notranslate nohighlight">\(X\)</span> that we evaluate <span class="math notranslate nohighlight">\(M\)</span> at. Typically,
+in a first order method this is just <span class="math notranslate nohighlight">\(X=X^n\)</span>.</p></li>
+<li><p><strong>XsforNL</strong> (<em>array</em>) – The tangent vectors <span class="math notranslate nohighlight">\(\tau\)</span> that are arguments for the kinematic matrix <span class="math notranslate nohighlight">\(K\)</span>. In the
+equations above, <span class="math notranslate nohighlight">\(K=K(\tau)\)</span>, and this argument specifies what <span class="math notranslate nohighlight">\(\tau\)</span> we evaluate <span class="math notranslate nohighlight">\(K\)</span> at.
+Typically, in a first order method this is just <span class="math notranslate nohighlight">\(\tau=\tau^n\)</span>.</p></li>
+<li><p><strong>iT</strong> (<em>int</em>) – The time step index</p></li>
+<li><p><strong>dt</strong> (<em>double</em>) – The time step size</p></li>
+<li><p><strong>tvalSolve</strong> (<em>double</em>) – The time we use to evaluate any functions of time like the background flow. See the
+method gettval() above for an explanation.</p></li>
+<li><p><strong>forceExt</strong> (<em>array</em>) – The explicit forcing <span class="math notranslate nohighlight">\(F_{ext}\)</span> that enters the saddle point system above</p></li>
+<li><p><strong>lamStar</strong> (<em>array</em>) – The guess for the constraint force <span class="math notranslate nohighlight">\(\Lambda^*\)</span> that appears in the first saddle
+point system and the RHS of the residual saddle point system</p></li>
+<li><p><strong>Dom</strong> (<em>Domain object</em>) – The periodic domain where we perform the nonlocal velocity evaluations</p></li>
+<li><p><strong>Ewald</strong> (<em>RPYVelocityEvaluator object</em>) – The object that evaluates the nonlocal fluid velocity</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The first argument returned is the solution of the saddle point
+system, <span class="math notranslate nohighlight">\(\left(\Lambda,\alpha\right)=\left(\widetilde{\Lambda}+\Delta \Lambda, \widetilde{\alpha}+\Delta \alpha \right)\)</span>.
+The second argument is the number of GMRES iterations required/used to solve the saddle
+point system.
+The third argument is the positions <span class="math notranslate nohighlight">\(X\)</span> used to solve the saddle point system. These are
+needed later when computing the stress due to the constraint forces.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>(array, int, array)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.updateAllFibers">
+<span class="sig-name descname"><span class="pre">updateAllFibers</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">numSteps</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Dom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ewald</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">gravden</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">outfile</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">write</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">1</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">updateNet</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">turnoverFibs</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">BrownianUpdate</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fixedg</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">stress</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">StericEval</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.updateAllFibers" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is the main update method which updates the fiber collection and cross linked network.
+The method proceeds in the following order:</p>
+<ol class="arabic simple">
+<li><p>Turnover the fibers over time step <span class="math notranslate nohighlight">\(\Delta t\)</span></p></li>
+<li><p>Update the network of dynamic cross linkers over time step <span class="math notranslate nohighlight">\(\Delta t\)</span></p></li>
+<li><p>Perform a rigid body diffusion of the fibers over time step <span class="math notranslate nohighlight">\(\Delta t\)</span></p></li>
+<li><p>Obtain the arguments <span class="math notranslate nohighlight">\(X^*\)</span> and <span class="math notranslate nohighlight">\(\tau^*\)</span> for the solve, and evaluate the
+external forcing (cross linking, sterics, and/or gravity) at those arguments.</p></li>
+<li><p>Initialize <span class="math notranslate nohighlight">\(\Lambda\)</span> for newly turned-over fibers, then evaluate the
+argument <span class="math notranslate nohighlight">\(\Lambda^*\)</span> for the guess constraint forces</p></li>
+<li><p>Solve for the fiber evolution velocity, paramerized by <span class="math notranslate nohighlight">\(\alpha\)</span> (see method
+SolveForFiberAlphaLambda)</p></li>
+<li><p>Update all fibers by performing rotation of their tangent vectors and integrating
+to obtain the positions</p></li>
+<li><p>Compute the stress in the system and return that</p></li>
+<li><p>Write the locations at the end of the time step to a file</p></li>
+</ol>
+<p>Of course, there are options in this method to turn each of these updates off, as follows.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>iT</strong> (<em>int</em>) – The time step index</p></li>
+<li><p><strong>dt</strong> (<em>double</em>) – The time step size</p></li>
+<li><p><strong>numSteps</strong> (<em>int</em>) – The maximum number of steps we will take</p></li>
+<li><p><strong>Dom</strong> (<em>Domain object</em>) – The (periodic) domain we are solving on</p></li>
+<li><p><strong>Ewald</strong> (<em>RPYVelocityEvaluator object</em><em>, </em><em>optional</em>) – The object that evaluates nonlocal flows. Defaults to none (local flows only)</p></li>
+<li><p><strong>gravden</strong> (<em>double</em><em>, </em><em>optional</em>) – Uniform gravitational force strength in the z direction. Defaults to zero.</p></li>
+<li><p><strong>outfile</strong> (<em>string</em><em>, </em><em>optional</em>) – Name of the output file to write the fiber locations to. Defaults to none.</p></li>
+<li><p><strong>write</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to write the locations to a file. Defaults to true.</p></li>
+<li><p><strong>updateNet</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to update the network of dynamic linkers. Defaults to false.</p></li>
+<li><p><strong>turnoverFibs</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to turn over the fibers. Defaults to false.</p></li>
+<li><p><strong>BrownianUpdate</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to perform rigid body translations and rotations as a separate update
+on the fiber locations. Defaults to false.</p></li>
+<li><p><strong>fixedg</strong> (<em>double</em><em>, </em><em>optional</em>) – If we want to perform the solve on a domain with a fixed strain <span class="math notranslate nohighlight">\(g\)</span>, rather than
+that dictated by the background flow. Defaults to None, in which case the value
+of <span class="math notranslate nohighlight">\(g\)</span> is dictated by the background flow.</p></li>
+<li><p><strong>stress</strong> (<em>bool</em><em>, </em><em>optional</em>) – Whether to compute the stress in the suspension</p></li>
+<li><p><strong>StericEval</strong> (<em>StericForceEvaluator object</em>) – the object used to compute the steric forces. Default is None, in which case
+steric forces will not be included in the calculation</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The first returned argument is the maximum absolute position of the fibers at the end
+of the time step (this is used to check stability). The second is the number of iterations
+needed to solve the GMRES system at that time step. The third is the <span class="math notranslate nohighlight">\(3 \times 3\)</span> array of
+the stress (due to the fibers only, not counting the background fluid stress) in the
+suspension, if it is computed (otherwise it returns all zeros). The last output is the
+number of contacts between the fibers, as measured by resampling to uniform points. This
+last output is zero unless StericEval is provided to compute steric forces and evaluate
+contacts.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>(double, int, array, int)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.TemporalIntegrator.GMRES_solve">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">GMRES_solve</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">linear_system</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.TemporalIntegrator.GMRES_solve" title="Permalink to this definition">¶</a></dt>
+<dd><p>Run GMRES solver and catch convergence errors. This uses
+mykrypy, a modified version of the python package krypy,
+which can be found in the Dependencies folder.</p>
+</dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="TemporalIntegrator.BackwardEuler">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TemporalIntegrator.</span></span><span class="sig-name descname"><span class="pre">BackwardEuler</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.BackwardEuler" title="Permalink to this definition">¶</a></dt>
+<dd><p>Backward Euler temporal discretization. The same as the abstract parent class, but
+with a different implicit coefficient in the solves. Specifically, this
+class has all of the same methods as the abstract class, but sets the
+implicit coefficient <span class="math notranslate nohighlight">\(c=1\)</span>.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.BackwardEuler.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.BackwardEuler.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Constructor. Initialize the objects that we will be working with.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fibCol</strong> (<em>fiberCollection object</em>) – </p></li>
+<li><p><strong>CLNetwork</strong> (<em>EndedCrossLinkedNetwork object</em><em>, </em><em>optional</em>) – Only input if we are considering fibers with cross linkers. If CLNetwork
+is None, the code will only update the fibers.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="TemporalIntegrator.CrankNicolson">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TemporalIntegrator.</span></span><span class="sig-name descname"><span class="pre">CrankNicolson</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.CrankNicolson" title="Permalink to this definition">¶</a></dt>
+<dd><p>Crank Nicolson temporal discretization. The same as the abstract parent class, but
+with a different implicit coefficient in the solves.
+Specifically, this class has all of the same methods as the abstract class, but sets the
+implicit coefficient <span class="math notranslate nohighlight">\(c=1/2\)</span>. There are also some other modifications as documented below.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.CrankNicolson.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.CrankNicolson.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>Constructor. Initialize the objects that we will be working with.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fibCol</strong> (<em>fiberCollection object</em>) – </p></li>
+<li><p><strong>CLNetwork</strong> (<em>EndedCrossLinkedNetwork object</em><em>, </em><em>optional</em>) – Only input if we are considering fibers with cross linkers. If CLNetwork
+is None, the code will only update the fibers.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.CrankNicolson.getXandXsNonLoc">
+<span class="sig-name descname"><span class="pre">getXandXsNonLoc</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.CrankNicolson.getXandXsNonLoc" title="Permalink to this definition">¶</a></dt>
+<dd><p>In our second-order discretization, the arguments we use for the solve are
+<span class="math notranslate nohighlight">\(X^*=1.5X^n-0.5X^{n-1}\)</span> and <span class="math notranslate nohighlight">\(\tau^*=1.5\tau^n-0.5\tau^{n-1}\)</span>. This method
+overwrites the base class implementation to return those arguments.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.CrankNicolson.getLamNonLoc">
+<span class="sig-name descname"><span class="pre">getLamNonLoc</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iT</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.CrankNicolson.getLamNonLoc" title="Permalink to this definition">¶</a></dt>
+<dd><p>In our second-order discretization, the constraint force guess for nonlocal
+hydrodynamics is given by <span class="math notranslate nohighlight">\(\Lambda^*=2\Lambda^{n-1/2}-\Lambda^{n-3/2}\)</span>
+(the constraint forces are obtained at the midpoint in the second-order scheme)
+This method returns this <span class="math notranslate nohighlight">\(\Lambda^*\)</span>, unless we are at the first or second time
+step, in which case we don’t have access to the previous <span class="math notranslate nohighlight">\(\Lambda\)</span> and we will
+solve the GMRES system fully, making the initial guess unimportant.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.CrankNicolson.getMaxIters">
+<span class="sig-name descname"><span class="pre">getMaxIters</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iT</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.CrankNicolson.getMaxIters" title="Permalink to this definition">¶</a></dt>
+<dd><p>In the second-order scheme, we solve the GMRES system fully in the first two
+time steps, then converge partially after that, when we can rely on our
+extrapolations to help us get second order accuracy.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.CrankNicolson.gettval">
+<span class="sig-name descname"><span class="pre">gettval</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">iT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.CrankNicolson.gettval" title="Permalink to this definition">¶</a></dt>
+<dd><p>In the second-order scheme, the argument for any functions of time
+is <span class="math notranslate nohighlight">\((n+1/2)\Delta t\)</span>. This evaluates the functions at the midpoint of the time
+step</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="TemporalIntegrator.MidpointDriftIntegrator">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">TemporalIntegrator.</span></span><span class="sig-name descname"><span class="pre">MidpointDriftIntegrator</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.MidpointDriftIntegrator" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is the midpoint drift integrator that is intended for use
+with semiflexible bending fluctuations. It overwrites the method
+SolveForFiberAlphaLambda to account for the fluctuations in the
+filament tangent vectors, as well as include the proper drift terms
+in the overdamped Langevin dynamics</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.MidpointDriftIntegrator.__init__">
+<span class="sig-name descname"><span class="pre">__init__</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">fibCol</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">CLNetwork</span></span><span class="o"><span class="pre">=</span></span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.MidpointDriftIntegrator.__init__" title="Permalink to this definition">¶</a></dt>
+<dd><p>The constructor is the same as in the abstract class.
+In addition to setting the fiberCollection and CLNetwork objects,
+in this constructor we can also specify whether to use a modified backward
+Euler method for the Brownian velocity (i.e., whether to add a term in the
+velocity that is O(1) (compared to O(1/<span class="math notranslate nohighlight">\(\sqrt{\Delta t}\)</span>)) to make the
+covariance of the fluctuations be more accurate – see Section 8.2.1 in
+Maxian’s PhD thesis.</p>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="TemporalIntegrator.MidpointDriftIntegrator.SolveForFiberAlphaLambda">
+<span class="sig-name descname"><span class="pre">SolveForFiberAlphaLambda</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">XforNL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">XsforNL</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iT</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">dt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tvalSolve</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">forceExt</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">lamStar</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Dom</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ewald</span></span></em><span class="sig-paren">)</span><a class="headerlink" href="#TemporalIntegrator.MidpointDriftIntegrator.SolveForFiberAlphaLambda" title="Permalink to this definition">¶</a></dt>
+<dd><p>This is the method that gives <span class="math notranslate nohighlight">\(\alpha\)</span> and <span class="math notranslate nohighlight">\(\Lambda\)</span> on the fibers using a “midpoint”
+temporal integrator to correctly capture the fluctuations and drift terms. The specific
+order of steps is given in Section 8.3 of Maxian’s thesis. What we do is to solve the
+saddle point system
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+-M &amp; K + c \Delta t M L K \\
+K^T &amp; 0
+\end{pmatrix}^{n+1/2,*}
+\begin{pmatrix}
+\Lambda \\
+\alpha
+\end{pmatrix}^{n+1/2,*} =
+\end{split}\]</div>
+
+<div class="math notranslate nohighlight">
+\[\begin{split}
+\begin{pmatrix}
+M^{n+1/2,*} \left(-LX^n + F_{ext}^n\right)+U_0^n +U_B^n+U_{MD}^n\\
+0
+\end{pmatrix}
+\end{split}\]</div>
+
+for <span class="math notranslate nohighlight">\(\alpha\)</span> and <span class="math notranslate nohighlight">\(\Lambda\)</span>. If there is nonlocal (inter-fiber) hydrodynamics,
+we solve this system by converging GMRES to tolerance GMREStolerance (given
+at the top of this file) NOT running a fixed number of iterations. If there is
+only intra-fiber (local) hydrodynamics, we solve the saddle point system by dense
+linear algebra on each fiber separately.</p>
+<p>In the saddle point solve, the mobility <span class="math notranslate nohighlight">\(M\)</span> and kinematic matrix <span class="math notranslate nohighlight">\(K\)</span> are evaluated at <span class="math notranslate nohighlight">\(X^{n+1/2,*}\)</span>,
+which is a guess for the midpoint positions, obtained by computing
+<div class="math notranslate nohighlight">
+\[
+\alpha^{n,*}=\sqrt{\frac{2k_BT}{\Delta t}} \left(K^n\right)^\dagger \left(M^n\right)^{1/2}W^n
+\]</div>
+
+and updating the fiber by <span class="math notranslate nohighlight">\(\Delta t/2 \alpha^{n,*}=\Delta t/2 \left(\Omega^{n,*},U_{mp}^{n,*}\right)\)</span>,
+i.e., rotate the tangent vectors by <span class="math notranslate nohighlight">\(\Delta t/2\Omega^{n,*}\)</span>
+and translate the midpoint by <span class="math notranslate nohighlight">\(\Delta t/2 U_{mp}^{n,*}\)</span>.</p>
+<p>In the saddle point system, there are two additional terms to specify. The first is the
+Brownian velocity, which in the modified backward Euler method is given by
+<div class="math notranslate nohighlight">
+\[
+U_B^n =\sqrt{\frac{2k_BT}{\Delta t}}\left(\left(M^n\right)^{1/2}W+\sqrt{\frac{\Delta t}{2}} M^n L^{1/2} W_2\right),
+\]</div>
+
+where <span class="math notranslate nohighlight">\(L\)</span> is the bending energy matrix.</p>
+<p>The formula for the drift term <span class="math notranslate nohighlight">\(U_{MD}^n\)</span> depends on the type of hydrodynamics being considered.
+If we are considering only LOCAL hydrodynamics (no inter-fiber communication), it is
+given by
+<div class="math notranslate nohighlight">
+\[U_{MD}^n=\sqrt{\frac{2 k_B T}{\Delta t}} \left(M^{n+1/2,*}-M^n\right)\left(M^n\right)^{-T/2}\eta,\]</div>
+
+where <span class="math notranslate nohighlight">\(\eta \sim\)</span>randn(0,1) and this formula is computed using dense linear algebra on
+each fiber separately.
+In the case when there is inter-fiber hydrodynamics, this resistance problem becomes
+expensive, and so we use an alternative approach, computing
+<div class="math notranslate nohighlight">
+\[U_{MD}^n = \frac{k_B T}{\delta L} \left(M\left(\tau^{(RFD)}\right)-M\left(\tau^n\right)\right)\eta\]</div>
+
+where the RFD for <span class="math notranslate nohighlight">\(\tau\)</span> is obtained by computing <span class="math notranslate nohighlight">\(\mu=K^\dagger \eta\)</span> and rotating
+<span class="math notranslate nohighlight">\(\tau^n\)</span> by the oriented angle <span class="math notranslate nohighlight">\(\delta L \mu\)</span>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters<span class="colon">:</span></dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>XforNL</strong> (<em>array</em>) – The positions <span class="math notranslate nohighlight">\(X\)</span> that are arguments for the mobilities. In the equations above,
+we have <span class="math notranslate nohighlight">\(M=M(X)\)</span>. This argument specifies the <span class="math notranslate nohighlight">\(X\)</span> that we evaluate <span class="math notranslate nohighlight">\(M\)</span> at.
+In this method <span class="math notranslate nohighlight">\(X=X^n\)</span>.</p></li>
+<li><p><strong>XsforNL</strong> (<em>array</em>) – The tangent vectors <span class="math notranslate nohighlight">\(\tau\)</span> that are arguments for the kinematic matrix <span class="math notranslate nohighlight">\(K\)</span>. In the
+equations above, <span class="math notranslate nohighlight">\(K=K(\tau)\)</span>, and this argument specifies what <span class="math notranslate nohighlight">\(\tau\)</span> we evaluate <span class="math notranslate nohighlight">\(K\)</span> at.
+In this method <span class="math notranslate nohighlight">\(\tau=\tau^n\)</span>.</p></li>
+<li><p><strong>iT</strong> (<em>int</em>) – The time step index</p></li>
+<li><p><strong>dt</strong> (<em>double</em>) – The time step size</p></li>
+<li><p><strong>tvalSolve</strong> (<em>double</em>) – The time we use to evaluate any functions of time like the background flow. In this
+first order method it’s equal to iT*dt</p></li>
+<li><p><strong>forceExt</strong> (<em>array</em>) – The explicit forcing <span class="math notranslate nohighlight">\(F_{ext}\)</span> that enters the saddle point system above</p></li>
+<li><p><strong>lamStar</strong> (<em>array</em>) – Not used in this method (only in deterministic base class).</p></li>
+<li><p><strong>Dom</strong> (<em>Domain object</em>) – The periodic domain where we perform the nonlocal velocity evaluations</p></li>
+<li><p><strong>Ewald</strong> (<em>RPYVelocityEvaluator object</em>) – The object that evaluates the nonlocal fluid velocity</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns<span class="colon">:</span></dt>
+<dd class="field-even"><p>The first argument returned is the solution of the saddle point
+system, <span class="math notranslate nohighlight">\(\left(\Lambda,\alpha\right)=\left(\widetilde{\Lambda}+\Delta \Lambda, \widetilde{\alpha}+\Delta \alpha \right)\)</span>.
+The second argument is the number of GMRES iterations required/used to solve the saddle
+point system.
+The third argument is the positions <span class="math notranslate nohighlight">\(X\)</span> used to solve the saddle point system. These are
+needed later when computing the stress due to the constraint forces.</p>
+</dd>
+<dt class="field-odd">Return type<span class="colon">:</span></dt>
+<dd class="field-odd"><p>(array, int, array)</p>
+</dd>
+</dl>
+</dd></dl>
+
+</dd></dl>
+
+
+
+            <div class="clearer"></div>
+          </div>
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+  <div>
+    <h3><a href="index.html">Table of Contents</a></h3>
+    <ul>
+<li><a class="reference internal" href="#"><code class="docutils literal notranslate"><span class="pre">TemporalIntegrator</span></code></a><ul>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.__init__"><code class="docutils literal notranslate"><span class="pre">__init__()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.getXandXsNonLoc"><code class="docutils literal notranslate"><span class="pre">getXandXsNonLoc()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.getLamNonLoc"><code class="docutils literal notranslate"><span class="pre">getLamNonLoc()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.setMaxIters"><code class="docutils literal notranslate"><span class="pre">setMaxIters()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.getMaxIters"><code class="docutils literal notranslate"><span class="pre">getMaxIters()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.gettval"><code class="docutils literal notranslate"><span class="pre">gettval()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.NetworkUpdate"><code class="docutils literal notranslate"><span class="pre">NetworkUpdate()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.SolveForFiberAlphaLambda"><code class="docutils literal notranslate"><span class="pre">SolveForFiberAlphaLambda()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.updateAllFibers"><code class="docutils literal notranslate"><span class="pre">updateAllFibers()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.TemporalIntegrator.GMRES_solve"><code class="docutils literal notranslate"><span class="pre">GMRES_solve()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#TemporalIntegrator.BackwardEuler"><code class="docutils literal notranslate"><span class="pre">BackwardEuler</span></code></a><ul>
+<li><a class="reference internal" href="#TemporalIntegrator.BackwardEuler.__init__"><code class="docutils literal notranslate"><span class="pre">__init__()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#TemporalIntegrator.CrankNicolson"><code class="docutils literal notranslate"><span class="pre">CrankNicolson</span></code></a><ul>
+<li><a class="reference internal" href="#TemporalIntegrator.CrankNicolson.__init__"><code class="docutils literal notranslate"><span class="pre">__init__()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.CrankNicolson.getXandXsNonLoc"><code class="docutils literal notranslate"><span class="pre">getXandXsNonLoc()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.CrankNicolson.getLamNonLoc"><code class="docutils literal notranslate"><span class="pre">getLamNonLoc()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.CrankNicolson.getMaxIters"><code class="docutils literal notranslate"><span class="pre">getMaxIters()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.CrankNicolson.gettval"><code class="docutils literal notranslate"><span class="pre">gettval()</span></code></a></li>
+</ul>
+</li>
+<li><a class="reference internal" href="#TemporalIntegrator.MidpointDriftIntegrator"><code class="docutils literal notranslate"><span class="pre">MidpointDriftIntegrator</span></code></a><ul>
+<li><a class="reference internal" href="#TemporalIntegrator.MidpointDriftIntegrator.__init__"><code class="docutils literal notranslate"><span class="pre">__init__()</span></code></a></li>
+<li><a class="reference internal" href="#TemporalIntegrator.MidpointDriftIntegrator.SolveForFiberAlphaLambda"><code class="docutils literal notranslate"><span class="pre">SolveForFiberAlphaLambda()</span></code></a></li>
+</ul>
+</li>
+</ul>
+
+  </div>
+  <div>
+    <h4>Previous topic</h4>
+    <p class="topless"><a href="PythonClasses.html"
+                          title="previous chapter">Python Classes</a></p>
+  </div>
+  <div>
+    <h4>Next topic</h4>
+    <p class="topless"><a href="fiberCollection.html"
+                          title="next chapter">&lt;no title&gt;</a></p>
+  </div>
+  <div role="note" aria-label="source link">
+    <h3>This Page</h3>
+    <ul class="this-page-menu">
+      <li><a href="_sources/TemporalIntegrator.rst.txt"
+            rel="nofollow">Show Source</a></li>
+    </ul>
+   </div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>document.getElementById('searchbox').style.display = "block"</script>
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="related" role="navigation" aria-label="related navigation">
+      <h3>Navigation</h3>
+      <ul>
+        <li class="right" style="margin-right: 10px">
+          <a href="genindex.html" title="General Index"
+             >index</a></li>
+        <li class="right" >
+          <a href="fiberCollection.html" title="&lt;no title&gt;"
+             >next</a> |</li>
+        <li class="right" >
+          <a href="PythonClasses.html" title="Python Classes"
+             >previous</a> |</li>
+        <li class="nav-item nav-item-0"><a href="index.html">SPARCLE 1.0 documentation</a> &#187;</li>
+          <li class="nav-item nav-item-1"><a href="PythonClasses.html" >Python Classes</a> &#187;</li>
+        <li class="nav-item nav-item-this"><a href="">Members</a></li> 
+      </ul>
+    </div>
+    <div class="footer" role="contentinfo">
+        &#169; Copyright 2023, Ondrej Maxian, Raul P. Perez, Aleksandar Donev.
+      Created using <a href="https://www.sphinx-doc.org/">Sphinx</a> 6.2.1.
+    </div>
+  </body>
+</html>
