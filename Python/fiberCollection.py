@@ -8,11 +8,9 @@ import scipy.sparse as sp
 import time
 from math import sqrt, exp, pi
 from warnings import warn
-import BatchedNBodyRPY as gpurpy
+#import BatchedNBodyRPY as gpurpy
 
-# Documentation last updated 01/21/2023
-
-# Definitions (for special quadrature)
+# Definitions
 verbose = -1;               # debug / timings
 svdTolerance = 1e-12;       # tolerance for pseudo-inverse
 svdRigid = 0.25; # Exp[||Omega|| dt ] < svdRigid for rigid Brownian fibers
@@ -24,11 +22,7 @@ class fiberCollection(object):
     This python class is basically a wrapper for the C++ class
     FiberCollectionC.cpp, where every function is just calling the 
     corresponding (fast) C++ function. 
-    
-    At the end of this file, there is a child class for Semiflexible filaments
-    that also perform bending fluctuations. That class reimplements some of the 
-    methods
-    
+        
     An important variable throughout this class is self._nonLocal, which refers to 
     how the hydrodynamics is handled. There are currently 3 options:
     nonLocal = 0: local drag only. This can include intra-fiber hydro depending on if 
@@ -49,17 +43,35 @@ class fiberCollection(object):
     ## ====================================================
     def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=1,rigidFibs=False,dt=1e-3):
         """
-        Constructor for the fiberCollection class. 
-        Inputs: Nfibs = number of fibers, turnover time = mean time for each fiber to turnover,
-        fibDisc = discretization object that each fiber will get a copy of, 
-        nonLocal = are we doing nonlocal hydro? (0 for local drag, 1 for full hydro, 4 for intra-fiber hydro only)
-        mu = fluid viscosity
-        omega = frequency of background flow oscillations, 
-        gam0 = base strain rate of the background flow, 
-        Dom = Domain object to initialize the SpatialDatabase objects, 
-        kbT = thermal energy, 
-        nThreads = number of OMP threads for parallel calculations, 
-        rigidFibs = whether the fibers are rigid
+        Constructor for the fiberCollection class. This constructor initializes both the python and 
+        corresponding C++ class.
+        
+        Parameters
+        ----------
+        nFibs: positive int
+            The number of fibers
+        turnovertime: double
+            Mean time for each fiber to turnover
+        fibDisc: FibCollocationDiscretization object
+            The discretization object that each fiber will get a copy of, 
+        nonLocal: integer
+            The type of hydrodynamics (0 for local drag, 1 for full hydro, 4 for intra-fiber hydro only)
+        mu: double
+            The fluid viscosity
+        omega: double
+            The frequency of background flow oscillations 
+        gam0: double
+            The base strain rate of the background flow 
+        Dom: Domain object
+            Used to initialize the SpatialDatabase objects, 
+        kbT: double 
+            The thermal energy
+        nThreads: int (default is 1)
+            The number of OMP threads for parallel calculations 
+        rigidFibs: bool (default is False)
+            Whether the fibers are rigid
+        dt: double, optional
+            Time step size (only for setting the tolerance in rigid Schur complement pseudo-inverse)
         """
         self._Nfib = nFibs;
         self._fiberDisc = fibDisc;
@@ -104,10 +116,19 @@ class fiberCollection(object):
         """
         Initialize the list of fibers. This is done by giving each fiber
         a copy of the discretization object, and then initializing positions
-        and tangent vectors.
-        Inputs: list of Discretized fiber objects (typically empty), Domain object,
-        file names for the points if we are initializing from file
-        The file names can be either file names or the actual point locations.
+        and tangent vectors. This method inserts the fibers by giving them a random
+        center position and tangent vector, and therefore allows for possible 
+        overlaps in the initial configuration.
+        
+        Parameters
+        ----------
+        fibListIn: list
+            List of DiscretizedFiber objects. Typically empty, and filled in this method.
+        Domain: Domain object
+            The periodic domain used to initialize the fibers
+        XFileName: string, optional
+            If the positions are being read in from a file, this string gives the name
+            of the file to read
         """
         self._fibList = fibListIn;
         self._DomLens = Dom.getLens();
@@ -133,12 +154,20 @@ class fiberCollection(object):
         
     def RSAFibers(self,fibListIn, Dom,StericEval,nDiameters=1):
         """
-        Initialize the list of fibers. This is done by giving each fiber
-        a copy of the discretization object, and then initializing positions
-        and tangent vectors.
-        Inputs: list of Discretized fiber objects (typically empty), Domain object,
-        file names for the points if we are initializing from file
-        The file names can be either file names or the actual point locations.
+        Initialize the list of fibers. This method inserts the fibers using
+        random sequential addition, meaning the fibers will not overlap. 
+        
+        Parameters
+        ----------
+        fibListIn: list
+            List of DiscretizedFiber objects. Typically empty, and filled in this method.
+        Domain: Domain object
+            The periodic domain used to initialize the fibers
+        StericEval: StericForceEvaluator object
+            Used to compute overlaps between the fibers in random sequential addition
+        nDiameters: double, defaults to 1
+            The number of diameters apart we want the centerlines of the fibers to be. This
+            method guarantees that no pair of fibers will be less than nDiameters apart. 
         """
         self._fibList = fibListIn;
         self._DomLens = Dom.getLens();
@@ -156,7 +185,10 @@ class fiberCollection(object):
         """
         Method to initialize the memory for lists of points, tangent 
         vectors and lambdas for the fiber collection
-        Input: Dom = Domain object 
+        
+        Parameters
+        ----------
+        Domain: Domain object
         """
         # Establish large lists that will be used for the non-local computations
         self._totnumX = self._Nfib*self._NXpf; 
@@ -197,15 +229,39 @@ class fiberCollection(object):
     ## ====================================================   
     def formBlockDiagRHS(self,XNonLocal,XLocal,t,exForce,Lamstar,Dom,RPYEval):
         """
-        RHS for the block diagonal GMRES system. 
-        Inputs: X = Chebyshev point locations,t = system time, 
-        exForce = external force (treated explicitly), 
-        Lamstar = Lambdas for the nonlocal calculation, Dom = Domain object, RPYEval = RPY velocity
-        evaluator for the nonlocal terms, 
-        Return the nonlocal velocities and forces for the saddle point system. Specifically, if the saddle 
-        point solve can be written as  
-        B*alpha = M*F+UEx, 
-        return F and UEx. Here UEx includes the nonlocal velocity.
+        This method forms the RHS of the block diagonal saddle point system. 
+        Specifically, the saddle point solve that we will eventually solve
+        can be written as
+        $$
+        B \\alpha=M_LF+U_\\textrm{Ex}
+        $$
+        The point of this method is to return $F$ (the forces) and $U_\\textrm{Ex}$ (the velocity 
+        being treated explicitly). 
+        
+        Parameters
+        -----------
+        XNonLocal: array
+            Chebyshev point locations for the nonlocal velocity evaluation
+        XLocal: array
+            Chebyshev point locations for the local velocity evaluation (can be different 
+            depending on the temporal integrator being used)
+        t: double
+            time
+        exForce: array
+            The force being treated explicitly (e.g., gravity, cross linking forces)
+        Lamstar: array
+            The constraint forces Lambda for the nonlocal velocity calculation
+        Dom: Domain object
+        RPYEval: RPYVelocityEvaluator object
+           Computes nonlocal velocities from forces 
+        
+        Returns
+        --------
+        (array,array)
+            A pair of arrays. The first contains the $F$ = BendingForceMatrix*(XLocal)+exForce,
+            and the second contains the velocity 
+            $U_\\textrm{Ex}$ = M_NonLocal*(Lamstar+exForce+BendingForceMatrix*(XNonLocal)) + U0, where U0 
+            is the background flow
         """
         # Compute elastic forces at X
         LocalBendForce = self.evalBendForce(XLocal);
@@ -217,16 +273,35 @@ class fiberCollection(object):
 
     def calcResidualVelocity(self,BlockDiagAnswer,X,Xs,dtimpco,Lamstar, Dom, RPYEval):
         """
-        New RHS (after block diag solve). This is the residual form of the system that gets 
-        passed to GMRES (if doing deterministic fibers). 
-        Inputs: BlockDiagAnswer = the answer for lambda and alpha from the block diagonal solver,
-        dtimpco = delta t * implicit coefficient,
-        lamstar = lambdas for the nonlocal calculation, 
-        Dom = Domain object, 
-        RPYEval = RPY velocity evaluator for the nonlocal terms.
-        The RHS for the residual system is  
-        [M^NonLocal*(F*(X^n+dt*impco*K*alpha-X^(n+1/2,*)+Lambda - Lambda^*)); 0], 
-        where by Lambda and alpha we mean the results from the block diagonal solver 
+        This method computes the right hand side for the RESIDUAL system. The idea is that
+        we first solve a saddle point problem with a guess for the nonlocal force. We then 
+        subtract that result from the system with the nonlocal force also treated implicitly
+        to get a system to solve. This is described in Section 7.3 in Maxian's PhD dissertation. 
+        Specifically, the RHS we are forming here is
+        $$
+        U = M_{NL} \\left(F\\left(X^n+\\Delta t c K \\alpha -X^{n+1/2,*}\\right)+\\Lambda-\\Lambda^*\\right)
+        $$
+        where by $\\Lambda$ and $\\alpha$ we mean the results from the block diagonal solver with the initial guess for 
+        the nonlocal forcing. 
+        
+        Parameters
+        -----------
+        BlockDiagAnswer: array
+            The answer for $\\Lambda$$ and $\\alpha$ (in that order) from the block diagonal solver,
+        dtimpco: double
+            $\\Delta t \\times c$, here $c$ is the implicit coefficient. 
+            The implicit coefficient $c$ depends on the
+            temporal integrator being used.
+        Lamstar: array
+            Guess for $\\Lambda$$ from treating nonlocal forcing explicitly
+        Dom: Domain object, 
+        RPYEval: RPYVelocityEvaluator object   
+        
+        Returns
+        ---------
+        array
+            The right-hand side for GMRES. This has a block of velocities $U$
+            and then a block of zeros (for the second equation $K^T \\Lambda=0$).    
         """
         Lambdas = BlockDiagAnswer[:3*self._Nfib*self._NXpf];
         alphas = BlockDiagAnswer[3*self._Nfib*self._NXpf:];
@@ -245,6 +320,38 @@ class fiberCollection(object):
     def CheckResiduals(self,LamAlph,impcodt,X,Xs,Dom,RPYEval,t,UAdd=0,ExForces=0):
         """
         This is just for debugging. It verifies that we solved the system we think we did. 
+        What it does specifically is take $\\Lambda$ and $\\alpha$ and compute
+        $$
+        U_1 = U_0+ M \\left(\\Lambda + \\Delta t c K \\alpha  + F_{in} \\right) 
+        $$
+        where here $M$ includes both the local and nonlocal parts, 
+        and compare that result to $U_2 = K \\alpha$
+        
+        Parameters
+        -----------
+        LamAlph: array
+            The answer for $\\Lambda$ and $\\alpha$ (in that order)
+        impcodt: double
+            $\\Delta t \\times c$, here $c$ is the implicit coefficient. 
+            The implicit coefficient $c$ depends on the
+            temporal integrator being used.
+        X: array
+            The Chebyshev points for the fibers
+        Xs: array
+            The tangent vectors for the fibers
+        Dom: Domain object, 
+        RPYEval: RPYVelocityEvaluator object   
+        t: double
+            The system time
+        UAdd: array
+            Additional velocity (e.g., from stochastic terms)
+        ExForces: array
+            Forces being treated explicitly (e.g. cross-linking forces)
+        
+        Returns
+        ---------
+        array
+            The residual $U_1-U_2$    
         """
         LamAlph = np.reshape(LamAlph,len(LamAlph))
         Lambdas = LamAlph[:3*self._Nfib*self._NXpf];
@@ -264,12 +371,37 @@ class fiberCollection(object):
         
     def Mobility(self,LamAlph,impcodt,X,Xs,Dom,RPYEval):
         """
-        Mobility calculation for GMRES
-        Inputs: lamalph = the input lambdas and alphas impcodt = delta t * implicit coefficient,
-        X = Npts * 3 array of Chebyshev point locations, Xs = Npts * 3 array of 
-        tangent vectors,Dom = Domain object, RPYEval = RPY velocity evaluator for the nonlocal terms,
-        The calculation is 
-        [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +Lambda); K^T*Lambda ]
+        Mobility calculation for GMRES. This method takes $\\Lambda$ and $\\alpha$ and computes
+        $$
+        \\begin{pmatrix}
+        -M \\left(c \\Delta t F K \\alpha + \Lambda \\right) \\\\
+        K^T \\Lambda
+        \\end{pmatrix}
+        $$
+        In other words, it computes the total forcing from $\\alpha$ and $\\Lambda$ (which 
+        is given by $c \\Delta t F K \\alpha + \Lambda $) and then applies the TOTAL
+        (local and nonlocal) mobility to that
+        
+        Parameters
+        -----------
+        LamAlph: array
+            The guess for $\\Lambda$ and $\\alpha$ (in that order)
+        impcodt: double
+            $\\Delta t \\times c$, here $c$ is the implicit coefficient. 
+            The implicit coefficient $c$ depends on the
+            temporal integrator being used.
+        X: array
+            The Chebyshev points for the fibers
+        Xs: array
+            The tangent vectors for the fibers
+        Dom: Domain object, 
+        RPYEval: RPYVelocityEvaluator object   
+        
+        Returns
+        -------
+        array
+            An array with two components: the first block is the velocity (see docstring above) and 
+            the second block is $K^T \\Lambda$
         """
         #timeMe = time.time();
         LamAlph = np.reshape(LamAlph,len(LamAlph))
@@ -288,26 +420,68 @@ class fiberCollection(object):
         
     def FactorizePreconditioner(self,X_nonLoc,Xs_nonLoc,implic_coeff,dt,NBands=-1):
         """
-        Block diagonal solver. This solver takes inputs Xs_nonLoc (tangent vectors),, 
-        dt (time step size), implic_coeff (implicit coefficient for temporal integrator), 
-        X_nonLoc (locations of points), and solves
-        the saddle point system. 
-        (K-impco*dt*M^L*F*K)*alpha = M^L*ExForces + Lambda)+UNonLoc
-        K^T*Lambda = 0
-        for Lambda, and alpha. B is K with the implicit part included This corresponds to the matrix solve
-        [-M^L K-impco*dt*M^L*F*K; K^T 0]*[Lambda; alpha]=[M^L*ExForces; 0]
-        where M^L is the local mobility on each fiber separately (the argument NBands can 
+        Factorize the diagonal solver. This is the first step in solving the saddle point system
+        $$
+        \\begin{matrix}
+        \\left( K-\\Delta t c M_LFK \\right)\\alpha = M_L \\left(F_{ex} + \\Lambda \\right)+U_{ex} \\\\
+        K^T \\Lambda = 0
+        \end{matrix}
+        $$
+        for $\\Lambda$ and $\\alpha$. This corresponds to the matrix solve
+        $$
+        \\begin{pmatrix}
+        -M_L & K-\\Delta t c M_LFK \\\\
+        K^T &  0 
+        \\end{pmatrix}
+        \\begin{pmatrix}
+        \\Lambda \\\\
+        \\alpha 
+        \\end{pmatrix}
+        = 
+        \\begin{pmatrix}
+        M_L F_{ex}+U_{ex} \\\\
+        0 
+        \\end{pmatrix}
+        $$
+        where $M_L$ is the local mobility on each fiber separately (the argument NBands can 
         be used to make the mobility banded). The purpose of this method specifically is to form
-        the Schur complement matrix and store its pseudo-inverse so it can be applied in the next method. 
+        the Schur complement of the matrix on the LHS above. 
+        
+        Parameters
+        -----------
+        X_nonLoc: array
+            The Chebyshev points for the fibers
+        Xs_nonLoc: array
+            The tangent vectors for the fibers
+        implic_coeff: double 
+            The implicit coefficient $c$ for the
+            temporal integrator being used.  
+        dt: double
+            time step size 
+        Nbands: int, optional
+            The number of bands in the preconditioner (-1 uses all bands)
         """
         self._FibColCpp.FactorizePreconditioner(X_nonLoc,Xs_nonLoc,implic_coeff,dt,self._FPLoc,NBands);
        
     def BlockDiagPrecond(self,UNonLoc,ExForces):
         """
-        Solve the saddle point system. 
-        (K-impco*dt*M^L*F*K)*alpha = M^L*ExForces + Lambda)+UNonLoc
-        K^T*Lambda = 0 
-        using the precomputed matrices in the previous method.
+        Solve the saddle point system given in the docstring of FactorizePreconditioner. 
+        Here we pass in $F_{ex}$ and $U_{ex}$ and use the factorization from the previous method to
+        solve the saddle point system. 
+        
+        Parameters
+        -----------
+        UNonLoc: array
+            The part of the velocity being treated explicitly (typically nonlocal velocity from other fibers)
+        ExForces: array
+            The forces being treated explicitly (or forces that don't depend on $\\alpha$ or $\\Lambda$ 
+            -- typically bending forces at time $n$ and cross linking forces)
+        
+        Returns
+        ---------
+        array
+            The array $(\\Lambda,\\alpha)$ of forces and kinematic variables (the solution of the saddle
+            point system in the docstring of FactorizePreconditioner)
         """
         UNonLoc = UNonLoc[:3*self._Nfib*self._NXpf];
         LamAlph= self._FibColCpp.applyPreconditioner(ExForces,UNonLoc);
@@ -316,10 +490,26 @@ class fiberCollection(object):
     def BrownianUpdate(self,dt,Randoms):
         """
         Random rotational and translational diffusion (assuming a rigid body) over time step dt. 
-        This function calls the corresponding python function, which computes 
-        alpha = sqrt(2*kbT/dt)*N_rig^(1/2)*randn,
-        where N_rig = pinv(K_r^T M^(-1)*K_r)
-        Then rotates and translates by alpha*dt = (Omega*dt, U*dt)
+        This is for the special case when we can compute Brownian motion in a splitting step, 
+        rather than using a special temporal integrator. 
+        This function calls the corresponding C++ function, which computes a random rotation rate
+        $$
+        \\alpha = \\sqrt{\\frac{2k_BT}{\\Delta t}}N_{rig}^{1/2}W
+        $$
+        where $W \\sim $randn(0,1) and 
+        $N_{rig} = \\left(K_r^T M_L^{-1}K_r \\right)^\dagger$ is the rigid body mobility matrix. 
+        It then rotates and translates by $\\alpha\\Delta t = (\\Omega\\Delta t , U\\Delta t)$. 
+        The inversion of the rigid mobility can be problematic because it is not well-posed for 
+        fibers that are nearly-straight. We set a tolerance in the constructor using the expected
+        time step. Note that this is a void method, but it updates the internal variables to do the
+        Brownian motion. 
+        
+        Parameters
+        -----------
+        dt: double
+            Time step size 
+        Randoms: vector of doubles
+            Random $N$(0,1) numbers of size 6$\\times$ NFib (3 for rotation and 3 for translation)
         """
         RandAlphas = self._FibColCpp.ThermalTranslateAndDiffuse(self._ptsCheb,self._tanvecs,Randoms, self._FPLoc,dt);
         CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,RandAlphas,dt);   
@@ -329,15 +519,28 @@ class fiberCollection(object):
         
     def nonLocalVelocity(self,X,forces, Dom, RPYEval,subSelf=True):
         """
-        Compute the non-local velocity due to the fibers.
-        Inputs: Arguments X = fiber positions as Npts x 3 arrays, 
-        forces = forces as an 3*npts 1D numpy array
-        Dom = Domain object the computation happens on,  
-        RPYEval = EwaldSplitter (RPYVelocityEvaluator) to compute velocities, 
-        subSelf = whether we subtract the self terms. In some instances (e.g., when the
-        self mobility is defined with oversampled RPY), the nonlocal mobility includes
-        the self mobility and as such we don't need to subtract it. 
-        Outputs: nonlocal velocity as a tot#ofpts*3 one-dimensional array.
+        Compute the nonlocal velocity due to the fibers. This is the velocity 
+        from hydrodynamics, plus the intra-fiber nonlocal velocity if the variable
+        self._FPLoc is false. 
+        
+        Parameters
+        -----------
+        X: array
+            Fiber positions as Npts $\\times$ 3 array
+        forces: array 
+            Forces as an 3*Npts 1D numpy array
+        Dom: Domain object  
+        RPYEval: RPYVelocityEvaluator object
+        subself: bool, optional
+            Whether we subtract the self terms in the RPY velocity evaluator / 
+            Ewald splitting step. The default is true, but in some instances (e.g., when the
+            self mobility is defined with oversampled RPY), the nonlocal mobility includes
+            the self mobility and as such we don't need to subtract it. 
+        
+        Returns
+        --------
+        array
+            The nonlocal velocity as a one-dimensional array.
         """
         # If not doing nonlocal hydro, return nothing
         doFinitePart = (not self._FPLoc);
@@ -381,16 +584,33 @@ class fiberCollection(object):
          
     def updateLambdaAlpha(self,lamalph):
         """
-        Update the lambda and alphas after the solve is complete. 
-        Xsarg = legacy argument. To remove. 
+        Update the $\\Lambda$ and $\\alpha$ internal variables after the solve is complete. 
+        
+        Parameters
+        -----------
+        Lamalph: array
+            $\\Lambda$ and $\\alpha$ obtained from the saddle point solve    
         """
         self._lambdas = lamalph[:3*self._Nfib*self._NXpf];
         self._alphas = lamalph[3*self._Nfib*self._NXpf:];
            
     def updateAllFibers(self,dt):
         """
-        Update the fiber configurations, assuming self._alphas has been computed above. 
-        Inputs: dt = timestep
+        Update the fibers using the Rodrigues rotation formula. The previous method sets the $\\alpha$ 
+        parameter, which contains a tangent vector rotation rate $\\Omega$ and fiber midpoint velocity
+        $U_{mp}$. This update step is to first rotate the tangent vectors using the Rodrigues rotation
+        formula given in (6.72) of Maxian thesis. 
+        
+        Parameters
+        -----------
+        dt: double
+            Time step size
+        
+        Returns
+        --------
+        double
+            After updating the internal variables, it returns the maximum of the Chebyshev point positions
+            to check that the simulation is stable. 
         """
         CppXsMPX = self._FibColCpp.RodriguesRotations(self._tanvecs,self._Midpoints,self._alphas,dt);   
         self._tanvecs = CppXsMPX[:self._Nfib*self._NTaupf,:];
@@ -399,9 +619,21 @@ class fiberCollection(object):
         return np.amax(self._ptsCheb);
            
     def getX(self):
+        """
+        Returns
+        -------
+        array
+            The Chebyshev point positions of all fibers
+        """
         return self._ptsCheb;
 
     def getXs(self):
+        """
+        Returns
+        -------
+        array
+            The tangent vectors of all fibers
+        """
         return self._tanvecs;
     
     def getLambdas(self):
@@ -409,58 +641,164 @@ class fiberCollection(object):
     
     def FiberStress(self,XBend,XLam,Tau_n,Volume):
         """
-        Compute fiber stress.
+        Compute fiber stress. The formula for the deterministic 
+        stress for a given force is 
+        $$ \\sigma = \\frac{1}{V}\sum_j X_j F_j^T,$$
+        where $j$ refers to the index of Chebyshev points and $V$ 
+        is the domain volume. This 
+        method, being for the deterministic base class, computes the 
+        stress due to the bending force and constraint force
+        
+        Parameters
+        -----------
+        XBend: array
+            The locations to use to compute the bending force
+        XLam: array
+            The locations to use to compute the stress from $\\Lambda$
+            (which is saved as an internal variable). In order for the 
+            stress to be symmetric, these locations have to be the same
+            as the one used in the solve $K[X]^T \\Lambda=0$, which means
+            they could be different from the bend locations. 
+        Tau_n: array
+            Tangent vectors at time n. Not used in this base class. 
+        Volume: double
+            The volume of the domain on which we are computing the stress.             
+            
+        Returns
+        -------
+        (array,array,array)
+            Three 3 x 3 matrices of stress. The first is the stress
+            from the bend forces, the second the stress from $\\Lambda$, and 
+            the third is the stochastic drift stress (zero here). 
         """
         BendStress = 1/Volume*self._FibColCpp.evalBendStress(XBend);
         LamStress = 1/Volume*self._FibColCpp.evalStressFromForce(XLam,self._lambdas)
         DriftStress = np.zeros((3,3));
-        #np.savetxt('LambdasN.txt',self._lambdas)
-        #np.savetxt('BendStress.txt',BendStress)
-        #np.savetxt('LamStress.txt',LamStress)
         return BendStress, LamStress,DriftStress;
               
     def uniformForce(self,strengths):
         """
-        A uniform force density on all fibers with strength strength 
+        Generate a uniform force on all fibers.
+        
+        Parameters
+        ----------
+        strengths: 3-array
+            The strength of the uniform force 
+        
+        Returns
+        --------
+        array
+            An array of length 3*Nfib*$N_x$ which simply
+            tiles the uniform force and assigns it to every
+            collocation point on every fiber 
         """
         return np.tile(strengths,self._Nfib*self._NXpf);
     
     def getUniformPoints(self,chebpts):
         """
         Obtain uniform points from a set of Chebyshev points. 
-        Inputs: chebpts as a (tot#ofpts x 3) array
-        Outputs: uniform points as a (nPtsUniform*Nfib x 3) array.
+        
+        Parameters
+        -----------
+        chebpts: 2D array
+            The Chebyshev points of the fibers, organized 
+            into a  (tot#ofpts x 3) array
+            
+        Returns
+        ---------
+        2D array
+            All fibers sampled at the uniform points. The number of
+            uniform points is given by self._fiberDisc._nptsUniform, and 
+            is set in the constructor of this class. 
         """
         return self._FibColCpp.getUniformPoints(chebpts);
         
     def getPointsForUpsampledQuad(self,chebpts):
         """
-        Obtain upsampled points from a set of Chebyshev points. 
-        Inputs: chebpts as a (tot#ofpts x 3) array
-        Outputs: upsampled points as a (nPtsUpsample*Nfib x 3) array.
+        Obtain upsampled points for direct quadrature
+        from a set of Chebyshev points. This simply evaluates
+        the Chebyshev interpolant at the upsampled points. 
+        
+        Parameters
+        -----------
+        chebpts: 2D array
+            The Chebyshev points of the fibers, organized 
+            into a  (tot#ofpts x 3) array
+            
+        Returns
+        ---------
+        2D array
+            All fibers sampled at the points for direct quadrature. The number of
+            uniform points is given by self._Ndirect, and 
+            is set in the constructor of this class. 
         """
         return self._FibColCpp.getUpsampledPoints(chebpts);
         
     def getForcesForUpsampledQuad(self,chebforces):
         """
-        Obtain upsampled forces from a set of Chebyshev points. 
-        Inputs: chebforces as a (tot#ofpts x 3) array
-        Outputs: upsampled forces as a (nPtsUpsample*Nfib x 3) array.
+        Obtain upsampled forces for direct quadrature
+        from a set of Chebyshev points. Unlike the method for 
+        $X$, which evaluates the interpolant at a new set of Chebyshev
+        points, for forces the steps are more subtle. We need to 
+        multiply by $\\widetilde{W}^{-1}$ to get force density from force,
+        then extend to an upsampled grid and multiply by weights. The 
+        formula is therefore
+        $$F_{up} = W_{up} E_{up} \\widetilde{W}^{-1} F,$$
+        see (7.10) in Maxian's PhD thesis. 
+        
+        Parameters
+        -----------
+        chebforces: 2D array
+            The forces on the Chebyshev collocation points, organized
+            into a  (tot#ofpts x 3) array
+            
+        Returns
+        ---------
+        2D array
+            All forces sampled at the points for direct quadrature. The number of
+            uniform points is given by self._Ndirect, and 
+            is set in the constructor of this class. 
         """
         return self._FibColCpp.getUpsampledForces(chebforces);
         
     def getDownsampledVelocity(self,upsampledVel):
         """
-        Obtain velocity downsampled on the Chebyshev grid from the 
-        upsampled velocity
+        Downsample the velocity obtained on an upsampled grid. This turns out 
+        to be the transpose of the force upsampling matrix discussed in the 
+        previous method, so that we are computing
+        $$U = \\widetilde{W}^{-1} E^T_{up} W^T_{up} U_{up},$$
+        see (7.10) in Maxian's PhD thesis. 
+        
+        Parameters
+        -----------
+        upsampledVel: 2D array
+            The velocities on the upsampled points points, organized
+            into a  (self._Ndirect*Nfib x 3) array
+            
+        Returns
+        ---------
+        2D array
+            The velocities at the Chebyshev points, using the multiplication above.
         """
         return self._FibColCpp.getDownsampledVelocities(upsampledVel);
         
     def getg(self,t):
         """
         Get the value of the strain g according to what the background flow dictates.
-        Input: time t
-        Output: non-dimensional strain g
+        If the background flow is oscillatory ($\\omega > 0$), the strain (integral of
+        rate of strain) is given by
+        $$g = \\frac{\\gamma_0}{\\omega} \\sin{(\\omega t)}.$$
+        Otherwise, if $\\omega=0$, we just have a constant shear flow and $g = \\gamma_0 t$. 
+        
+        Parameters
+        -----------
+        t: double
+            The current time
+        
+        Returns
+        --------
+        double
+            The non-dimensional strain $g$ 
         """
         if (self._omega > 0):
             g = 1.0*self._gam0/self._omega*np.sin(self._omega*t);
@@ -475,6 +813,20 @@ class fiberCollection(object):
         return self._fiberDisc;
     
     def getSysDimension(self):
+        """
+        This method gives the total dimension of the saddle
+        point system. If the fibers are inextensible (but not rigid), 
+        the dimension is $6 N_x F$, where $F$ is the number of fibers,
+        since each collocation point gets a velocity and a constraint force.
+        If the fibers are rigid, the dimension is $3N_x F$ (for the constraint
+        forces) $+ 6 F$ (for rigid motions).
+        
+        Returns
+        -------
+        int
+            The dimension of the saddle point system (see docstring of 
+            FactorizePreconditioner)
+        """
         if (self._rigid):
             return 3*self._Nfib*self._NXpf+6*self._Nfib;
         return 6*self._Nfib*self._NXpf;
@@ -484,8 +836,16 @@ class fiberCollection(object):
     
     def averageTangentVectors(self):
         """
-        nFib array, where each entry is the average 1/L*integral_0^L X_s(s) ds
-        for each fiber
+        Computes the average tangent vectors along each fiber, which are
+        useful for analysis. It will return an array with nFib entries, where
+        each entry is given by
+        $$\\tau_{avg} = \\frac{1}{L} \\int_0^L \\tau(s) ds$$
+        
+        Returns
+        --------
+        array
+            Array of length nFib x 3, where each row $i$ is the average tangent 
+            vector of fiber $i$. 
         """
         avgfibTans = np.zeros((self._Nfib,3));
         wts = np.reshape(self._fiberDisc._w,(self._Npf,1));
@@ -496,11 +856,58 @@ class fiberCollection(object):
     
     def initializeLambdaForNewFibers(self,newfibs,ExForces,t,dt,implic_coeff,other=None):
         """
-        Solve local problem to initialize values of lambda on the fibers
-        Inputs: newfibs = list of replaced fiber indicies, 
-        exForceDen = external (gravity/CL) force density on those fibers, 
-        t = system time, dt = time step, implic_coeff = implicit coefficient (usually 1/2), 
-        other = the other (previous time step) fiber collection
+        This method solves a local problem to initialize values of lambda on the fibers
+        that were recently (add the current time step) birthed into the system. The 
+        local problem we are solving is 
+        $$
+        \\begin{matrix}
+        \\left( K-\\Delta t c M_LFK \\right)\\alpha = M_L \\left(F_{ex} + F X + \\Lambda \\right)+U_{0} \\\\
+        K^T \\Lambda = 0
+        \end{matrix}
+        $$
+        for $\\Lambda$ and $\\alpha$. This corresponds to the matrix solve
+        $$
+        \\begin{pmatrix}
+        -M_L & K-\\Delta t c M_LFK \\\\
+        K^T &  0 
+        \\end{pmatrix}
+        \\begin{pmatrix}
+        \\Lambda \\\\
+        \\alpha 
+        \\end{pmatrix}
+        = 
+        \\begin{pmatrix}
+        M_L \\left(FX+F_{ex}\\right)+U_0 \\\\
+        0 
+        \\end{pmatrix}
+        $$
+        where $M_L$ is the local mobility on each fiber separately. Notice that 
+        there is no nonlocal velocity here; only $U_0$ is the RHS velocity. This makes
+        the problem relatively easy to solve. 
+        
+        Parameters
+        -----------
+        newfibs: list
+            Indicies of fibers that were replaced / birthed in previous time step. 
+        ExForces: array
+            The external forces (gravity or CL) applied to the fibers. This method will
+            compute the bending forces at time $n$ internally. That said, because the 
+            birthed fibers are always straight, the bending force is zero. 
+        t: double
+            Current system time (to generate the background flow)
+        dt: double
+            Time step size $\\Delta t$
+        implic_coeff: double
+            The implicit coefficient $c$ in the solve above. 
+        other: optional, other fiberCollection object
+            This is used to also assign the values of $\\Lambda$ at the previous time 
+            step, if we are doing Crank-Nicolson (we never do). 
+            
+        Returns
+        --------
+        null
+            Nothing, but updates the internal values of $$\Lambda$ with the values computed in the 
+            local solve. 
         """
         for iFib in newfibs:
             Xinds = self.getXInds(iFib);
@@ -519,8 +926,25 @@ class fiberCollection(object):
     
     def FiberBirthAndDeath(self,tstep,other=None):
         """
-        Turnover filaments. tstep = time step,
-        other = the previous time step fiber collection (for Crank-Nicolson)
+        Method for fiber turnover. This method computes the 
+        fiber death rate for all fibers, then computes a time 
+        for a fiber to die based on that (-log(1-rand)/rate). 
+        As long as the time stays below $\\Delta t$, the method keeps 
+        choosing fibers uniformly at random to kill off. 
+        
+        Parameters
+        ----------
+        tstep: double
+            Time step $\\Delta t$
+        other: optional, other fiberCollection object
+            This is used to also replace the locations at 
+            the previous time step, if we are doing Crank-Nicolson
+        
+        Returns
+        --------
+        list
+            A list of the indicies of all fibers that were replaced 
+            during this time step. 
         """
         if (tstep==0):
             return [];
@@ -554,7 +978,14 @@ class fiberCollection(object):
     def writeFiberLocations(self,FileName,wora='a'):
         """
         Write the locations of all fibers to a file
-        object named of.
+        
+        Parameters
+        ------------
+        FileName: string
+            The name of the file to write to 
+        wora: char 'a' or 'w'
+            'a' to append to an existing file (default),
+            'w' to write to a new file
         """
         f=open(FileName,wora)
         np.savetxt(f, self._ptsCheb);#, fmt='%1.13f')
@@ -565,10 +996,32 @@ class fiberCollection(object):
     ## ====================================================
     def SubtractSelfTerms(self,Ndir,Xupsampled,fupsampled,useGPU=False):
         """
-        Subtract the self RPY integrals on each fiber
-        Inputs: Ndir = number of points for direct quad,
-        Xupsampled = upsampled positions, fupsampled = upsampled forces
-        Return the direct RPY velocities
+        Compute the self integrals of the RPY kernel along a single fiber. 
+        The reason for doing this is to subtract them from the result we 
+        get when doing Ewald splitting, which necessarily gives the velocity
+        from all fibers on all others. Typically, we want to do the self
+        term as a separate calculation using some more accurate technique. 
+        
+        Parameters
+        -----------
+        Ndir: int
+            Number of points for direct quad (upsampled quadrature used in 
+            Ewald splitting)
+        Xupsampled: array
+            Upsampled positions of Chebyshev points
+        fupsampled: array 
+            Upsampled forces (not densities) on the Chebyshev points
+        useGPU: bool, optional
+            Whether to use a GPU to compute the self interactions
+            (default is false, as C++ is fast enough to not be even close to a 
+            bottleneck)
+        
+        Returns
+        ---------
+        array 
+            The RPY direct sum on each Chebyshev point, 
+            $$U_i =\\sum_j M_{RPY}(X_i, X_j)F_j,$$
+            where j and i are Chebyshev collocation points on the same fiber.
         """
         if (not useGPU):
             U1=self._FibColCpp.SingleFiberRPYSum(Ndir,Xupsampled,fupsampled);
@@ -593,19 +1046,44 @@ class fiberCollection(object):
         
     def LocalVelocity(self,X,Forces):
         """
-        Compute the LOCAL velocity on each fiber. 
-        Inputs: X = positions as a (tot#ofpts*3) 1D array
-        forceDsAll = the force densities respectively on the fibers as a 1D array
-        Outputs: the velocity M_loc*f on all fibers as a 1D array
+        Compute the local velocity on each fiber. Given a vector of points
+        and forces, this method computes $$U = M_L[X]F.$$ The nature of $M_L$
+        is defined in the constructor of this class. 
+        
+        Parameters
+        -----------
+        X: array
+            Chebyshev point positions of all fibers as a (tot#ofpts*3) 1D array
+        Forces: array
+            The forces on all fibers, also as a 1D array
+            
+        Returns
+        --------
+        array
+            The local velocity $M_L[X]F$ on all fibers as a 1D array
         """
         return self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc);
            
     def evalU0(self,Xin,t):
         """
-        Compute the background flow on input array Xin at time t.
-        Xin is assumed to be an N x 3 array with each column being
-        the x, y, and z locations. 
-        This method returns the background flow as a 3N 1d numpy array.
+        Compute the background flow on the Chebyshev points. Here we only
+        support a shear flow with strength $\\gamma_0$ and frequency $\\omega$, 
+        so that 
+        $$U_0(x,y,z) = \\gamma_0 \cos{\\left(\\omega t\\right)} (y,0,0)$$
+        (in the $x$ direction). 
+        
+        Parameters
+        -----------
+        Xin: array
+            An N x 3 array with each column being the x, y, and z locations of the 
+            Chebyshev points at which we compute the flow
+        t: double
+            The time
+            
+        Returns
+        --------
+        array
+            The background flow $U_0$ as a 3N one-dimensional numpy array.
         """
         U0 = np.zeros(Xin.shape);
         U0[:,0]=self._gam0*np.cos(self._omega*t)*Xin[:,1];
@@ -613,16 +1091,41 @@ class fiberCollection(object):
     
     def evalBendForce(self,X_nonLoc):
         """
-        Evaluate the bending FORCES
-        Inputs: X to evaluate at
-        Outputs: the forces -Wtilde*EX_ssss also as a (tot#ofpts) x 3 array
+        Evaluate the bending FORCES on the fibers by applying the 
+        precomputed matrix $F$.
+        
+        Parameters
+        -----------
+        X_nonLoc: array
+            The Chebyshev point positions to evaluate the forces at. 
+            The total length of this array is used to determine the number
+            of fibers involved. 
+        
+        Returns
+        --------
+        array
+            The bending forces $FX$ as a 3D numpy array. 
         """
         return self._FibColCpp.evalBendForces(X_nonLoc);
         
     def calcCurvatures(self,X):
         """
-        Evaluate fiber curvatures on fibers with locations X. 
-        Returns an Nfib array of the mean L^2 curvature by fiber 
+        Evaluate fiber curvatures on all fibers. Useful for analyzing
+        the results of simulations. The mean $L^2$ curvature
+        $$
+        \\sqrt{\\frac{1}{L} \\int_0^L X_{ss}(s) \\cdot X_{ss}(s) ds }
+        $$
+        is returned for each fiber. 
+        
+        Parameters
+        ----------
+        X: array
+            The Chebyshev points of the fibers.
+        
+        Returns
+        --------
+        array
+            An array of length nFib with the mean $L^2$ curvature by fiber 
         """
         Curvatures=np.zeros(self._Nfib);
         for iFib in range(self._Nfib):
@@ -632,24 +1135,54 @@ class fiberCollection(object):
     def getXInds(self,iFib):
         """
         Method to get the row indices in any (Nfib x Nperfib) x 3 2D arrays
-        for fiber number iFib. This method could easily be modified to allow
+        of fiber position, for fiber number iFib. 
+        This method could easily be modified to allow
         for a bunch of fibers with different numbers of points. 
+        
+        Parameters
+        -----------
+        iFib: int
+            The fiber index from 0 to NFib-1
+            
+        Returns
+        --------
+        The indices of that fiber in an array of all the fiber positions 
         """
         return range(iFib*self._NXpf,(iFib+1)*self._NXpf);
     
     def getTauInds(self,iFib):
         """
         Method to get the row indices in any (Nfib x Nperfib) x 3 2D arrays
-        for fiber number iFib. This method could easily be modified to allow
-        for a bunch of fibers with different numbers of points. 
+        of fiber tangent vectors (different from positions) for fiber number iFib. 
+        This method could easily be modified to allow
+        for a bunch of fibers with different numbers of tangent vectors. 
+        
+        Parameters
+        -----------
+        iFib: int
+            The fiber index from 0 to NFib-1
+            
+        Returns
+        --------
+        The indices of that fiber in an array of all the fiber tangent vectors
         """
         return range(iFib*self._NTaupf,(iFib+1)*self._NTaupf);
         
     def getStackInds(self,iFib):
         """
-        Method to get the row indices in any (Nfib*Nperfib*3) long 1D arrays
-        for fiber number iFib. This method could easily be modified to allow
+        Method to get the indices in any (Nfib*Nperfib*3) long 1D arrays
+        of fiber positions, for fiber number iFib. 
+        This method could easily be modified to allow
         for a bunch of fibers with different numbers of points. 
+        
+        Parameters
+        -----------
+        iFib: int
+            The fiber index from 0 to NFib-1
+            
+        Returns
+        --------
+        The indices of that fiber in a stacked array of all the fiber positions
         """
         return range(iFib*3*self._NXpf,(iFib+1)*3*self._NXpf);
         
@@ -657,7 +1190,8 @@ class SemiflexiblefiberCollection(fiberCollection):
 
     """
     This class is a child of fiberCollection which implements BENDING FLUCTUATIONS. 
-    There are some additional methods required in this case. 
+    There are some additional methods required in this case. In particular, we need
+    methods to compute the stochastic drift terms and Brownian velocity $M^{1/2}W$
     """
 
     def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, kbT,nThreads=1,rigidFibs=False,dt=1e-3):
@@ -672,9 +1206,39 @@ class SemiflexiblefiberCollection(fiberCollection):
     ## ====================================================   
     def formBlockDiagRHS(self, X_nonLoc,t,ExForces,lamstar,Dom,RPYEval=None):
         """
-        This method overwrites the one in the abstract class because the nonlocal hydro is handled only
-        through GMRES. It is not like in the deterministic case, where first we do a "guess" for the 
-        nonlocal hydro. 
+        This method forms the RHS of the block diagonal saddle point system. 
+        Specifically, the saddle point solve that we will eventually solve
+        can be written as
+        $$
+        B \\alpha=MF+U_0
+        $$
+        The point of this method is to return $F$ (the forces) and $U_\\textrm{0}$ (the velocity 
+        being treated explicitly). Importantly, this method overwrites the one in
+        the deterministic class, because (at the moment), when we include fluctuations
+        the matrix $M$ above includes ALL parts of the mobility, so that only velocity
+        that is treated explicitly in the background flow $U_0$. 
+        
+        Parameters
+        -----------
+        X_nonLoc: array
+            Chebyshev point locations for the velocity evaluation
+        t: double
+            time
+        ExForces: array
+            The force being treated explicitly (e.g., gravity, cross linking forces)
+        lamstar: array
+            The constraint forces $\\Lambda^*$ for the nonlocal velocity calculation (they do
+            not enter here, but are needed to keep consistency with parent class)
+        Dom: Domain object 
+            Needed to keep consistency with parent class
+        RPYEval: RPYVelocityEvaluator object
+            Needed to keep consistency with parent class
+        
+        Returns
+        --------
+        (array,array)
+            A pair of arrays. The first contains the $F$ = BendingForceMatrix*(X_nonLoc)+ExForces,
+            and the second contains the velocity $U_0$ (the background flow)
         """
         self._iT+=1;
         BendForce = self.evalBendForce(X_nonLoc);
@@ -683,15 +1247,42 @@ class SemiflexiblefiberCollection(fiberCollection):
         return TotalForce, U0;
         
     def BrownianUpdate(self,dt,Randoms):
-        # Do nothing for semiflexible filaments
+        """
+        For semiflexible fluctuating filaments, the Brownian updates are included as part
+        of the temporal integrator (see methods listed below)
+        -- we cannot split them into a separate step. 
+        For this reason, this method, which is intended to only be used in the split
+        case, does nothing and outputs a warning.
+        """
         warn('The Brownian update is implemented as part of the solve, not a separate split step!') 
        
     def MHalfAndMinusHalfEta(self,X,Ewald,Dom):
         """
-        This method computes M[X]^(1/2)*W, which is the typical Brownian velocity. 
-        When we are doing nonlocal hydro, M[X]^(1/2)*W is the only thing which is important. 
-        However, when we have only local hydro, it becomes useful to also compute M^(-1/2)*W 
-        for later use in the drift term. This function will do that. 
+        This method computes $M[X]^{1/2}W$, where $W \\sim$randn(0,1) is 
+        a random vector of i.i.d. Gaussian variables. The method we use to
+        compute this depends on what kind of hydrodynamics we have. If
+        self._nonLocal=1, we are doing fully nonlocal hydrodynamics, and 
+        so we use the provided Ewald splitter argument to call PSE to
+        obtain $M^{1/2}W$. Otherwise, we have local hydrodynamics only, 
+        and $M^{1/2}W$ is generated fiber-by-fiber using dense linear algebra. 
+        In this latter case, it becomes useful to also compute $M^{-1/2}W$
+        for later use in the drift term.
+        
+        Parameters
+        -----------
+        X: array
+            All of the Chebyshev points that are arguments for $M[X]$
+        Ewald: RPYVelocityEvaluator object
+            Used to call the GPU PSE function to compute $M^{1/2}$ (for 
+            nonlocal hydro only)
+        Dom: Domain object
+            Specifies the periodic domain when doing nonlocal hydro
+            
+        Returns
+        --------
+        (array,array)
+            Two arrays of size $3FN_x$ (3 times the total number of Chebyshev
+            points). The first array is $M^{1/2}W$, and the second is $M^{-1/2}W$
         """
         if (self._nonLocal==1):
             Xupsampled = self.getPointsForUpsampledQuad(X);
@@ -699,19 +1290,34 @@ class SemiflexiblefiberCollection(fiberCollection):
             MHalfEta = np.reshape(self.getDownsampledVelocity(MHalfEtaUp),3*self._Nfib*self._NXpf);
             MMinusHalfEta = 0; # never used
         else:
-            nLanczos = 0;
             RandVec1 = np.random.randn(3*self._Nfib*self._NXpf);
             #np.savetxt('RandVec1.txt',RandVec1)
             MHalfAndMinusHalf = self._FibColCpp.MHalfAndMinusHalfEta(X,RandVec1, self._FPLoc); # Replace with PSE 
             MHalfEta = MHalfAndMinusHalf[:3*self._Nfib*self._NXpf];
             MMinusHalfEta = MHalfAndMinusHalf[3*self._Nfib*self._NXpf:];
-        return MHalfEta, MMinusHalfEta;#, nLanczos;
-    
+        return MHalfEta, MMinusHalfEta;
+            
     def StepToMidpoint(self,MHalfEta,dt):
         """
-        Step to the midpoint by inverting K. Specifically, we are computing
-        K^-1*sqrt(2*kbT/dt)*M^(1/2)*W, and then evolving the fiber to the "midpoint"
-        by taking a step of size dt/2
+        This function steps to the midpoint by inverting K. Specifically, we are computing
+        $$\\alpha^*= K^\dagger \\sqrt{\\frac{2k_BT}{\\Delta t}}M^{1/2}W,$$
+        and then evolving the fiber to the "midpoint"
+        by taking a step of size $\\Delta t/2$ using tangent vector rotation rates
+        $\\alpha^*=\\left(\\Omega^*,U_{mp}^*\\right)$
+        
+        Parameters
+        -----------
+        MHalfEta: array
+            This is $M[X]^{1/2}W$, obtained using the previous method 
+        dt: double
+            The time step size
+            
+        Returns
+        --------
+        (array, array, array)
+            Three arrays which represent the tangent vectors $\\tau^{n+1/2,*}$,
+            fiber midpoints $X_{mp}^{n+1/2,*}$, and fiber positions
+            $X^{n+1/2,*}$ which are obtained via the update with $\\alpha^*$
         """
         MidtimeCoordinates = self._FibColCpp.InvertKAndStep(self._tanvecs,self._Midpoints,sqrt(2*self._kbT/dt)*MHalfEta,0.5*dt);
         TauMidtime = MidtimeCoordinates[:self._Nfib*self._NTaupf,:];
@@ -722,13 +1328,53 @@ class SemiflexiblefiberCollection(fiberCollection):
     def DriftPlusBrownianVel(self,XMidTime,MHalfEta, MMinusHalfEta,dt,ModifyBE,Dom,RPYEval):
         """
         The purpose of this method is to return the velocity that goes on the RHS of the saddle 
-        point system. This has three components to it:
-        1) The Brownian velocity sqrt(2*kbT/dt)*M^(1/2)*W
-        2) The extra term M*L^(1/2)*W that comes in for modified backward Euler
-        3) The stochastic drift term. The drift term is done using an RFD on M when there is 
-        nonlocal hydro. Otherwise, it's done using a combination of M^(1/2)*W, M^(-1/2)*W, and 
-        Mtilde. The relevant formulas for the drift terms are equations (47) and (C.12) in 
-        https://arxiv.org/pdf/2301.11123.pdf
+        point system for fluctuating fibers. This has three components to it: \n
+        1) The Brownian velocity $\\sqrt{\\frac{2k_BT}{\\Delta t}}M^{1/2}W$ \n
+        2) The extra term $\\sqrt{k_B T} ML^{1/2}W$ that comes in when we use modified backward Euler, see
+        (8.20) in Maxian's PhD thesis. Here $L$ is the bending energy matrix. \n 
+        3) The stochastic drift velocity necessary to ensure we sample from the correct
+        equilibrium distribution.      
+        The formula for the drift term depends on the type of hydrodynamics being considered. 
+        If we are considering only LOCAL hydrodynamics (no inter-fiber communication), it is 
+        given by
+        $$U_{MD}=\\sqrt{\\frac{2 k_B T}{\\Delta t}} \\left(M^{n+1/2,*}-M^n\\right)\\left(M^n\\right)^{-T/2}\\eta,$$
+        where $\\eta \\sim$randn(0,1) and this formula is computed using dense linear algebra on
+        each fiber separately. 
+        In the case when there is inter-fiber hydrodynamics, this resistance problem becomes 
+        expensive, and so we use an alternative approach, computing
+        $$U_{MD} = \\frac{k_B T}{\\delta L} \\left(M\\left(\\tau^{(RFD)}\\right)-M\\left(\\tau^n\\right)\\right)\\eta$$
+        where the RFD for $\\tau$ is obtained by computing $\\mu=K^\dagger \\eta$ and rotating 
+        $\\tau^n$ by the oriented angle $\\delta L \\mu$. Here we use $\\delta=10^{-5}$ as the 
+        small parameter in this random finite difference.
+        For more details on this, see formulas (8.31) and (8.32) in Maxian's PhD thesis.
+        
+        Parameters
+        -----------
+        XMidTime: array
+            The positions $X^{n+1/2,*}$ at all Chebyshev points
+        MHalfEta: array
+            The Brownian velocity $M^{1/2}W$ at all Chebyshev points
+        MMinusHalfEta: array
+            The Brownian velocity $M^{-1/2}W$ at all Chebyshev points (this 
+            is only necessary when we use the first formula for the drift term -- 
+            local hydrodynamics only)
+        dt: double
+            Time step size
+        ModifyBE: bool
+            Whether to include in the velocity the term $\\sqrt{k_B T} ML^{1/2}W$ 
+            for modified backward Euler
+        Dom: Domain object
+            Specifies the periodic domain when doing nonlocal hydro
+        RPYEval: RPYVelocityEvaluator object
+            Used to call the GPU PSE function to apply $M$ (for
+            nonlocal hydro only)
+        
+        Returns
+        --------
+        array
+            The total velocity to be treated explicitly in the saddle point
+            solve, which is simply the sum of terms 1-3 above.
+            
         """
         RandVec2 = np.random.randn(3*self._Nfib*self._NXpf); 
         if (self._rigid):
@@ -756,17 +1402,46 @@ class SemiflexiblefiberCollection(fiberCollection):
     
     def Mobility(self,LamAlph,impcodt,X,Xs,Dom,RPYEval):
         """
-        Mobility calculation for GMRES
-        Inputs: lamalph = the input lambdas and alphas impcodt = delta t * implicit coefficient,
-        X = Npts * 3 array of Chebyshev point locations, Xs = Npts * 3 array of 
-        tangent vectors,Dom = Domain object, RPYEval = RPY velocity evaluator for the nonlocal terms, 
-        The calculation is 
-        [-(M^Local+M^NonLocal)*(impco*dt*F*K*alpha +Lambda); K^T*Lambda ]
+        Mobility calculation for GMRES. This method takes $\\Lambda$ and $\\alpha$ and computes
+        $$
+        \\begin{pmatrix}
+        -M \\left(c \\Delta t F K \\alpha + \Lambda \\right) \\\\
+        K^T \\Lambda
+        \\end{pmatrix}
+        $$
+        In other words, it computes the total forcing from $\\alpha$ and $\\Lambda$ (which 
+        is given by $c \\Delta t F K \\alpha + \Lambda $) and then applies the TOTAL
+        (local and nonlocal) mobility to that. This differs from the deterministic class
+        because here we just use the oversampled velocity on the GPU as
+        the ENTIRE velocity (local + nonlocal). So, when we call the method nonLocalVelocity, 
+        we set the argument subself=False, since the self term is treated using Ewald splitting
+        just like the inter-fiber hydrodynamic terms. Here we need to do GMRES, so obviously
+        we are in a situation where self._nonLocal=1 (we have interfiber hydrodynamics).
+
         
-        This differs from the deterministic class because here we just use the oversampled velocity on the GPU as 
-        the ENTIRE velocity (local + nonlocal).
+        Parameters
+        -----------
+        LamAlph: array
+            The input for $\\Lambda$ and $\\alpha$ (in that order)
+        impcodt: double
+            $\\Delta t \\times c$, here $c$ is the implicit coefficient. 
+            The implicit coefficient $c$ depends on the
+            temporal integrator being used.
+        X: array
+            The Chebyshev points for the fibers
+        Xs: array
+            The tangent vectors for the fibers
+        Dom: Domain object
+            Sets the periodic domain for the velocity calculation.
+        RPYEval: RPYVelocityEvaluator object  
+            Computes the velocity from a set of blobs.
+        
+        Returns
+        -------
+        array
+            An array with two components: the first block is the velocity (see docstring above) and 
+            the second block is $K^T \\Lambda$
         """
-        #timeMe = time.time();
         LamAlph = np.reshape(LamAlph,len(LamAlph))
         Lambdas = LamAlph[:3*self._Nfib*self._NXpf];
         alphas = LamAlph[3*self._Nfib*self._NXpf:];
@@ -777,15 +1452,43 @@ class SemiflexiblefiberCollection(fiberCollection):
         TotalForce = self.evalBendForce(XnLForBend)+Lambdas;
         AllVel = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval,subSelf=False);
         FirstBlock = -AllVel+Kalph; # zero if lambda, alpha = 0
-        #print('Mobility time %f' %(time.time()-timeMe));
         return np.concatenate((FirstBlock,KTLam));
         
     def FiberStress(self,XBend,XLam,Tau_n,Volume):
         """
-        Compute fiber stress.
-        XLam = X used for the saddle point solve. For Brownian stress, we want to use
-        XLam as the argument for the bending and constraint stress, and then tau_n 
-        for the extra drift
+        Compute fiber stress. The formula for the deterministic 
+        stress for a given force is 
+        $$ \\sigma = \\frac{1}{V}\sum_j X_j F_j^T,$$
+        where $j$ refers to the index of Chebyshev points and $V$ 
+        is the domain volume. In this subclass, we also compute
+        a Brownian part to the stress, which is given by the formula
+        $$\\frac{\\partial S_{ij}}{\\partial X_k} K_{ka}K^{-1}_{aj},$$
+        where $S[X]$ is the $9 \\times 3N_x$ tensor that gives stress from the 
+        forces on the Chebyshev points. This formula has NOT been verified or
+        tested, but is included here for completeness.
+        
+        
+        Parameters
+        -----------
+        XBend: array
+            The locations to use to compute the bending force
+        XLam: array
+            The locations to use to compute the stress from $\\Lambda$
+            (which is saved as an internal variable). In order for the 
+            stress to be symmetric, these locations have to be the same
+            as the one used in the solve $K[X]^T \\Lambda=0$, which means
+            they could be different from the bend locations. 
+        Tau_n: array
+            Tangent vectors at time n.
+        Volume: double
+            The volume of the domain on which we are computing the stress.             
+            
+        Returns
+        -------
+        (array,array,array)
+            Three 3 x 3 matrices of stress. The first is the stress
+            from the bend forces, the second the stress from $\\Lambda$, and 
+            the third is the stochastic drift stress.
         """
         #raise NotImplementedError('Stress not implemented for semiflexible filaments')
         BendStress = 1/Volume*self._FibColCpp.evalBendStress(XLam);
