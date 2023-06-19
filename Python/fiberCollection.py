@@ -1331,22 +1331,22 @@ class SemiflexiblefiberCollection(fiberCollection):
         point system for fluctuating fibers. This has three components to it: \n
         1) The Brownian velocity $\\sqrt{\\frac{2k_BT}{\\Delta t}}M^{1/2}W$ \n
         2) The extra term $\\sqrt{k_B T} ML^{1/2}W$ that comes in when we use modified backward Euler, see
-        (8.20) in Maxian's PhD thesis. Here $L$ is the bending energy matrix. \n 
+           (8.20) in Maxian's PhD thesis. Here $L$ is the bending energy matrix. \n 
         3) The stochastic drift velocity necessary to ensure we sample from the correct
-        equilibrium distribution.      
-        The formula for the drift term depends on the type of hydrodynamics being considered. 
-        If we are considering only LOCAL hydrodynamics (no inter-fiber communication), it is 
-        given by
-        $$U_{MD}=\\sqrt{\\frac{2 k_B T}{\\Delta t}} \\left(M^{n+1/2,*}-M^n\\right)\\left(M^n\\right)^{-T/2}\\eta,$$
-        where $\\eta \\sim$randn(0,1) and this formula is computed using dense linear algebra on
-        each fiber separately. 
-        In the case when there is inter-fiber hydrodynamics, this resistance problem becomes 
-        expensive, and so we use an alternative approach, computing
-        $$U_{MD} = \\frac{k_B T}{\\delta L} \\left(M\\left(\\tau^{(RFD)}\\right)-M\\left(\\tau^n\\right)\\right)\\eta$$
-        where the RFD for $\\tau$ is obtained by computing $\\mu=K^\dagger \\eta$ and rotating 
-        $\\tau^n$ by the oriented angle $\\delta L \\mu$. Here we use $\\delta=10^{-5}$ as the 
-        small parameter in this random finite difference.
-        For more details on this, see formulas (8.31) and (8.32) in Maxian's PhD thesis.
+           equilibrium distribution.      
+           The formula for the drift term depends on the type of hydrodynamics being considered. 
+           If we are considering only LOCAL hydrodynamics (no inter-fiber communication), it is 
+           given by
+           $$U_{MD}=\\sqrt{\\frac{2 k_B T}{\\Delta t}} \\left(M^{n+1/2,*}-M^n\\right)\\left(M^n\\right)^{-T/2}\\eta,$$
+           where $\\eta \\sim$randn(0,1) and this formula is computed using dense linear algebra on
+           each fiber separately. 
+           In the case when there is inter-fiber hydrodynamics, this resistance problem becomes 
+           expensive, and so we use an alternative approach, computing
+           $$U_{MD} = \\frac{k_B T}{\\delta L} \\left(M\\left(\\tau^{(RFD)}\\right)-M\\left(\\tau^n\\right)\\right)\\eta$$
+           where the RFD for $\\tau$ is obtained by computing $\\mu=K^\dagger \\eta$ and rotating 
+           $\\tau^n$ by the oriented angle $\\delta L \\mu$. Here we use $\\delta=10^{-5}$ as the 
+           small parameter in this random finite difference.
+           For more details on this, see formulas (8.31) and (8.32) in Maxian's PhD thesis.
         
         Parameters
         -----------

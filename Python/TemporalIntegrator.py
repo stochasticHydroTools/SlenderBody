@@ -20,15 +20,39 @@ class TemporalIntegrator(object):
     """
     Class to do temporal integration. 
     There are three possibilities implemented:
+    
     1) Backward Euler - first order accuracy for deterministic fibers
-    2) Crank Nicolson - "second order" accuracy for deterministic fibers. However, 
-    this temporal integrator is very sensitive because it uses linear multistep formulas
-    to get higher-order accuracy. We do not use it any more for this reason.
-    3) Midpoint Drift integrator - for filaments with semiflexible bending fluctuations. 
-    Abstract class: does first order explicit
+    2) Crank Nicolson - "second order" accuracy for deterministic fibers. However,
+       this temporal integrator is very sensitive because it uses linear multistep formulas
+       to get higher-order accuracy. We do not use it any more for this reason.
+    3) Midpoint Drift integrator - for filaments with semiflexible bending fluctuations.
+
+    This abstract class is a first order explicit method. Because of the stiffness
+    of the bending force, such a method is not really practical, and so the point of the 
+    abstract class is to declare a list of methods.
+    
+    For more details on temporal integration, see Sections 6.4 and 7.3 (deterministic fibers)
+    and 8.2 (fluctuating fibers) of Maxian's PhD thesis.
+    
+    Members
+    --------
+    self._allFibers: fiberCollection object
+        This allows us to perform updates on the entire set of fibers
+    self._CLNetwork: EndedCrossLinkedNetwork object
+        This allows us to perform updates on the set of dynamic cross linkers
     """
     
     def __init__(self,fibCol,CLNetwork=None):
+        """
+        Constructor. Initialize the objects that we will be working with. 
+        
+        Parameters
+        ----------
+        fibCol: fiberCollection object
+        CLNetwork: EndedCrossLinkedNetwork object, optional
+            Only input if we are considering fibers with cross linkers. If CLNetwork
+            is None, the code will only update the fibers.
+        """
         self._allFibers = fibCol;
         self._allFibersPrev = copy.deepcopy(self._allFibers); # initialize previous fiber network object
         self._CLNetwork = CLNetwork;
@@ -37,28 +61,70 @@ class TemporalIntegrator(object):
     
     def getXandXsNonLoc(self):
         """
-        Get the positions and tangent vectors for the nonlocal hydro
+        Get the positions and tangent vectors for the nonlocal hydro.
+        Specifically, depending on the temporal integrator, sometimes 
+        we evaluate $M_{NL}\\left(X_{NL}\\right)$, where $X_{NL}$ are 
+        the positions we use for nonlocal hydrodynamics. In a first-order
+        method, we simply use $X_{NL}=X^n$ (the current positions), so this
+        is really nothing fancy.
+        
+        Returns
+        --------
+        (array, array)
+            The positions $X$ and tangent vectors $\\tau$ that we will
+            use for nonlocal hydrodynamics.
         """
         return self._allFibers.getX().copy(), self._allFibers.getXs().copy();
 
     def getLamNonLoc(self,iT):
         """
-        Get the constraint forces lambda for the nonlocal hydro
+        Get the constraint forces $\\Lambda$ for the nonlocal hydro. In some
+        of our deterministic methods, we time-lag the forces $\\Lambda$ to
+        input to the nonlocal hydrodynamics. In a first order method, this 
+        simply gets the $\\Lambda$ from the end of the previous time step.
+        
+        Parameters
+        -----------
+        iT: int
+            The time step index
+    
+        Returns
+        --------
+        array
+            The constraint forces $\\Lambda$ that we use as an initial guess
+            for the nonlocal hydrodynamics.
         """
         return self._allFibers.getLambdas().copy();
         
     def setMaxIters(self,nIters):
         """
-        Pass in the maximum number of iterations
-        1 = do block diagonal solves only 
-        > 1 = do nIters-1 GMRES iterations
+        Pass in the maximum number of GMRES iterations.
+        
+        Parameters
+        -----------
+        nIters: int
+            Set to 1 to do block diagonal solves only. Every number
+            larger than 1 then gives an additional GMRES iteration.
         """
         self._maxGMIters = nIters;
 
     def getMaxIters(self,iT):
         """
-        Maximum number of GMRES iterations. Set to infinity for the 
-        first step. After that cap at self._maxGMIters
+        The maximum number of GMRES iterations at a given time step.
+        In a first-order method, at the first time step
+        we set the maximum number of iterations 
+        to a large number, so that we converge GMRES all the way at $t=0$. 
+        After that, we set the cap at self._maxGMIters
+        
+        Parameters
+        -----------
+        iT: int
+            The time step index (really we just need to know if it's zero or not)
+        
+        Returns
+        ---------
+        int
+            The maximum number of GMRES iterations we perform at this time step
         """
         if (iT==0):
             return itercap; # converge all the way
@@ -66,28 +132,41 @@ class TemporalIntegrator(object):
            
     def gettval(self,iT,dt):
         """
-        Get time value for this time step
+        Get time value for this time step. This is useful when we have
+        functions of time, like strain and background flow.
+        
+        Parameters
+        ----------
+        iT: int
+            Time step index
+        dt: double
+            Time step size
+            
+        Returns
+        --------
+        double
+            The time argument for functions of time. In a first order method,
+            this is simply iT*dt.
         """
         return iT*dt;
-    
-    def getFirstNetworkStep(self,dt,iT):
-        """
-        Size of the step to update the dynamic CL network the first time 
-        in a time step 
-        """
-        return dt;
-    
-    def getSecondNetworkStep(self,dt,iT,numSteps):
-        """
-        Size of the step to update the dynamic CL network the second time 
-        in a time step 
-        """
-        return 0;
         
     def NetworkUpdate(self,Dom,t,tstep,fixedg=None):
         """
-        Update the CL network. Inputs: Dom = domain object, t = current time, 
-        tstep = time step to update 
+        This is the method to update the CL network by calling
+        the corresponding update method in self._CLNetwork.
+        
+        Parameters
+        -----------
+        Dom: Domain object
+            To set the periodicity of the cross linking
+        t: double
+            The current simulation time
+        tstep: double
+            Time step to take for the network update
+        fixedg: double, optional
+            If set, it will fix the strain of the network at the input
+            value. Otherwise, the strain is set by what the background 
+            flow at time $t$ dictates.
         """
         if (tstep==0):
             return;
@@ -100,10 +179,111 @@ class TemporalIntegrator(object):
                  
     def SolveForFiberAlphaLambda(self,XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald):
         """
-        This method solves the saddle point system for lambda and alpha. It is for DETERMINISTIC
-        fibers, and is based on solving a block-diagonal system first, then using GMRES to solve
-        for a residual lambda and alpha. See Section 4.5 here: https://arxiv.org/pdf/2007.11728.pdf 
-        for more details on this. 
+        This method solves the saddle point system for lambda and alpha. It is for deterministic
+        fibers, and is based on first solving the saddle point system
+        $$
+        \\begin{pmatrix}
+        -M_L & K + c \\Delta t M_L L K \\\\
+        K^T & 0 
+        \\end{pmatrix}
+        \\begin{pmatrix}
+        \\widetilde{\\Lambda} \\\\
+        \\widetilde{\\alpha}
+        \\end{pmatrix} = 
+        $$
+        $$
+        \\begin{pmatrix}
+        M_L \\left(-LX^n + F_{ext}\\right)+M_{NL} \\left(\\Lambda^*-LX^* + F_{ext}\\right)+U_0 \\\\
+        0
+        \\end{pmatrix}
+        $$
+        This represents a system where the nonlocal hydrodynamics uses a time-lagged "guess"
+        for $\\Lambda=\\Lambda^*$ and $X=X^*$. Thus the nonlocal hydrodynamics is handled 
+        explicitly. In the case when all of the hydrodynamics is local, i.e., $M=M_L$, the solution
+        of this sytem is the dynamics we are interested in. So we set $\\alpha=\\widetilde{\\alpha}$
+        and move on.
+        
+        When there is nonlocal hydrodynamics, it is possible (for denser suspensions)
+        that the above method will not be stable. In this case we instead want to treat the 
+        nonlocal hydrodynamic bending force implicitly and solve the saddle point system
+        $$
+        \\begin{pmatrix}
+        -M & K + c \\Delta t M L K \\\\
+        K^T & 0 
+        \\end{pmatrix}
+        \\begin{pmatrix}
+        \\Lambda \\\\
+        \\alpha
+        \\end{pmatrix} = 
+        $$
+        $$
+        \\begin{pmatrix}
+        M \\left(-LX^n + F_{ext}\\right)+U_0 \\\\
+        0
+        \\end{pmatrix}
+        $$
+        where $M=M_L+M_{NL}$, i.e., there is no difference here between the local and nonlocal
+        mobilities. Because the nonlocal mobility is involved in a linear system, this system 
+        has to be solved iteratively via GMRES. To do this, we subtract the system above 
+        from the system preceding it, so that the "residual" system we are solving is given by
+        $$
+        \\begin{pmatrix}
+        -M & K + c \\Delta t M L K \\\\
+        K^T & 0 
+        \\end{pmatrix}
+        \\begin{pmatrix}
+        \\Delta \\Lambda \\\\
+        \\Delta \\alpha
+        \\end{pmatrix} = 
+        $$
+        $$
+        \\begin{pmatrix}
+        M_{NL} \\left(-L\\left(X^n +c K \\widetilde{\\alpha} - X^*\\right)+\\widetilde{\\Lambda}-\\Lambda^*\\right) \\\\
+        0
+        \\end{pmatrix}
+        $$
+        where $\\Delta \\alpha = \\alpha - \\widetilde{\\alpha}$ and likewise for $\\Lambda$.
+        What we do in practice is to perform a fixed number of GMRES iterations to estimate
+        $\\Delta \\Lambda$ and $\\Delta \\alpha$ (necessary for stability and not accuracy). 
+        The number of iterations is set using the getMaxIters method above. 
+        
+        Parameters
+        -----------
+        XforNL: array
+            The positions $X$ that are arguments for the mobilities. In the equations above, 
+            we have $M=M(X)$. This argument specifies the $X$ that we evaluate $M$ at. Typically, 
+            in a first order method this is just $X=X^n$. 
+        XsforNL: array
+            The tangent vectors $\\tau$ that are arguments for the kinematic matrix $K$. In the 
+            equations above, $K=K(\\tau)$, and this argument specifies what $\\tau$ we evaluate $K$ at.
+            Typically, in a first order method this is just $\\tau=\\tau^n$. 
+        iT: int
+            The time step index
+        dt: double
+            The time step size
+        tvalSolve: double
+            The time we use to evaluate any functions of time like the background flow. See the 
+            method gettval() above for an explanation. 
+        forceExt: array
+            The explicit forcing $F_{ext}$ that enters the saddle point system above
+        lamStar: array
+            The guess for the constraint force $\\Lambda^*$ that appears in the first saddle 
+            point system and the RHS of the residual saddle point system
+        Dom: Domain object
+            The periodic domain where we perform the nonlocal velocity evaluations
+        Ewald: RPYVelocityEvaluator object
+            The object that evaluates the nonlocal fluid velocity
+            
+        Returns
+        --------
+        (array, int, array)
+            The first argument returned is the solution of the saddle point 
+            system, $\\left(\\Lambda,\\alpha\\right)=\\left(\\widetilde{\\Lambda}+\\Delta \\Lambda, \widetilde{\\alpha}+\\Delta \\alpha \\right)$.
+            The second argument is the number of GMRES iterations required/used to solve the saddle 
+            point system.
+            The third argument is the positions $X$ used to solve the saddle point system. These are
+            needed later when computing the stress due to the constraint forces.
+        
         """
         thist = time.time();
         ExForce, UNonLoc = self._allFibers.formBlockDiagRHS(XforNL,self._allFibers.getX(),tvalSolve,forceExt,lamStar,Dom,Ewald);
@@ -136,9 +316,6 @@ class TemporalIntegrator(object):
                    ExForces=np.zeros(BlockOne)),dtype=np.float64);
             SysToSolve = LinearSystem(A,RHS,Mr=Pinv);
             gtol = GMREStolerance;
-            if (iT%1000==0):
-                gtol=1e-6;
-                giters=100;
             Solution = TemporalIntegrator.GMRES_solve(SysToSolve,tol=gtol,maxiter=giters)
             lamalphT = Solution.xk;
             itsneeded = len(Solution.resnorms)
@@ -157,8 +334,6 @@ class TemporalIntegrator(object):
             resno = Solution.resnorms
             #print(resno)
             #print('Last residual %1.2E' %resno[len(resno)-1])
-            if (iT%1000==0):
-                np.savetxt('Resid'+str(iT)+'.txt',Solution.resnorms)
             #np.savetxt('LamAlph.txt',lamalph)
             #import sys
             #sys.exit()
@@ -170,14 +345,71 @@ class TemporalIntegrator(object):
     def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,\
         updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False,StericEval=None):
         """
-        The main update method. 
-        Inputs: the timestep number as iT, the timestep dt, the maximum number of steps numSteps,
-        Dom = the domain object we are solving on, Ewald = the Ewald splitter object
-        we need to do the nonlocal RPY calculations, gravden = graviational force density (in the z direction), 
-        outfile = handle to the output file to write to, write = whether to write the positions of the fibers
-        to the output object. updateNet = whether to update the cross-linked network. TurnoverFibs = whether
-        to turnover fibers, BrownianUpdate = whether to do a rigid body rotation and translation as a separate
-        splitting step, fixedg = the value of strain if fixed, stress = whether to output stress
+        This is the main update method which updates the fiber collection and cross linked network. 
+        The method proceeds in the following order:
+        
+        1) Turnover the fibers over time step $\\Delta t$
+        2) Update the network of dynamic cross linkers over time step $\\Delta t$
+        3) Perform a rigid body diffusion of the fibers over time step $\\Delta t$
+        4) Obtain the arguments $X^*$ and $\\tau^*$ for the solve, and evaluate the 
+           external forcing (cross linking, sterics, and/or gravity) at those arguments.
+        5) Initialize $\\Lambda$ for newly turned-over fibers, then evaluate the 
+           argument $\\Lambda^*$ for the guess constraint forces
+        6) Solve for the fiber evolution velocity, paramerized by $\\alpha$ (see method
+           SolveForFiberAlphaLambda) 
+        7) Update all fibers by performing rotation of their tangent vectors and integrating
+           to obtain the positions
+        8) Compute the stress in the system and return that
+        9) Write the locations at the end of the time step to a file
+
+        Of course, there are options in this method to turn each of these updates off, as follows.
+        
+        Parameters
+        ----------
+        iT: int
+            The time step index
+        dt: double
+            The time step size
+        numSteps: int
+            The maximum number of steps we will take
+        Dom: Domain object
+            The (periodic) domain we are solving on
+        Ewald: RPYVelocityEvaluator object, optional
+            The object that evaluates nonlocal flows. Defaults to none (local flows only)
+        gravden: double, optional
+            Uniform gravitational force strength in the z direction. Defaults to zero.
+        outfile: string, optional
+            Name of the output file to write the fiber locations to. Defaults to none.
+        write: bool, optional
+            Whether to write the locations to a file. Defaults to true.
+        updateNet: bool, optional
+            Whether to update the network of dynamic linkers. Defaults to false.
+        turnoverFibs: bool, optional
+            Whether to turn over the fibers. Defaults to false.
+        BrownianUpdate: bool, optional
+            Whether to perform rigid body translations and rotations as a separate update
+            on the fiber locations. Defaults to false.
+        fixedg: double, optional
+            If we want to perform the solve on a domain with a fixed strain $g$, rather than
+            that dictated by the background flow. Defaults to None, in which case the value
+            of $g$ is dictated by the background flow.
+        stress: bool, optional
+            Whether to compute the stress in the suspension
+        StericEval: StericForceEvaluator object
+            the object used to compute the steric forces. Default is None, in which case
+            steric forces will not be included in the calculation
+        
+        Returns
+        --------
+        (double, int, array, int)
+            The first returned argument is the maximum absolute position of the fibers at the end
+            of the time step (this is used to check stability). The second is the number of iterations
+            needed to solve the GMRES system at that time step. The third is the $3 \\times 3$ array of
+            the stress (due to the fibers only, not counting the background fluid stress) in the 
+            suspension, if it is computed (otherwise it returns all zeros). The last output is the 
+            number of contacts between the fibers, as measured by resampling to uniform points. This 
+            last output is zero unless StericEval is provided to compute steric forces and evaluate 
+            contacts.
         """   
         # Birth / death fibers
         thist = time.time() 
@@ -278,7 +510,9 @@ class TemporalIntegrator(object):
     @staticmethod
     def GMRES_solve(linear_system, **kwargs):
         """
-        Run GMRES solver and catch convergence errors
+        Run GMRES solver and catch convergence errors. This uses
+        mykrypy, a modified version of the python package krypy, 
+        which can be found in the Dependencies folder.
         """
         try:
             return Gmres(linear_system, **kwargs)
@@ -290,7 +524,9 @@ class BackwardEuler(TemporalIntegrator):
 
     """
     Backward Euler temporal discretization. The same as the abstract parent class, but 
-    with a different implicit coefficient in the solves
+    with a different implicit coefficient in the solves. Specifically, this 
+    class has all of the same methods as the abstract class, but sets the 
+    implicit coefficient $c=1$.
     """
  
     def __init__(self,fibCol,CLNetwork=None):
@@ -304,7 +540,8 @@ class CrankNicolson(TemporalIntegrator):
     """
     Crank Nicolson temporal discretization. The same as the abstract parent class, but 
     with a different implicit coefficient in the solves. 
-    See parent class for method descriptions 
+    Specifically, this class has all of the same methods as the abstract class, but sets the
+    implicit coefficient $c=1/2$. There are also some other modifications as documented below.
     """
     
     def __init__(self,fibCol,CLNetwork=None):
@@ -312,11 +549,24 @@ class CrankNicolson(TemporalIntegrator):
         self._impco = 0.5; # coefficient for implicit solves
       
     def getXandXsNonLoc(self):
+        """
+        In our second-order discretization, the arguments we use for the solve are
+        $X^*=1.5X^n-0.5X^{n-1}$ and $\\tau^*=1.5\\tau^n-0.5\\tau^{n-1}$. This method
+        overwrites the base class implementation to return those arguments.
+        """
         X = 1.5*self._allFibers.getX() - 0.5*self._allFibersPrev.getX();
         Xs = 1.5*self._allFibers.getXs() - 0.5*self._allFibersPrev.getXs();
         return X, Xs;
     
     def getLamNonLoc(self,iT):
+        """
+        In our second-order discretization, the constraint force guess for nonlocal
+        hydrodynamics is given by $\\Lambda^*=2\\Lambda^{n-1/2}-\\Lambda^{n-3/2}$ 
+        (the constraint forces are obtained at the midpoint in the second-order scheme)
+        This method returns this $\\Lambda^*$, unless we are at the first or second time
+        step, in which case we don't have access to the previous $\\Lambda$ and we will
+        solve the GMRES system fully, making the initial guess unimportant.
+        """
         if (iT > 1):
             lamarg = 2.0*self._allFibers.getLambdas()-1.0*self._allFibersPrev.getLambdas();
         else: # t = 0
@@ -324,44 +574,140 @@ class CrankNicolson(TemporalIntegrator):
         return lamarg;
 
     def getMaxIters(self,iT):
+        """
+        In the second-order scheme, we solve the GMRES system fully in the first two 
+        time steps, then converge partially after that, when we can rely on our
+        extrapolations to help us get second order accuracy.
+        """
         if (iT < 2):
             return itercap; # converge all the way
         return self._maxGMIters;
 
     def gettval(self,iT,dt):
+        """
+        In the second-order scheme, the argument for any functions of time 
+        is $(n+1/2)\\Delta t$. This evaluates the functions at the midpoint of the time 
+        step
+        """
         return (iT+0.5)*dt;
-    
-    def getFirstNetworkStep(self,dt,iT):
-        if (iT==0):
-            return dt*0.5;
-        return dt; # interpret as a midpoint step
-    
-    def getSecondNetworkStep(self,dt,iT,numSteps):
-        if (iT==numSteps-1):
-            return dt*0.5;
-        return 0;
+
 
 class MidpointDriftIntegrator(BackwardEuler):
 
     """
-    This is the midpoint drift integrator that is intended for use 
-    with semiflexible bending fluctuations. Basically, it is based on generating a
-    Brownian velocity, then inverting K to step to the midpoint, then solving the 
-    saddle point system we usually solve at the midpoint.
-    More details can be found in Section 3 here: https://arxiv.org/pdf/2301.11123.pdf
+    This is the midpoint drift integrator that is intended for use
+    with semiflexible bending fluctuations. It overwrites the method
+    SolveForFiberAlphaLambda to account for the fluctuations in the 
+    filament tangent vectors, as well as include the proper drift terms
+    in the overdamped Langevin dynamics
     """ 
 
     def __init__(self,fibCol,CLNetwork=None):
+        """
+        The constructor is the same as in the abstract class. 
+        In addition to setting the fiberCollection and CLNetwork objects,
+        in this constructor we can also specify whether to use a modified backward
+        Euler method for the Brownian velocity (i.e., whether to add a term in the
+        velocity that is O(1) (compared to O(1/$\\sqrt{\\Delta t}$)) to make the 
+        covariance of the fluctuations be more accurate -- see Section 8.2.1 in
+        Maxian's PhD thesis.
+        """
         super().__init__(fibCol,CLNetwork);
-        self._nLanczos=[];
         self._ModifyBE=True;
         if (not isinstance(fibCol,SemiflexiblefiberCollection)):
             raise TypeError('The midpoint drift integrator is for fibers with bending fluctuations only!')
         
     def SolveForFiberAlphaLambda(self,XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald):
         """
-        This is the method that gives alpha and lambda on the fibers using the midpoint solve. 
-        The steps are outlined in the columns below. 
+        This is the method that gives $\\alpha$ and $\\Lambda$ on the fibers using a "midpoint"
+        temporal integrator to correctly capture the fluctuations and drift terms. The specific 
+        order of steps is given in Section 8.3 of Maxian's thesis. What we do is to solve the 
+        saddle point system
+        $$
+        \\begin{pmatrix}
+        -M & K + c \\Delta t M L K \\\\
+        K^T & 0 
+        \\end{pmatrix}^{n+1/2,*}
+        \\begin{pmatrix}
+        \\Lambda \\\\
+        \\alpha
+        \\end{pmatrix}^{n+1/2,*} =
+        $$
+        $$
+        \\begin{pmatrix}
+        M^{n+1/2,*} \\left(-LX^n + F_{ext}^n\\right)+U_0^n +U_B^n+U_{MD}^n\\\\
+        0
+        \\end{pmatrix}
+        $$
+        for $\\alpha$ and $\\Lambda$. If there is nonlocal (inter-fiber) hydrodynamics, 
+        we solve this system by converging GMRES to tolerance GMREStolerance (given
+        at the top of this file) NOT running a fixed number of iterations. If there is 
+        only intra-fiber (local) hydrodynamics, we solve the saddle point system by dense
+        linear algebra on each fiber separately.
+        
+        In the saddle point solve, the mobility $M$ and kinematic matrix $K$ are evaluated at $X^{n+1/2,*}$,
+        which is a guess for the midpoint positions, obtained by computing
+        $$
+        \\alpha^{n,*}=\\sqrt{\\frac{2k_BT}{\\Delta t}} \\left(K^n\\right)^\\dagger \\left(M^n\\right)^{1/2}W^n
+        $$
+        and updating the fiber by $\\Delta t/2 \\alpha^{n,*}=\\Delta t/2 \\left(\\Omega^{n,*},U_{mp}^{n,*}\\right)$,
+        i.e., rotate the tangent vectors by $\\Delta t/2\\Omega^{n,*}$ 
+        and translate the midpoint by $\\Delta t/2 U_{mp}^{n,*}$. 
+        
+        In the saddle point system, there are two additional terms to specify. The first is the 
+        Brownian velocity, which in the modified backward Euler method is given by
+        $$
+        U_B^n =\\sqrt{\\frac{2k_BT}{\\Delta t}}\\left(\\left(M^n\\right)^{1/2}W+\\sqrt{\\frac{\\Delta t}{2}} M^n L^{1/2} W_2\\right),
+        $$
+        where $L$ is the bending energy matrix.
+        
+        The formula for the drift term $U_{MD}^n$ depends on the type of hydrodynamics being considered.
+        If we are considering only LOCAL hydrodynamics (no inter-fiber communication), it is 
+        given by
+        $$U_{MD}^n=\\sqrt{\\frac{2 k_B T}{\\Delta t}} \\left(M^{n+1/2,*}-M^n\\right)\\left(M^n\\right)^{-T/2}\\eta,$$
+        where $\\eta \\sim$randn(0,1) and this formula is computed using dense linear algebra on
+        each fiber separately. 
+        In the case when there is inter-fiber hydrodynamics, this resistance problem becomes 
+        expensive, and so we use an alternative approach, computing
+        $$U_{MD}^n = \\frac{k_B T}{\\delta L} \\left(M\\left(\\tau^{(RFD)}\\right)-M\\left(\\tau^n\\right)\\right)\\eta$$
+        where the RFD for $\\tau$ is obtained by computing $\\mu=K^\dagger \\eta$ and rotating 
+        $\\tau^n$ by the oriented angle $\\delta L \\mu$.
+        
+        Parameters
+        -----------
+        XforNL: array
+            The positions $X$ that are arguments for the mobilities. In the equations above, 
+            we have $M=M(X)$. This argument specifies the $X$ that we evaluate $M$ at.
+            In this method $X=X^n$.
+        XsforNL: array
+            The tangent vectors $\\tau$ that are arguments for the kinematic matrix $K$. In the 
+            equations above, $K=K(\\tau)$, and this argument specifies what $\\tau$ we evaluate $K$ at.
+            In this method $\\tau=\\tau^n$.
+        iT: int
+            The time step index
+        dt: double
+            The time step size
+        tvalSolve: double
+            The time we use to evaluate any functions of time like the background flow. In this
+            first order method it's equal to iT*dt
+        forceExt: array
+            The explicit forcing $F_{ext}$ that enters the saddle point system above
+        lamStar: array
+            Not used in this method (only in deterministic base class).
+        Dom: Domain object
+            The periodic domain where we perform the nonlocal velocity evaluations
+        Ewald: RPYVelocityEvaluator object
+            The object that evaluates the nonlocal fluid velocity
+            
+        Returns
+        --------
+        (array, int, array)
+            The first argument returned is the solution of the saddle point 
+            system, $\\left(\\Lambda,\\alpha\\right)=\\left(\\widetilde{\\Lambda}+\\Delta \\Lambda, \widetilde{\\alpha}+\\Delta \\alpha \\right)$.
+            The second argument is the number of GMRES iterations required/used to solve the saddle 
+            point system.
+            The third argument is the positions $X$ used to solve the saddle point system. These are
+            needed later when computing the stress due to the constraint forces.
         """
         thist = time.time()  
         # Compute the external flow and force we treat explicitly (this includes the bending force 
@@ -372,7 +718,6 @@ class MidpointDriftIntegrator(BackwardEuler):
             thist = time.time()  
         # Compute M^(1/2)*W for later use
         MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
-        #self._nLanczos.append(nLanczos);
         if (verbose > 0):
             print('Time to do M^1/2 %f' %(time.time()-thist))
             thist = time.time()  
