@@ -37,7 +37,7 @@ sys.path.insert(0, os.path.abspath('../Python/Dependencies/'))
 # coming with Sphinx (named 'sphinx.ext.*') or your custom ones.
 extensions = ['sphinx.ext.autodoc', 'sphinx.ext.coverage', 'sphinx_math_dollar','sphinx.ext.mathjax', 'sphinx.ext.napoleon']
 autodoc_member_order = 'bysource';
-autodoc_mock_imports = ['FiberCollectionC',' 
+autodoc_mock_imports = ["FiberCollectionC"]
 toc_object_entries_show_parents  = 'hide';
 #autoclass_content = 'both';
 
