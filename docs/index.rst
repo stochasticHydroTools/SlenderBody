@@ -1,4 +1,4 @@
-Welcome to SPARCLE's documentation!
+Welcome to SPHARCLE's documentation!
 ===================================
 
 Contents:
