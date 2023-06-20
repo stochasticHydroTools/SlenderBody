@@ -332,12 +332,12 @@ class GPUEwaldSplitter(EwaldSplitter):
         # Raul's code
         import uammd
         self._GPUParams = uammd.PSEParameters(psi=self._xi, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
-            LanczosTol=GPUtol,Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
+            Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
         self._GPUEwald = uammd.UAMMD(self._GPUParams,self._Npts);
         
         # Separate Ewald parameter for M^(1/2)
         self._GPUParamsMHalf = uammd.PSEParameters(psi=self._xiHalf, viscosity=self._mu, hydrodynamicRadius=self._a, tolerance=GPUtol, \
-            LanczosTol=GPUtol,Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
+            Lx=self._PerLengths[0],Ly=self._PerLengths[1],Lz=self._PerLengths[2],shearStrain=0.0);
         self._GPUEwaldHalf = uammd.UAMMD(self._GPUParamsMHalf,self._Npts);
         
         # Calculate the truncation distance for Ewald
