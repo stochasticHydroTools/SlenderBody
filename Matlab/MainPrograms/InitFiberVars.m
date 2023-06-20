@@ -76,8 +76,13 @@ XForMrrp2 = RNp1ToPsip2*reshape(Xt(1:3*Nx),3,[])';
 XForMrr = RNp1ToPsi*reshape(Xt(1:3*Nx),3,[])';
 
 asympRR=1;
-Mrr_Psip2 = RotRotMobilityMatrix(XForMrrp2,a,Lfacs(1)*L,mu,sPsip2,bPsip2,DPsip2,[],[],1,deltaLocal);
-Mrr = RotRotMobilityMatrix(XForMrr,a,Lfacs(1)*L,mu,sPsi,bPsi,DPsi,[],[],1,deltaLocal);
+try
+    LforMrr = Lfacs(1)*L;
+catch
+    LforMrr = L;
+end
+Mrr_Psip2 = RotRotMobilityMatrix(XForMrrp2,a,LforMrr,mu,sPsip2,bPsip2,DPsip2,[],[],1,deltaLocal);
+Mrr = RotRotMobilityMatrix(XForMrr,a,LforMrr,mu,sPsi,bPsi,DPsi,[],[],1,deltaLocal);
 BCanswers = zeros(12*nFib,1);
 % s = 0 end: can be either free or clamped
 XBCMat =  FreeBCMatrix(0,sNp5,bNp5,DNp5);
@@ -203,7 +208,7 @@ RupsampleHydro = barymat(sup,sNp1,bNp1); % From X grid to upsampled
 WUp = stackMatrix(diag(wup));
 end
 if (upsamp==0) % Initialize eigenvalue cutoff
-    NForRef = 1/eps;
+    NForRef = ceil(L/a);
     [sForRef,wForRef,~] = chebpts(NForRef, [0 L],gtype);
     XStraight = [sForRef zeros(NForRef,2)];
     MRPY=getGrandMBlobs(NForRef,XStraight,a,mu);

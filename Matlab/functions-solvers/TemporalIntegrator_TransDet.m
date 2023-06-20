@@ -1,11 +1,11 @@
 Xt = XonNp1Mat*[Xst;XMP];
-XtPrev = XonNp1Mat*[XstPrev;XMPPrev];
 Xs3 = reshape(Xst,3,N)';
-Xs3Prev = reshape(XstPrev,3,N)';
 OneXMob = reshape(Xt,3,[])';
 XsK = Xs3;
 if (impcoeff ==1/2)
+    XtPrev = XonNp1Mat*[XstPrev;XMPPrev];
     OneXMob = reshape(3/2*Xt-1/2*XtPrev,3,[])';
+    Xs3Prev = reshape(XstPrev,3,N)';
     XsK = 3/2*Xs3-1/2*Xs3Prev;
 end
 % Mobility evaluation
@@ -22,7 +22,7 @@ else
         Binput = AllbS_TrueFP_Np1;
     end
     M = TransTransMobilityMatrix(OneXMob,a,L,mu,sNp1,bNp1,DNp1,Binput,...
-        AllbD_Np1,NForSmall,~exactRPY,deltaLocal,LDOnly);
+        AllbD_Np1,NForSmall,~exactRPY,deltaLocal,TransTransLDOnly);
     MWsym = 1/2*(M*WTilde_Np1_Inverse + WTilde_Np1_Inverse*M');
     MWsym = FilterM(1/2*(MWsym+MWsym'),eigThres);
 end

@@ -164,9 +164,9 @@ AllMeanCoeffs(iTrial,:) = MeanSqCoeffs/nSaveSamples;
 AllMeanSecCoeffs(iTrial,:)=MeanSqSecCoeffs/nSaveSamples;
 AllMeanDevs(iTrial) = MeanDev/nSaveSamples;
 AllCovMats(:,:,iTrial)=CovMat/nSaveSamples;
-%AllPositions(:,iTrial)=dX;
+AllPositions(:,iTrial)=dX;
 toc
-save(strcat('SpecMCMCFreeConstKbT_N',num2str(N),'_Lp',num2str(lpstar),'.mat'))
+%save(strcat('SpecMCMCFreeConstKbT_N',num2str(N),'_Lp',num2str(lpstar),'.mat'))
 end
 %exit;
 

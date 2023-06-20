@@ -1,5 +1,5 @@
 % Steric forces
-function [StericForce,NewPairsAndIntervals] = StericForces(X,Runi,a,kbT,su,nFib,g,Ld)
+function StericForce = StericForces(X,Runi,a,kbT,su,nFib,g,Ld)
     [Nu,N]=size(Runi);
     delta = a;
     cutoff = 4*delta;
@@ -98,9 +98,9 @@ function [StericForce,NewPairsAndIntervals] = StericForces(X,Runi,a,kbT,su,nFib,
                         wtjPt = ds_u/2;
                     end
                     isAway=1;
-                    if (iFib==jFib && abs(su(jPtMod)-su(iPtMod)) < 1.1*cutoff)
-                        isAway=0;
-                    end
+%                     if (iFib==jFib && abs(su(jPtMod)-su(iPtMod)) < 1.1*cutoff)
+%                         isAway=0;
+%                     end
                     if (isAway)
                         rvec = UniPtList(iPt,:)-UniPtList(jPt,:);
                         r = norm(rvec);
