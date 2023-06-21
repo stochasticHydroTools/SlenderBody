@@ -1,7 +1,7 @@
 import numpy as np
 from numpy import pi
 from numpy import cos
-import numba as nb
+#import numba as nb
 
 """
 This file is a list of Chebyshev related functions
@@ -115,7 +115,7 @@ def diffMat(numDs,dom,Ntarg,Nsrc,typtarg,typsrc):
     Jacobian = 0.5*(dom[1]-dom[0]);
     return NderivMat/(Jacobian**numDs);
 
-@nb.njit(nb.float64[:,:](nb.float64[:,:],nb.int64))
+#@nb.njit(nb.float64[:,:](nb.float64[:,:],nb.int64))
 def diffCoefficients(coefs,N):
     """
     Differentiate Chebyshev coefficients using the recursive

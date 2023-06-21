@@ -29,7 +29,9 @@ class TemporalIntegrator(object):
 
     This abstract class is a first order explicit method. Because of the stiffness
     of the bending force, such a method is not really practical, and so the point of the 
-    abstract class is to declare a list of methods.
+    abstract class is to declare a list of methods, as well as implement methods that 
+    are general to a bending force argument of the form $(1-c)X^n+cX^{n+1}$. In this 
+    abstract class, $c=0$. 
     
     For more details on temporal integration, see Sections 6.4 and 7.3 (deterministic fibers)
     and 8.2 (fluctuating fibers) of Maxian's PhD thesis.

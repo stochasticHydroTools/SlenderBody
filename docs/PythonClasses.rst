@@ -8,4 +8,5 @@ Contents:
 
    TemporalIntegrator
    fiberCollection
+   FibCollocationDiscretization
    

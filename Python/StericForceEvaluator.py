@@ -102,7 +102,6 @@ class StericForceEvaluator(object):
         self._NeighborSearcher.updateSpatialStructures(Xuniform,Dom);
         uniNeighbs = self._NeighborSearcher.selfNeighborList(Cutoff,1);
         uniNeighbs = uniNeighbs.astype(np.int64);
-        np.savetxt('Neighbors.txt',uniNeighbs)
         if (excludeSelf):
             Fibs = self.mapUniPtToFiber(uniNeighbs);
             delInds = np.arange(len(Fibs[:,0]));

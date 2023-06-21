@@ -1,5 +1,5 @@
 Welcome to SPHARCLE's documentation!
-===================================
+=====================================
 SPHARCLE stands for Slender Particle Hydrodynamics
 And Reacting Cytoskeletal Linking Elements. 
 

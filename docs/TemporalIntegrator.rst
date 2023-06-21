@@ -1,3 +1,5 @@
+Documentation for temporal integration
+=======================================
 .. autoclass:: TemporalIntegrator.TemporalIntegrator
     :members:
 .. autoclass:: TemporalIntegrator.BackwardEuler

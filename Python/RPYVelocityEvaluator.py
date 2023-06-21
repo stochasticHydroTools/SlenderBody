@@ -1,6 +1,6 @@
 #import finufftpy as fi
 import numpy as np
-import numba as nb 
+#import numba as nb 
 from RPYKernelEvaluator import RPYKernelEvaluator as RPYcpp
 import time
 from math import pi
@@ -46,9 +46,9 @@ class RPYVelocityEvaluator(object):
     def NeedsGPU(self):
         return False;
     
-    @staticmethod
-    @nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.int64,nb.float64[:,:],\
-        nb.float64[:,:],nb.float64,nb.float64))
+    #@staticmethod
+    #@nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.int64,nb.float64[:,:],\
+    #    nb.float64[:,:],nb.float64,nb.float64))
     def RPYKernel(Ntarg,Xtarg,Nsrc,Xsrc,forces,mu,a):
         """
         The dumb quadratic method to sum the RPY kernel. 
@@ -75,8 +75,8 @@ class RPYVelocityEvaluator(object):
                 utot[iTarg,:]+= oneOvermu*(fval*forces[iSrc,:]+rdotf*(gval-fval)*rhat);
         return utot;
 
-    @staticmethod
-    @nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.float64,nb.float64))
+    #@staticmethod
+    #@nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.float64,nb.float64))
     def RPYMatrix(N,X,mu,a):
         """
         The dumb quadratic method to form the RPY matrix. 

@@ -1,11 +1,11 @@
 import numpy as np
 import scipy.linalg as sp
-import chebfcns as cf
+#import chebfcns as cf
 import time
 from math import sqrt, exp
 from scipy.linalg import lu_factor, lu_solve, sqrtm
 from warnings import warn
-from RPYVelocityEvaluator import RPYVelocityEvaluator
+#from RPYVelocityEvaluator import RPYVelocityEvaluator
 
 # Documentation last updated: 01/21/2023
 
@@ -17,40 +17,92 @@ SpecialQuadEigenvalueSafetyFactor = 1;
 class FibCollocationDiscretization(object):
 
     """ 
-    The object code for a fiber discretization. 
+    This class stores information about the collocation discretization
+    of a single fiber.
     The abstract class is a template for ANY collocation discretization,
     then the child class is specific to Chebyshev. The child class contains
     the relevant methods that need to be modified if we were to switch to e.g. 
     Legendre.
     
     The primary purpose of this class is to precompute the matrices that get used in the 
-    force and K matrix calculations. These matrix are passed to C++ through the class
-    fiberCollection.py. 
+    force and kinematic $K$ matrix calculations. 
+    These matrix are passed to C++ through the class
+    fiberCollection. There are NO actual computations done in this class (only precomputations).
+    
+    This class is where the self mobility is set. There are four options for this:
+    
+    1) Special quadrature on the RPY integral (set RPYSpecialQuad = True)
+    2) Direct quadrature without upsampling on the RPY integral (set RPYDirectQuad = True)
+    3) Oversampled quadrature on the RPY integral (set RPYOversample = True)
+    4) Slender body theory with modified local drag coefficients at the endpoints (set all three
+       options to false to obtain this)
+    
+    In the case of 1) and 4), the mobility can be written as a local drag part + a remainder which 
+    describes the hydrodynamics from the rest of the fiber. The variable FPIsLocal (self._FinitePartLocal) 
+    controls whether this remaining intra-fiber hydrodynamics (the finite part integral in SBT) is considered "local"
+    by the code (whether it becomes part of the dense matrix $M_L$) or whether it is nonlocal, 
+    which means it can only be applied, but not formed.
     """
     
     ## ===========================================
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
-    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,NupsampleForDirect=64,nptsUniform=16,rigid=False,\
-        RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True):
+    def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
+        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True,\
+        FPIsLocal=True,penaltyParam=0):
         """
         Constructor. 
-        L = fiber length, 
-        epsilon = fiber aspect ratio (IMPORTANT: this is the actual aspect ratio,
-        NOT the aspect ratio of the RPY tensor. The RPY radius can be computed from the actual radius
-        by multiplying by aRPYFac, as is done below).      
-        Eb = bending stiffness, mu = fluid viscosity. 
-        N = number of points on discretized fiber.
-        NupsampleForDirect = how much to upsample by for direct quad, nptsUniform = number of uniform 
-        points (for cross-linking / checking distances between fibers), rigid = whether fiber is rigid.
-        There are then a series of options for the mobility and discretization:
-        RPYSpecialQuad = whether to use special quadrature for the mobility
-        RPYDirectQuad = whether to use direct quadrature for the mobility
-        RPYOversample = whether to use oversampled quadrature for the mobility
-        UseEnergyDisc = whether to use an energy discretization for the elastic force. If false, uses 
-        rectangular spectral collocation. 
-        FPIsLocal = whether intra-fiber (or "finite part") hydrodynamics is considered local or nonlocal. 
-        This is important when we form the mobility matrix M in the preconditioner.
+        
+        Parameters
+        -----------
+        L: double
+            The fiber length $L$
+        epsilon: double
+            The fiber aspect ratio. IMPORTANT: this is the actual aspect ratio, i.e., the 
+            fiber radius $a$ divided by the length:=, $\\epsilon=a/L$.
+            This is NOT the aspect ratio of the RPY tensor, $\\hat{\\epsilon}=\\hat{a}/L$.
+            The RPY radius can be computed from the actual radius
+            by multiplying by the double aRPYFac$=e^{3/2}/4 \\approx 1.12$. 
+            This double is set as a constant in the 
+            header of this file, and is the only place throughout the code where it is set.
+        Eb: double
+            The bending stiffness (called $\\kappa$ in most papers, thesis)
+        mu: double
+            The suspending fluid viscosity.
+        N: int
+            Number of unit-length tangent vectors making up the discretized fiber. The number of 
+            degrees of freedom is $N_x=N+1$, since the fiber midpoint makes an additional DOF.
+        delta: double
+            When using SBT, this regularizes the local drag coefficients so they are nonsingular
+            at the endpoints. The regularization is basically to take an ellipsoidal fiber on 
+            lengthscales less than $\\delta L$ and a cylindrical fiber on lengthscales larger. 
+            See Section 1.1.3 in Maxian's PhD thesis.
+        NupsampleForDirect: int
+            If we do direct quadrature/upsampling for the RPY mobility, this is the number 
+            of points we upsample to 
+        nptsUniform: int 
+            Number of uniform points we use for resampling in external (typically cross linking)
+            calculations
+        rigid: bool
+            If the fibers are rigid
+        RPYSpecialQuad: bool
+            Whether to use special quadrature for the mobility
+        RPYDirectQuad: bool
+            Whether to use direct quadrature for the mobility
+        RPYOversample: bool
+            Whether to use oversampled quadrature for the mobility
+        UseEnergyDisc: bool, optional 
+            Whether to use an energy discretization for the elastic force (defaults to true). If false, uses
+            rectangular spectral collocation. The difference between these two will be described in 
+            more detail below (method initD4BC). Basically, the energy discretization is better when the problem
+            is nonsmooth since it guarantees zero force and torque on the fiber.
+        FPIsLocal: bool, optional
+            Whether intra-fiber (or "finite part") hydrodynamics is considered local or nonlocal.
+            This is important when we form the mobility matrix $M_L$ in the preconditioner. The 
+            default is true.
+        penaltyParam: double, optional
+            If the fiber is bound by a penalty force, this gives the penalty parameter. Defaults to 
+            zero.
         """
         self._L = L;
         self._epsilon = epsilon;
@@ -77,7 +129,7 @@ class FibCollocationDiscretization(object):
 
     def initIs(self):
         """
-        Initialize the identity matrix which maps a 3 x 1 vector to the 
+        Initialize the identity matrix which maps a $3 \\times 1$ vector to the
         whole grid
         """
         self._I = np.zeros((3*self._Nx,3));
@@ -89,12 +141,29 @@ class FibCollocationDiscretization(object):
 
     def initLocalcvals(self,delta=0.1):
         """
-        Initialize local leading order coefficients for the local drag matrix M. 
-        The distance delta is the fraction of the fiber over which the ellipsoidal endpoint
-        decay occurs. 
-        See pg. 9 here: https://arxiv.org/pdf/2007.11728.pdf for formulas
-        Note that this is only used when the mobility is SBT, i.e., when RPYSpecialQuad, 
-        RPYDirectQuad, and _RPYOversample have ALL been set to false. 
+        Initialize local leading order coefficients for the local drag matrix $M_L$. 
+        As mentioned in the constructor, the mobility on a single fiber can, in the 
+        case of SBT, be written as
+        $$M = M_{LD} + M_{FP}$$
+        The local drag matrix $M_{LD}$ can in turn be written as 
+        $$M_{LD}^{SBT} = c(s) \\left(I+\\tau \\tau\\right)+\\left(I-3\\tau\\tau\\right)$$
+        This method initializes $c(s)$ ONLY in the case of SBT, i.e., when RPYSpecialQuad,
+        RPYDirectQuad, and RPYOversample have ALL been set to false. 
+        The formula for the effective $c$ is to first set $\\eta=2s/L=1$, then 
+        compute a weight function
+        $$w(s;\\delta)=\\text{tanh}{\\left(\\frac{\\eta(s)+1}{\\delta}\\right)}- \\text{tanh}{\\left(\\frac{\\eta(s)-1}{\\delta}\\right)}-1,$$
+        which is 1 near the fiber center and zero at the fiber ends. We then assign a regularized $s$
+        $$\\bar{s}(s;\\delta)=w(s;\\delta)s+\\left(1-w(s;\\delta)^2\\right)\\frac{\\delta L}{2}$$
+        on $0 \\leq s \\leq L/2$, with the corresponding reflection for $s > L/2$. The regularized 
+        coefficient $\\delta$ is then given by 
+        $$c(s;\\delta)=\\ln{\\left(\\frac{4\\bar{s}\\left(L-\\bar{s}\\right)}{\\left(\\epsilon L\\right)^2}\\right)}$$
+        These coefficients are passed to the C++ code. When we use RPY, the coefficients 
+        are computed directly in the C++ code. 
+        
+        Parameters
+        ----------
+        delta: double, optional
+            The amount of regularization in the formulas above. The default is 0.1 if not provided.
         """
         if (self._RPYSpecialQuad or self._RPYDirectQuad or  self._RPYDirectQuad):
             if (delta > 0):
@@ -113,12 +182,40 @@ class FibCollocationDiscretization(object):
         self._sRegularized = sNew;       
            
     def averageTau(self,Xs):
+        """
+        The average tangent vector on a fiber, given by the formula
+        $$\\bar{\\tau}  = \\frac{1}{L}\\int_0^L \\tau(s) ds$$
+        
+        Parameters
+        -----------
+        Xs: array
+            Array of $\\tau$ at all the collocation points
+            
+        Returns
+        -------
+        array
+            $\\bar{\\tau}$ as a $3 \\times 1$ array
+        """
         avgTau = np.zeros(3);
         for p in range(self._Ntau):
             avgTau+= 1/(self._L)*Xs[p,:]*self._wTau[p];
         return avgTau
     
     def averageXsXs(self,Xs):
+        """
+        The average matrix $\\tau \\tau$ on a fiber, given by the formula
+        $$\\bar{\\tau \\tau}  = \\frac{1}{L}\\int_0^L \\tau(s) \\tau(s) ds$$
+        
+        Parameters
+        -----------
+        Xs: array
+            Array of $\\tau$ at all the collocation points
+            
+        Returns
+        -------
+        array
+            $\\bar{\\tau \\tau}$ as a $3 \\times 3$ array
+        """
         avgXsXs = np.zeros((3,3));
         for p in range(self._Ntau):
             avgXsXs+= 1/(self._L)*np.outer(Xs[p,:],Xs[p,:])*self._wTau[p];
@@ -126,7 +223,18 @@ class FibCollocationDiscretization(object):
     
     def calcFibCurvature(self,X):
         """
-        Calculate curvature for fiber X (N x 3 vector)
+        Calculate the absolute average curvature, given by the formula
+        $$\\sqrt{\\frac{1}{L}\\int_0^L X_{ss}(s)\\cdot X_{ss}(s) ds}$$
+        
+        Parameters
+        -----------
+        X: array
+            Array of positions $X$ at all the collocation points
+            
+        Returns
+        -------
+        double
+            The mean $L^2$ fiber curvature according to the formula above.
         """
         Xss = np.dot(self._DXGrid,np.dot(self._DXGrid,X));
         curvaturessq = np.sum(Xss*Xss,axis=1);
@@ -152,11 +260,13 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
         rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True,penaltyParam=0):
         """
-        Initialize Chebyshev grids for x and tau
-        In this discretization, which is described here: https://arxiv.org/abs/2301.11123,
-        the tangent vectors are always described on a type 1 grid of size N. Then the collocation points X
-        are obtained on a grid of size Nx=N+1 by integrating the tangent vectors. 
-        The type of grid for X depends on how the elastic force is calculated - if we use rectangular spectral
+        Initialize Chebyshev grids for $X$ and $\\tau$.
+        
+        In this discretization, which is described in Section 6.1 of Maxian's PhD thesis,
+        the tangent vectors are always described on a type 1 Chebyshev grid of size $N$
+        (this grid does not include the endpoints). Then the collocation points $X$
+        are obtained on a grid of size $N_x=N+1$ by integrating the tangent vectors. 
+        The type of grid for $X$ depends on how the elastic force is calculated - if we use rectangular spectral
         collocation, the collocation grid must be type 1 (no endpoints). See this paper:
         https://tobydriscoll.net/publication/driscoll-rectangular-spectral-collocation-2015/driscoll-rectangular-spectral-collocation-2015.pdf
         for explanation. 
@@ -186,7 +296,25 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     def calcXFromXsMap(self):
         """
         Initialize the mapping _XonNp1Mat, which takes in the tangent vectors and
-        fiber midpoint and returns the positions of the fiber collocation points. 
+        fiber midpoint and returns the positions of the fiber collocation points. That is, 
+        we can write the positions $X$ from the tangent vectors $\\tau$ and midpoint 
+        $X_{mp}$ as 
+        $$
+        X =
+        \\begin{pmatrix}
+        D_{N+1}^\\dagger E_{N \\rightarrow N+1} & B 
+        \\end{pmatrix} 
+        \\begin{pmatrix}
+        \\tau \\\\
+        X_{mp} 
+        \\end{pmatrix}
+        :=\\mathcal{X}\\tau
+        $$
+        So the matrix $\\mathcal{X}$ is what we are computing here. It is made of two blocks, 
+        the first block is the pseudo-inverse of the differentiation matrix on the grid of 
+        size $N+1=N_x$, multiplied by the extension matrix which takes the tangent vectors from
+        a grid of size $N$ to one of size $N_x=N+1$. The second block ensures that the midpoint
+        of $X$ is $X_{mp}$.
         """
         MidpointMat = cf.ResamplingMatrix(3,self._Nx,self._XGridType,self._XGridType);
         MidpointMat = MidpointMat[1,:];
@@ -207,10 +335,20 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     def initUpsamplingMatricesForDirectQuad(self):
         """ 
         Initialize the up and downsampling matrices used when we do upsampled direct
-        quadrature. There are two matrices here. There is the matrix EUpsample (not interesting)
-        which takes the points and upsamples them, but then there is the _OversamplingWtsMat
-        which is W_up*E*Wtilde^(-1). See Eq. (23) in https://arxiv.org/abs/2301.11123
-        for more information on this. 
+        quadrature. Letting $N_{up}$ be the number of points we upsample to, 
+        there are two matrices here. There is the matrix $E_{N_x \\rightarrow N_{up}}$,
+        which takes the points and upsamples them. But there is the force upsampling
+        matrix, which is the matrix which oversamples \\emph{forces}, and is given by
+        $$E_{force} = W_{up} E_{N_x \\rightarrow N_{up}} \\widetilde{W}^{-1},$$
+        where $$\\widetilde{W}^{-1} = E_{N_x \\rightarrow 2N_x}^T W_{2N_x} E_{N_x \\rightarrow 2N_x}$$
+        is an inner product weights matrix, see (7.10) and(6.11) in Maxian's PhD dissertation. 
+        
+        The more complex upsampling of the forces can be thought of in a sequence of three steps:
+        
+        1) Convert to density by applying $\\widetilde{W}^{-1}$
+        2) Oversample the force density (well defined in continuum) to an upsampled grid by 
+           applying $E_{N_x \\rightarrow 2N_x}$
+        3) Multiply by the weights $W_{up}$ on the oversampled grid to get force
         """
         self._wForDirect = cf.chebWts(self._nptsDirect, [0,self._L],self._XGridType);   
         self._EUpsample =  cf.ResamplingMatrix(self._nptsDirect, self._Nx,self._XGridType,self._XGridType);
@@ -220,6 +358,20 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             self._OversamplingWtsMat[iD::3,iD::3]=OneDResamp; 
             
     def FindEigenvalueThreshold(self):
+        """
+        This method computes a threshold eigenvalue for the matrix $M_{SQ}$, describing
+        the hydrodynamics on a single fiber computed via special quadrature on the RPY
+        integral. The procedure is to oversample to $1/\\epsilon$ points, then form the
+        mobility matrix 
+        $$M_{ref} = \\widetilde{W}^{-1} E_{up} W_{up} M_{RPY, up} W_{up} E_{up} \\widetilde{W}^{-1}$$
+        using $N_{up}=1/\\epsilon$ oversampled points on a straight fiber (the calculaton is 
+        relatively insensitive to the fiber shape). We then return the smallest eigenvalue
+        of this matrix, and use that as a threshold to modify any negative eigenvalues that 
+        come about as a result of special quadrature.
+        Note that if the mobility is RPYDirectQuad or RPYOversample, we set the eigenvalue 
+        threshold to zero, since in those two cases we are guaranteed to have an SPD matrix 
+        and never need eigenvalue truncation.
+        """
         # We only want to set the eigenvalue threshold when we do special quad
         self._EigValThres = 0;
         if ((not self._RPYDirectQuad) and (not self._RPYOversample)):
@@ -240,6 +392,26 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         print('Eigenvalue threshold %1.2E' %self._EigValThres)
     
     def UniformUpsamplingMatrix(self,Nunipts,typ='u'):
+        """
+        Compute a set of uniform points and return the matrix that 
+        oversamples to those uniform points
+        
+        Parameters
+        -----------
+        Nunipts: int
+            Number of uniform points
+        typ: char, optional
+            Default is 'u', in which case $\\Delta s =L/(N_u-1)$ and 
+            we get points like 0, $\\Delta s$, 2$\\Delta s$, ...
+            Otherwise, $\\Delta s =L/N_u$ and we get $\\Delta s/2$, $3\\Delta s/2$, ....
+        
+        Returns
+        --------
+        (array, array)
+            The arclength coordinates su of the uniform points and the 
+            matrix $R$ that resamples the Chebyshev point coordinates to
+            the uniform point coordinates
+        """
         if (typ=='u'):
             ds = self._L/(Nunipts-1);
             su = np.arange(0,Nunipts)*ds;
@@ -252,9 +424,43 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         return self._DXGrid; 
     
     def calcXFromXsAndMP(self,Xs,XMP):
+        """
+        Computes Chebyshev point positions $X$ from tangent vectors
+        $\\tau$ and fiber midpoint $X_{mp}$ by applying the matrix 
+        $\\mathcal{X}$ (see method calcXFromXsMap)
+        
+        Parameters
+        ----------
+        Xs: array
+            $3N$ array of tangent vectors
+        Xmp: array
+            $3$ array of the fiber midpoint
+            
+        Returns
+        -------
+        array
+            $3N_x=3(N+1)$ array of the positions at the collocation points
+        """
         return np.dot(self._XonNp1Mat,np.concatenate((Xs,XMP)));  
     
     def calcXsAndMPFromX(self,X):
+        """
+        This is the inverse of the previous method.
+        Computes tangent vectors $\\tau$ and fiber midpoint $X_{mp}$
+        from Chebyshev point positions $X$ by applying the matrix
+        $\\mathcal{X}^{-1}$ (see method calcXFromXsMap)
+        
+        Parameters
+        ----------
+        X: array
+            $3N_x=3(N+1)$ array of the positions at the collocation points
+            
+        Returns
+        -------
+        (array, array)
+            $3N$ array of tangent vectors $\\tau$ followed by
+            $3$ array of the fiber midpoint
+        """
         XsXMP = np.linalg.solve(self._XonNp1Mat,X);    
         Xs = XsXMP[:3*self._Ntau];
         XMP = XsXMP[3*self._Ntau:];
@@ -268,12 +474,42 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     
     def initD4BC(self,UseEnergyDisc,penaltyParam):
         """
-        Compute the operator D_4^BC that is necessary when computing 
-        the bending forces. The constant E_bend is included in 
-        this operator. There are two matrices here. First is the matrix that computes
-        FORCE (self._D4BCForce), and second is the force DENSITY matrix (self._D4BC). 
-        Depending on the discretization, one is computed first, and the other is obtained
-        by multiplying by the (invserse of) Wtilde
+        The elastic force can be written as $F^\\kappa=FX$, and likewise the
+        force density can be written as $f^\\kappa = \\widetilde{W}^{-1}FX:=F_{den}X$, where
+        $$\\widetilde{W}^{-1} = E_{N_x \\rightarrow 2N_x}^T W_{2N_x} E_{N_x \\rightarrow 2N_x}$$
+        is the inner product matrix that converts between force and force density. There
+        are two ways to compute these matrices:
+        
+        1) The energy discretization, in which case we first discretize the energy
+           $$\\mathcal{E}_{b} = \\frac{\\kappa}{2} \\int_0^L X_{ss}(s) \\cdot X_{ss}(s) ds$$
+           via $\mathcal{E}_b = 1/2 X^T L X$, where
+           $$L = \\kappa \\left(D^2\\right)^T \\widetilde{W} D^2$$
+           and then set the force matrix $F=-L$. In this case, we obtain the force 
+           matrix (self._D4BCForce), then compute the force density matrix (self._D4BC)
+           by setting $F_{den}=\\widetilde{W}^{-1}F$. This is also the default way to handle
+           elastic forces.
+        2) Rectangular spectral collocation, in which case the formula for the force matrix
+           is more complicated. In brief, we solve for a configuration on an $N_x+4$ point grid
+           that satisfies the BCs, then compute elastic force on that grid, and downsample to obtain
+           a matrix
+           $$F_{den}= -\\kappa R D^4_{N_x+4} E,$$
+           where $E$ is the extension matrix that accounts for the BCs, $D^4_{N_x+4}$ is the
+           differentiation matrix on the upsampled grid, and $R$ restricts the result to the 
+           original grid.
+           This is summarized in (6.17-19) in Maxian's PhD thesis. What results is the force
+           density matrix, from which we obtain the force matrix by setting $F=\\widetilde{W}F_{den}$.
+        
+        In the case when there is a penalty force keeping the fiber position, the force 
+        density matrix is modified as $F_{den}-P I$, and the force matrix is $F-P\\widetilde{W}$, 
+        where $P$ is the penalty parameter.
+        
+        Parameters
+        -----------
+        UseEnergyDisc: bool
+            If true, we use the energy discretization (option 1 above). 
+            Otherwise, we use rectangular spectral collocation (option 2).
+        penaltyParam: double
+            The strength of the penalty force $P$.
         """
         sDouble = cf.chebPts(2*self._Nx,[0,self._L],self._XGridType);
         wDouble = cf.chebWts(2*self._Nx,[0,self._L],self._XGridType);
@@ -316,23 +552,43 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     
     def calcBendMatX0(self,X0,penaltyParam):
         """
-        For penalty forced fibers
+        For penalty-forced fibers, we need to subtract $FX_0$ from the
+        force so that there is no elastic force in the reference configuration
+        $X_0$. This method computes $FX_0$.
         """
         self._BendMatX0 = np.dot(self._D4BCForce,X0);
         if (abs(penaltyParam) < 1e-10):
             self._BendMatX0 = 0*self._BendMatX0;  
     
-    def StackedValsToCoeffsMatrix(self):  
+    def StackedValsToCoeffsMatrix(self):
+        """
+        Returns
+        --------
+        array
+            The matrix mapping the Chebyshev values
+            to their coefficients on the grid of size $N_x$. This matrix
+            is stacked so that it operates on vectors of size $3N_x$.
+        """
         CToV = cf.CoeffstoValuesMatrix(self._Nx,self._Nx,self._XGridType);
         VToC = np.linalg.inv(CToV);
         return VToC;
     
     def initFPMatrix(self):
         """
-        Initialize the matrix for the finite part integral. 
-        Uses the adjoint method of Anna Karin Tornberg. 
-        This method uses numerical integration of Chebyshev polynomials 
-        instead of exact integration of monomials
+        Precompute an auxillary matrix for special quadrature. In brief, the special
+        quadrature schemes all wind up computing $$\\left(V^{-1}g\\right)^{-T} q,$$ where $g$ is a smooth
+        function which expresses the behavior with the nonsmooth part removed, $q$ is
+        a set of integrals of the nonsmooth function (usually sign(s-s')) against Chebyshev 
+        polynomials, and $V$ is the matrix which computes coefficients from values. 
+        The integral we want can be written as
+        $$g^T V^{-T} q.$$ 
+        Thus, in this method, we compute the matrix $V^{-T} q$ and store it for later use.
+        When we do RPY special quadrature, we also precompute the same matrix for 
+        special quadrature for the doublet here, and also the matrices needed to upsample
+        the positions and forces to a Gauss-Legendre grid of size $2\\hat{a}$. The number of 
+        points we resample these integrals to is set in the constructor.
+        
+        More information can be found in Section 6.2.1 of Maxian's PhD thesis.
         """
         sscale=-1+2*self._sX/self._L;
         ChebCoeffsToVals = cf.CoeffstoValuesMatrix(self._Nx,self._Nx,self._XGridType);
