@@ -1,4 +1,4 @@
-Documentation for temporal integration
+Temporal integration
 =======================================
 .. autoclass:: TemporalIntegrator.TemporalIntegrator
     :members:

@@ -188,8 +188,8 @@ class CrossLinkedNetwork(object):
         Compute the cross-linker contribution to the stress. If a single 
         cross linker connects fibers $i$ and $j$, the formula for the stress
         due to this CL is given by
-        $$\\sigma_{CL} = \\sum_p X^{(i)}_p F^{(i)_p + X^{(j)}_p F^{(j)_p$$
-        where the product betweeb $X$ and $F$ is an outer product and the 
+        $$\\sigma_{CL} = \\sum_p X^{(i)}_p F^{(i)}_p + X^{(j)}_p F^{(j)}_p$$
+        where the product between $X$ and $F$ is an outer product and the 
         positions $X$ are the same periodic copies of the fibers that are linked
         by the CL. 
         
@@ -199,7 +199,7 @@ class CrossLinkedNetwork(object):
         
         Parameters
         ----------
-        fibCollection; fiberCollection object
+        fibCollection: fiberCollection object
             The object that stores the collection of fibers (and is queried to get the 
             uniform points needed to compute forces)
         chebPts: array
@@ -230,7 +230,8 @@ class CrossLinkedNetwork(object):
         """
         Returns
         -------
-        The number of links connecting distinct fibers
+        int
+            The number of links connecting distinct fibers
         """
         return self._nDoubleBoundLinks;
     
@@ -284,9 +285,10 @@ class CrossLinkedNetwork(object):
         
     def calcLinkStrains(self,uniPoints,Dom):
         """
-        Method to compute the strain in each link
+        Method to compute the strain in each link. 
         We define (signed) strain as $r-\\ell$, where $r$ is the length of 
-        the link at present and $\\ell$ is the rest length. 
+        the link at present and $\\ell$ is the rest length. This statistic is 
+        useful to tell if the simulation is unstable.
         
         Parameters
         ----------
@@ -402,9 +404,9 @@ class CrossLinkedNetwork(object):
     
     def BundleOrderParameters(self,fibCollection,nBundles,whichBundlePerFib,minPerBundle=2):
         """
-        Get the order parameter of each bundle. The order parameter for a bundle of F filaments 
+        Get the order parameter of each bundle. The order parameter for a bundle $B$ of F filaments 
         is defined as the maximum eigenvalue of the matrix 
-        $$M = \\frac{1}{F} \\sum \\frac{1}{L} \\int_0^L {\\tau(s)\tau(s) ds}$$,
+        $$M = \\frac{1}{F L} \\sum_{i \\in B} \\int_0^L {\\tau^{(i)}(s)\\tau^{(i)}(s) ds}$$
         where we discretize the integral by direct Clenshaw-Curtis quadrature.
         
         Parameters
@@ -475,12 +477,13 @@ class CrossLinkedNetwork(object):
         Calculate the orientiation parameter for every fiber 
         within nEdges of a given fiber. The order parameter
         is defined as the maximum eigenvalue of the matrix 
-        $$M^{(i)} = \\frac{1}{F} \\sum \\frac{1}{L} \\int_0^L {\\tau(s)\tau(s) ds}$$,
+        $$M^{(i)} = \\frac{1}{F L} \\sum_{j \\in N^{(i)}} \\int_0^L {\\tau^{(j)}(s)\\tau^{(j)}(s) ds}$$
         where we discretize the integral by direct Clenshaw-Curtis quadrature.
         Here the sum occurs over all fibers that are within a certain number of 
-        "edges" (links) in the adjacency matrix from fiber $i$. 
+        "edges" (links) in the adjacency matrix from fiber $i$. We define this as 
+        the set of "neighbors" $N^{(i)}$. 
         
-        Inputs
+        Parameters
         ------
         nEdges: int
             Number of conections we allow fibers to be separated by. For instance, 

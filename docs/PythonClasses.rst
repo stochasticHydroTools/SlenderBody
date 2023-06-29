@@ -9,4 +9,6 @@ Contents:
    TemporalIntegrator
    fiberCollection
    FibCollocationDiscretization
+   CrossLinkedNetwork
+   DiscretizedFiber
    

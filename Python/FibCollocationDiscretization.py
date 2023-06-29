@@ -1,11 +1,11 @@
 import numpy as np
 import scipy.linalg as sp
-#import chebfcns as cf
+import chebfcns as cf
 import time
 from math import sqrt, exp
 from scipy.linalg import lu_factor, lu_solve, sqrtm
 from warnings import warn
-#from RPYVelocityEvaluator import RPYVelocityEvaluator
+from RPYVelocityEvaluator import RPYVelocityEvaluator
 
 # Documentation last updated: 01/21/2023
 

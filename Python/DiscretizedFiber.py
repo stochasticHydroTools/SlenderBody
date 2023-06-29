@@ -47,10 +47,11 @@ class DiscretizedFiber(object):
         1) Set $u=1-2r_1$, where $r_1 \\sim U(0,1)$
         2) Set $v=\\sqrt{1-u^2}$
         3) Set $w=2 \\pi r_2$, where $r_2 \\sim U(0,1)$
-        4) Set $$\tau=\\left(v\\cos{w}, v \\sin{w}, u\\right)$$
+        4) Set $\\tau=\\left(v\\cos{w}, v \\sin{w}, u\\right)$, which is the 
+           tangent vector we use for the straight fiber.
 
         In addition, we also compute a random midpoint for 
-        the fiber, setting $X_{mp}=\\left(r_x L_x, r_y L_y, r_z, L_z\\right)$, 
+        the fiber, setting $X_{mp}=\\left(r_x L_x, r_y L_y, r_z L_z\\right)$, 
         where $r_x$, $r_y$, and $r_z$ are all random draws from
         $U(0,1)$. 
 

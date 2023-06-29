@@ -58,7 +58,7 @@ class EndedCrossLinkedNetwork {
         _TotalNumberBound = intvec(TotSites,0);
         _MaxNumberPerSite = maxLinksPerSite;
         _maxLinks = std::max(4*int(_konSecond/_koffSecond*_kon/_koff*_TotSites),100); // guess for max # of links
-        std::cout << "Array size " << _maxLinks << std::endl;
+        //std::cout << "Array size " << _maxLinks << std::endl;
         _LinkHeads = intvec(_maxLinks,-1);
         _LinkTails = intvec(_maxLinks,-1);
         _LinkShiftsPrime = vec(3*_maxLinks,0); // these are in the primed coordinate space

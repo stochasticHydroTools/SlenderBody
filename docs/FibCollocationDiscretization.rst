@@ -1,4 +1,4 @@
-Documentation for collocation discretization
+Collocation discretization
 =============================================
 .. autoclass:: FibCollocationDiscretization.FibCollocationDiscretization
     :members:

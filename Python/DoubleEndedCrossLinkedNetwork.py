@@ -12,7 +12,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     This class is a child of CrossLinkedNetwork which implements a network 
     with cross links where each end matters separately. 
        
-    There are 6 reactions (the even ones are the reverse of the odds)
+    There are 6 reactions (the even ones are the reverse of the odds):
+    
     1) Binding of a floating link to one site (rate _kon)
     2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
     3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)
@@ -26,9 +27,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     a certain distance apart. Note also that we do not explicitly keep track of unbound cross linkers.
     We instead assume that there are always enough CLs if an event is supposed to happen.
     
-    This is combined with the C++ file
-    cppmodules/EndedCrossLinkers.cpp which uses the fortran code
-    ../Fortran/MinHeapModule.f90
+    We use an event driven algorithm to simulate a time step. To efficiently organize the events, 
+    we use a heap queue data structure which we borrow from the simulation package SRBD 
+    (https://github.com/stochasticHydroTools/SRBD). The heap queue is implemented in the fortran
+    code /Fortran/MinHeapModule.f90 in this repository.
     
     """
     
@@ -53,12 +55,16 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             Cross linking spring constant (for the linear spring model)
         rl: double
             Rest length of the CLs (for the linear spring model)
-        kon: rate (units 1/(length x time)) at which a single end of a CL binds to a site
-        koff: rate (units 1/time) at which a singly-bound CL comes off from a site
-        konsecond: rate (units 1/(length x time)) at which the second end of a singly-bound CL
+        kon: double
+            Rate (units 1/(length x time)) at which a single end of a CL binds to a site
+        koff: double
+            Rate (units 1/time) at which a singly-bound CL comes off from a site
+        konsecond: double
+            Rate (units 1/(length x time)) at which the second end of a singly-bound CL
             binds to a site (this is modified by an Arrhenuis factor later -- see the method
             updateNetwork)
-        koffsecond: rate (units 1/time) at which one end of a doubly-bound CL comes off, leaving
+        koffsecond: double
+            Rate (units 1/time) at which one end of a doubly-bound CL comes off, leaving
             a singly-bound CL
         CLseed: int
             The seed for cross linking calculations
@@ -66,7 +72,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             Periodic domain on which the calculation is being carried out
         fibDisc: FibCollocationDiscretization object
             The discretization of each fiber's centerline
-        kT: thermal energy. If zero, the binding of a second end occurs with rate konsecond (no 
+        kT: double
+            Thermal energy. If zero, the binding of a second end occurs with rate konsecond (no 
             Arrhenius factor). If nonzero, then the rate is modified (see updateNetwork method for 
             details)
         smoothForce: boolean, defaults to true
@@ -136,18 +143,24 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         Update the network using Kinetic Monte Carlo. The full procedure we use is documented 
         in Section 9.1.1 of Maxian's PhD thsis. Briefly, we consider six possible reactions, with the 
         following rates in units 1/time:
+        
         1) Binding of a floating link to one site (rate _kon $\\Delta s_u$)
         2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
         3) Binding of a singly-bound link to another site to make a doubly-bound CL. The rate of this 
-        reaction, assuming $k_B T > 0$ is given by
-        $$k_{on,s} = k_{on,s}^0 \\exp{\\left(\\frac{-K_c (r-\\ell)^2}{k_B T}\\right)} \\Delta s_u$$
-        If $k_B T = 0$, then the Arrhenius factor is ommitted. If $k_B T > 0$, we assume possible
-        connections can form if two sites are separated by $2\\sqrt{k_B T/K}$, where $K$ is the CL 
-        stiffness (two standard deviations of the Gaussian above). If $k_B T =0$ and the binding
-        probability is uniform, we stick to one standard deviation.
+           reaction, assuming $k_B T > 0$ is given by
+           $$k_{on,s} = k_{on,s}^0 \\exp{\\left(\\frac{-K_c (r-\\ell)^2}{k_B T}\\right)} \\Delta s_u$$
+           If $k_B T = 0$, then the Arrhenius factor is ommitted. If $k_B T > 0$, we assume possible
+           connections can form if two sites are separated by $2\\sqrt{k_B T/K}$, where $K$ is the CL 
+           stiffness (two standard deviations of the Gaussian above). If $k_B T =0$ and the binding
+           probability is uniform, we stick to one standard deviation.
         4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
         5) Binding of both ends of a CL (rate _kDoubleOn. This rate is set to zero at present.)
         6) Unbinding of both ends of a CL (rate _kDoubleOff. This rate is also set to zero.)
+        
+        Once the rates are computed, the time at which an event occurs is taken from an exponential
+        distribution via sampling a time $t=-\\ln(1-u)/k$, where $k$ is the event rate and $u$ is 
+        a random draw from $U(0,1)$. These times are organized into a heap queue which efficiently
+        sorts them.
         
         Parameters
         ----------
@@ -161,7 +174,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         Returns
         -------
         Null
-            But updates the state of the networ internally. The actual update is done in C++.
+            Nothing, but updates the state of the network internally. The actual update is done in C++.
             On the python side, we get the neighbors and filter them so that fibers cannot link to
             themselves. Then we pass the list of potential neighbors to C++ which updates its own chain.
             The Python side is then synced with the C++ side.
@@ -196,6 +209,21 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self.syncPythonAndCpp()
     
     def setLinks(self,iPts,jPts,Shifts,FreelyBound=None):
+        """
+        Set the links from input vectors of iPts, jPts, and Shifts  
+        
+        Parameters
+        ----------
+        iPts: int array
+            Heads of links
+        jPts: int array
+            Tails of links
+        Shifts: three-dimensional array
+            The periodic shift associated with each link
+        FreelyBound: array, optional
+            This gives the number of singly-bound links bound to each of the uniform
+            sites. If not supplied, it will set the number to zero for all sites.
+        """
         super().setLinks(iPts,jPts,Shifts);
         # Update C++ class
         if (FreelyBound is None):
@@ -207,6 +235,18 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self.syncPythonAndCpp();    
     
     def setLinksFromFile(self,FileName,FreelyBound=None):
+        """
+        Set the links from a file name. The file has a list of iPts, 
+        jPts (two ends of the links), and shift in zero strain coordinates.
+        
+        Parameters
+        -----------
+        FileName: string
+            The name of the file
+        FreelyBound: array, optional
+            This gives the number of singly-bound links bound to each of the uniform
+            sites. If not supplied, it will set the number to zero for all sites.
+        """
         super().setLinksFromFile(FileName);
         # Update C++ class
         if (FreelyBound is None):
@@ -219,6 +259,14 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self.syncPythonAndCpp();
    
     def deleteLinksFromFibers(self,fibNums):
+        """
+        Removes all links (both double and singly bound) connected to a fiber
+        
+        Parameters
+        ----------
+        fibNums: list
+            List of fiber numbers to remove links from
+        """
         if (len(fibNums)==0):
             return;
         pyHeads = self._HeadsOfLinks.copy();
