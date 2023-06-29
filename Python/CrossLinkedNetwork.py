@@ -8,34 +8,58 @@ import time
 verbose = -1;
 kbT = 4.1e-3;
 
-# Documentation last updated: 03/09/2021
-
 class CrossLinkedNetwork(object):
 
     """
-    Object with all the cross-linking information. 
-    The abstract parent class is a network of fibers that are all the same, and 
-    implements methods for computing force and stress, and information about
-    the network morphology (number of bundles, etc.)
-    There is a child class below which makes some small modifications for a fiber
-    collection
+    This class keeps track of cross linking information.
+    
+    In our model, cross linkers form and break at $N_u$ uniformly-spaced 
+    "sites" along the fiber centerline. The positions of these sites are 
+    obtained by resampling the Chebyshev interpolant $X(s)$ of the fiber centerline. 
+    This abstract class is not aware of the dynamics of link formation and
+    breakage at the sites (those are left to the child class DoubleEndedCrossLinkedNetwork).
+    This class is, however, aware of the number of links, and contains members which 
+    list the site number which is the "head" of each link and the site number which is the 
+    "tail." It also stores a list of periodic shifts associated with each link, which 
+    can also be thought of as keeping track of what periodic copy of fiber $i$ is linked 
+    to what periodic copy of fiber $j$. 
+    
+    This class also implements methods for computing force and stress,
+    and information about the network morphology (number of bundles, etc.)
+    As far as computing the force, we model each CL as a linear spring between the two
+    sites.
     """
     
     def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,smoothForce,nThreads=1):
         """
         Initialize the CrossLinkedNetwork. 
-        Input variables: 
-        nFib = number of fibers
-        N = number of points per fiber
-        Nunisites = number of uniformly placed CL binding sites per fiber
-        Lfib = length of each fiber
-        kCL = cross linking spring constant
-        rl = rest length of the CLs, 
-        Dom = domain object, 
-        fibDisc = fiber collocation discretization, 
-        smoothForce = whether to smooth out the forcing or us an actual spring between 
-            the uniformly spaced points
-        nThreads = number of threads for openMP calculation of CL forces and stress
+        
+        Parameters
+        -----------
+        nFib: int
+            Number of fibers
+        N: int
+            Number of Chebyshev collocation points for fiber POSITION (note that
+            this differs from the number of tangent vectors, which we typically
+            refer to using $N$).
+        Nunisites: int 
+            Number of uniformly placed CL binding sites per fiber
+        Lfib: double
+            Length of each fiber
+        kCL: double
+            Cross linking spring constant (for the linear spring model)
+        rl: double
+            Rest length of the CLs (for the linear spring model)
+        Dom: Domain object
+            Periodic domain on which the calculation is being carried out
+        fibDisc: FibCollocationDiscretization object
+            The discretization of each fiber's centerline
+        smoothForce: boolean
+            Whether to smooth out the forcing or use an actual spring between
+            the uniformly spaced points. See the method CLForce for details on 
+            what formulas this switches between
+        nThreads: int
+            Number of threads for openMP calculation of CL forces and stress
         """
         self._Npf = N; 
         self._NsitesPerf = Nunisites;
@@ -78,8 +102,24 @@ class CrossLinkedNetwork(object):
     
     def sigmaFromNL(self,N,L):
         """
-        Obtain the CL smoothness density sigma as a function of the 
-        number of points on a fiber N and length of the fiber L
+        In the case when we smooth the fiber cross linking force (see method
+        CLForce), the forcing is smoothed over a Gaussian with standard deviation
+        $\sigma$. This method gives $\sigma$ as a function of the number of 
+        Chebyshev points $N$ and length $L$. 
+        
+        Parameters
+        ----------
+        N: int
+            Number of Chebyshev collocation points for fiber POSITION (note that
+            this differs from the number of tangent vectors, which we typically
+            refer to using $N$).
+        L: double
+            Length of the fibers
+            
+        Returns
+        --------
+        double
+            The smoothing lengthscale $\sigma$
         """
         sigma = 0.1*L;
         if (N >=50):
@@ -94,20 +134,41 @@ class CrossLinkedNetwork(object):
     ## METHODS FOR NETWORK UPDATE & FORCE (CALLED BY TEMPORAL INTEGRATOR)
     ## ==================================================================
     def updateNetwork(self,fiberCol,Dom,tstep):
-        """
-        Method to update the network. 
-        """
         raise NotImplementedError('No update implemented for abstract network')
     
     def CLForce(self,uniPoints,chebPoints,Dom,fibCollection):
         """
-        Compute the total cross linking force.
-        Inputs: 
-        uniPoints = uniform points for all fibers
-        chebPoints = Chebyshev points on all fibers 
-        Dom = Domain object
-        Outputs: nPts*3 one-dimensional array of the forces at the 
-        Chebyshev points due to the CLs
+        This method computes the total cross linking FORCE (not force density)
+        in one of two ways. To establish some notation, let the link be 
+        between uniform point $p$ on fiber $X^{(i)}$ and uniform point $q$ on fiber
+        $X^{(j)}$. Let the distance between the uniform points be $R$.
+        
+        If the variable self._smoothForce is set to true, then we first compute a 
+        force density
+        $$f^{(i)}(s) = -K \\left(1-\\frac{\\ell}{R}\\right) \\delta_h(s-s_i^*)\\int_0^L \\left(X^{(i)}(s)-X^{(j)}(s')\\right) \\delta_h(s'-s_j^*) ds'$$
+        on fiber $i$, with the corresponding formula for fiber $j$, where $\\delta_h$ is a Gaussian
+        density with standard deviation $\\sigma$. We then obtain force by multiplying by the 
+        $L^2$ inner product weights matrix $\\widetilde{W}$. More details on this are in 
+        Section 9.1.3.2 in Maxian's PhD thesis.
+        
+        If, on the other hand, self._smoothForce is set to false, then we compute forces
+        at the uniform points using the standard formulas for a spring, then map those forces to the 
+        Chebyshev points by multiplying by the corresponding row of the uniform resampling matrix. 
+        The exact formulas can be found in Section 9.1.3.1 in Maxian's PhD thesis.
+        
+        Parameters
+        ----------
+        uniPoints: array
+            Uniform points for all fibers
+        chebPoints: array
+            Chebyshev points on all fibers
+        Dom: Domain object
+            The (potentially strained) periodic domain on which we due the calculation
+            
+        Returns
+        -------
+        array
+            nPts*3 one-dimensional array of the forces at the Chebyshev points due to the CLs
         """
         if (self._nDoubleBoundLinks==0): # if no CLs don't waste time
             return np.zeros(3*self._Npf*self._nFib);
@@ -124,14 +185,32 @@ class CrossLinkedNetwork(object):
  
     def CLStress(self,fibCollection,chebPts,Dom):
         """
-        Compute the cross-linker contribution to the stress.
-        Inputs: fibCollection = 
-        fiberCollection object to compute the stress on, 
-        chebPts = Chebyshev points 
-        Dom = Domain (needed to compute the volume)
-        This method is only implemented for nonsmooth forcing (actual springs
+        Compute the cross-linker contribution to the stress. If a single 
+        cross linker connects fibers $i$ and $j$, the formula for the stress
+        due to this CL is given by
+        $$\\sigma_{CL} = \\sum_p X^{(i)}_p F^{(i)_p + X^{(j)}_p F^{(j)_p$$
+        where the product betweeb $X$ and $F$ is an outer product and the 
+        positions $X$ are the same periodic copies of the fibers that are linked
+        by the CL. 
+        
+        At present, this method is only implemented for nonsmooth forcing (actual springs
         between the fibers). As such, it returns an error if you try to call it with
         smooth forcing.
+        
+        Parameters
+        ----------
+        fibCollection; fiberCollection object
+            The object that stores the collection of fibers (and is queried to get the 
+            uniform points needed to compute forces)
+        chebPts: array
+            Chebyshev points of all fiber locations
+        Dom: Domain object
+            The periodic domain; needed to compute volume
+
+        Returns
+        -------
+        Array
+            The stress due to the cross linkers as a $3 \\times 3$ array.
         """
         if (self._nDoubleBoundLinks==0):
             return 0;
@@ -148,21 +227,53 @@ class CrossLinkedNetwork(object):
     ##     METHODS FOR NETWORK GEOMETRY INFO
     ## ==============================================   
     def numLinks(self):
+        """
+        Returns
+        -------
+        The number of links connecting distinct fibers
+        """
         return self._nDoubleBoundLinks;
     
     def mapSiteToFiber(self,sites):
         """
-        The fiber(s) associated with a set of uniform site(s)
+        Parameters
+        ----------
+        sites: array of ints
+            Indices of the uniform sites
+        
+        Returns
+        -------
+        int array
+            The fiber(s) associated with a set of uniform site(s)
         """
         return sites//self._NsitesPerf;
     
     def mapFibToStartingSite(self,LinkedFibs):
         """
-        The first uniform site on a given fiber
+        The first uniform site on a given fiber(s)
+        
+        Parameters
+        -----------
+        LinkedFibs: array of ints
+            The fibers we are interested in
+        
+        Returns
+        --------
+        int array
+            The index of the first uniform site associated with 
+            the fibers in question
         """
         return LinkedFibs*self._NsitesPerf;
     
     def numLinksOnEachFiber(self):
+        """
+        Returns
+        --------
+        array
+            One-dimensional array of length nFibers, which gives the number
+            of links bound to each fiber. The total number of links in the system
+            is thus half the sum of this array
+        """
         iFibs = self.mapSiteToFiber(self._HeadsOfLinks[:self._nDoubleBoundLinks])
         jFibs = self.mapSiteToFiber(self._TailsOfLinks[:self._nDoubleBoundLinks])
         NumOnEachFiber = np.zeros(self._nFib,dtype=np.int64)
@@ -174,10 +285,20 @@ class CrossLinkedNetwork(object):
     def calcLinkStrains(self,uniPoints,Dom):
         """
         Method to compute the strain in each link
-        Inputs: uniPoints = uniform points on the fibers to which the 
-        links are bound, Dom = domain object for periodic shifts 
-        Return: an array of nLinks sisze that has the signed strain ||link length|| - rl
-        for each link 
+        We define (signed) strain as $r-\\ell$, where $r$ is the length of 
+        the link at present and $\\ell$ is the rest length. 
+        
+        Parameters
+        ----------
+        uniPoints: array
+            Uniform points, as an nUni*nFib x 3 two-dimensional numpy array
+        Dom: Domain object 
+            Periodic domain
+        
+        Returns
+        --------
+        array
+            An array of nLinks size that has the signed strain for each link
         """
         linkStrains = np.zeros(self._nDoubleBoundLinks);
         shifts = Dom.unprimecoords(self._PrimedShifts);
@@ -189,9 +310,20 @@ class CrossLinkedNetwork(object):
     
     def SpringCOM(self,uniPoints,Dom):
         """
-        Method to compute the center of mass of each link. 
-        Inputs: uniPoints = uniform points on the fibers to which the 
-        links are bound, Dom = domain object for periodic shifts 
+        Method to compute the center of mass of each link.
+        
+        Parameters
+        ----------
+        uniPoints: array
+            Uniform points, as an nUni*nFib x 3 two-dimensional numpy array
+        Dom: Domain object 
+            Periodic domain
+        
+        Returns
+        --------
+        array
+            An array of nLinks x 3 size that has the center of each link (average 
+            of the two linked points)
         """
         linkCOMs = np.zeros((self._nDoubleBoundLinks,3));
         shifts = Dom.unprimecoords(self._PrimedShifts);
@@ -213,11 +345,19 @@ class CrossLinkedNetwork(object):
     
     def ConnectionMatrix(self,bundleDist=0):
         """
-        Build a matrix that gives the fibers connected to each other. 
-        If bundleDist = 0, it will give you the adjacency matrix with nonzero 
-        entries at (i,j) if there is one link between fibers i and j. 
-        If bundleDist > 0, the nonzero entries (i,j) have 2 links between them
-        separated by a distance at least bundleDist
+        Build an nFib x nFib matrix that gives the fibers connected to each other.
+        
+        Parameters
+        ----------
+        bundleDist: double
+            If bundleDist = 0, it will give you the adjacency matrix with nonzero
+            entries at (i,j) if there is one link between fibers i and j.
+            If bundleDist > 0, the nonzero entries (i,j) have 2 links between them
+            separated by a distance (in arclength) at least bundleDist
+        
+        Returns
+        -------
+        The fiber adjacency matrix
         """
         SortedLinks = self.getSortedLinks();
         LinkedFibs = self.mapSiteToFiber(SortedLinks)
@@ -242,9 +382,19 @@ class CrossLinkedNetwork(object):
      
     def FindBundles(self,bunddist):
         """
-        Find bundles in the network. We quantify a bundle as two fibers linked with links 
-        at least bunddist apart on their axes. 
-        This method returns the number of bundles and the labels (which bundle each fiber is in)
+        Uses the adjacency matrix of the previous method to sort the fibers into 
+        bundles based on the connectivity.
+        
+        Parameters
+        ----------
+        bunddist: double
+            Used in the previous method to make the connectivity matrix
+        
+        Returns
+        -------
+        (int, int array)
+            The method first returns the number of bundles in the system, followed 
+            by an integer array of length nFib that records what bundle each fiber is in
         """
         AdjacencyMatrix = self.ConnectionMatrix(bunddist);
         nBundles, whichBundlePerFib = connected_components(csgraph=AdjacencyMatrix, directed=False, return_labels=True)
@@ -254,8 +404,28 @@ class CrossLinkedNetwork(object):
         """
         Get the order parameter of each bundle. The order parameter for a bundle of F filaments 
         is defined as the maximum eigenvalue of the matrix 
-        1/F *sum(1/L_i integral_0^L_i {Xs(s)Xs(s) ds}, where we discretize the integral by direct
-        Clenshaw-Curtis quadrature
+        $$M = \\frac{1}{F} \\sum \\frac{1}{L} \\int_0^L {\\tau(s)\tau(s) ds}$$,
+        where we discretize the integral by direct Clenshaw-Curtis quadrature.
+        
+        Parameters
+        ----------
+        fibCollecton: fiberCollection object
+            The collection of fibers
+        nBundles: int
+            The number of bundles in the system (obtained from previous method)
+        whichBundlePerFib: int-array
+            An integer array of length nFib that records what bundle each fiber is in (obtained
+            from previous method)
+        minPerBundle: int
+            The minimum number of fibers that qualify as a "bundle." The default is two, so that 
+            we don't compute order parameters for "bundles" of one fiber.
+        
+        Returns
+        --------
+        (array, array, array)
+            Three arrays are returned: the order parameters (1D array), the number of fibers per bundle
+            (1D array), and the average tangent vector of the bundle (NBundle x 3 array). These arrays
+            are resized to remove "bundles" that have less than minPerBundle fibers.
         """
         BundleMatrices = np.zeros((3*nBundles,3));
         NPerBundle = np.zeros(nBundles);
@@ -279,9 +449,22 @@ class CrossLinkedNetwork(object):
      
     def avgBundleAlignment(self,BundleAlignmentParams,nPerBundle):
         """
-        Calculate the weighted average of alignment across all bundles. 
-        Inputs are the alignment parameters
-        for each bundle, and the number of fibers in each bundle.
+        Calculate the weighted average of alignment across all bundles, 
+        $$\\bar{q}= \\frac{\\sum q_i n_i}{\\sum n_i}$$
+        where $q_i$ is the alignment parameter of bundle $i$ and $n_i$ is
+        the number of fibers in bundle $i$.
+        
+        Parameters
+        -----------
+        BundleAlignmentParams: array
+            The alignment parameters for each bundle, obtained from previous method.
+        nPerBundle: int array
+            The number of fibers in each bundle, obtained from previous method.
+            
+        Returns
+        -------
+        double
+            The average bundle alignment parameter $\\bar{q}$ defined above.
         """
         if (np.sum(nPerBundle)==0):
             return 0;
@@ -290,9 +473,30 @@ class CrossLinkedNetwork(object):
     def LocalOrientations(self,nEdges,fibCollection):  
         """
         Calculate the orientiation parameter for every fiber 
-        within nEdges of every fiber. 
-        Returns an nFib array of the orientations and an nFib array of the number
-        of connected fibers for each fiber
+        within nEdges of a given fiber. The order parameter
+        is defined as the maximum eigenvalue of the matrix 
+        $$M^{(i)} = \\frac{1}{F} \\sum \\frac{1}{L} \\int_0^L {\\tau(s)\tau(s) ds}$$,
+        where we discretize the integral by direct Clenshaw-Curtis quadrature.
+        Here the sum occurs over all fibers that are within a certain number of 
+        "edges" (links) in the adjacency matrix from fiber $i$. 
+        
+        Inputs
+        ------
+        nEdges: int
+            Number of conections we allow fibers to be separated by. For instance, 
+            if nEdges=1, then the sum is over all fibers connected to fiber $i$. If 
+            nEdges=2, then the sum is over all fibers connected directly to fiber $i$, 
+            or connected to an intermediate fiber that is connected to fiber $i$. And so
+            forth. 
+        fibCollection: fiberCollection object
+            The collecton of fibers we are operating on.
+            
+        Returns
+        --------
+        array
+            A one-dimensional array of length nFib, where the $i$th entry is the 
+            orientation parameter, the maximum eigenvalue of the matrix $M^{(i)}$ 
+            defined above.
         """
         AdjacencyMatrix = self.ConnectionMatrix();
         NeighborOrderParams = np.zeros(self._nFib);
@@ -315,6 +519,13 @@ class CrossLinkedNetwork(object):
         return NeighborOrderParams, numCloseBy-1;
 
     def SparseMatrixOfConnections(self):
+        """
+        Returns
+        --------
+        Sparse matrix
+            Sparse matrix of size Nsite x Nsite, whose $(i,j)$ entry
+            is the number of connections (links) between sites $i$ and $j$
+        """
         PairConnections = lil_matrix((self._TotNumSites,self._TotNumSites),dtype=np.int64)
         # Figure out which sites have links  
         for iLink in range(self._nDoubleBoundLinks):
@@ -345,6 +556,15 @@ class CrossLinkedNetwork(object):
     def setLinks(self,iPts,jPts,Shifts):
         """
         Set the links from input vectors of iPts, jPts, and Shifts  
+        
+        Parameters
+        ----------
+        iPts: int array
+            Heads of links
+        jPts: int array
+            Tails of links
+        Shifts: three-dimensional array
+            The periodic shift associated with each link
         """
         self._HeadsOfLinks = iPts;
         self._TailsOfLinks = jPts;
@@ -354,7 +574,12 @@ class CrossLinkedNetwork(object):
     def setLinksFromFile(self,FileName):
         """
         Set the links from a file name. The file has a list of iPts, 
-        jPts (two ends of the links), and shift in zero strain coordinates 
+        jPts (two ends of the links), and shift in zero strain coordinates.
+        
+        Parameters
+        -----------
+        FileName: string
+            The name of the file
         """
         AllLinks = np.loadtxt(FileName);
         self._nDoubleBoundLinks = len(AllLinks)-1;

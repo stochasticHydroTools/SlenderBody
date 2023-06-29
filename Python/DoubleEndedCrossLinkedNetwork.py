@@ -6,8 +6,6 @@ from warnings import warn
 
 verbose = -1;
 
-# Documentation last updated: 03/09/2021
-
 class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
 
     """
@@ -19,14 +17,18 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
     3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)
     4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
-    5) Binding of both ends of a CL (rate _kDoubleOn)
-    6) Unbinding of both ends of a CL (rate _kDoubleOff)
+    5) Binding of both ends of a CL (rate _kDoubleOn. This rate is set to zero at present.)
+    6) Unbinding of both ends of a CL (rate _kDoubleOff. This rate is also set to zero.)
+    
+    For more information on the reactions and their rates, see Section 9.1.1 of Maxian's PhD
+    thesis. We implement reaction 3, which is the most important because it controls the forces
+    exerted on the fibers, by performing a neighbor search to find all pairs of uniform sites 
+    a certain distance apart. Note also that we do not explicitly keep track of unbound cross linkers.
+    We instead assume that there are always enough CLs if an event is supposed to happen.
     
     This is combined with the C++ file
     cppmodules/EndedCrossLinkers.cpp which uses the fortran code
     ../Fortran/MinHeapModule.f90
-    
-    There is a brief child class below for fiber species.
     
     """
     
@@ -35,7 +37,49 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,kT=0,nThreads=1,bindingSiteWidth=0,smoothForce=True):
         """
-        Constructor
+        Parameters
+        ----------
+        nFib: int
+            Number of fibers
+        N: int
+            Number of Chebyshev collocation points for fiber POSITION (note that
+            this differs from the number of tangent vectors, which we typically
+            refer to using $N$).
+        Nunisites: int 
+            Number of uniformly placed CL binding sites per fiber
+        Lfib: double
+            Length of each fiber
+        kCL: double
+            Cross linking spring constant (for the linear spring model)
+        rl: double
+            Rest length of the CLs (for the linear spring model)
+        kon: rate (units 1/(length x time)) at which a single end of a CL binds to a site
+        koff: rate (units 1/time) at which a singly-bound CL comes off from a site
+        konsecond: rate (units 1/(length x time)) at which the second end of a singly-bound CL
+            binds to a site (this is modified by an Arrhenuis factor later -- see the method
+            updateNetwork)
+        koffsecond: rate (units 1/time) at which one end of a doubly-bound CL comes off, leaving
+            a singly-bound CL
+        CLseed: int
+            The seed for cross linking calculations
+        Dom: Domain object
+            Periodic domain on which the calculation is being carried out
+        fibDisc: FibCollocationDiscretization object
+            The discretization of each fiber's centerline
+        kT: thermal energy. If zero, the binding of a second end occurs with rate konsecond (no 
+            Arrhenius factor). If nonzero, then the rate is modified (see updateNetwork method for 
+            details)
+        smoothForce: boolean, defaults to true
+            Whether to smooth out the forcing or use an actual spring between
+            the uniformly spaced points. See the method CLForce (CrossLinkedNetwork.py)
+            for details on what formulas this switches between
+        nThreads: int
+            Number of threads for openMP calculation of CL forces and stress
+        bindingSiteWidth: double, optional (defaults to 0)
+            If a binding site in biology has a width $w$, then the number of links that
+            can bind to one of our uniformly-spaced binding sites (spaced $\\Delta s_u$)
+            is given by $N = \\lceil \\Delta s_u/w \\rceil$. This in practice becomes 
+            a cap on the number of links per site.
         """
         super().__init__(nFib,N,Nunisites,Lfib,kCL,rl,Dom,fibDisc,smoothForce,nThreads);
         self._FreeLinkBound = np.zeros(self._TotNumSites,dtype=np.int64); # number of free-ended links bound to each site
@@ -75,19 +119,52 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     
     def sitesPerFib(self,iFib):
         """
-        Return the indices of the uniform binding sites that correspond to the 
-        fiber iFib
+        Parameters
+        ----------
+        iFib: int
+            Fiber index
+        
+        Returns
+        -------
+        int array
+            The indices of the uniform binding sites that correspond to the fiber iFib
         """
         return np.arange(iFib*self._NsitesPerf,(iFib+1)*self._NsitesPerf,dtype=np.int64);
        
     def updateNetwork(self,fiberCol,Dom,tstep):
         """
-        Update the network using Kinetic MC.
-        Inputs: fiberCol = fiberCollection object of the fibers (can also be species collection),
-        Dom = Domain object, tstep = the timestep we are updating the network
-        by (a different name than dt)
-        On the python side, we get the neighbors and filter them so that fibers cannot link to 
-        themselves. Then we pass that to C++ which updates its own chain. 
+        Update the network using Kinetic Monte Carlo. The full procedure we use is documented 
+        in Section 9.1.1 of Maxian's PhD thsis. Briefly, we consider six possible reactions, with the 
+        following rates in units 1/time:
+        1) Binding of a floating link to one site (rate _kon $\\Delta s_u$)
+        2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
+        3) Binding of a singly-bound link to another site to make a doubly-bound CL. The rate of this 
+        reaction, assuming $k_B T > 0$ is given by
+        $$k_{on,s} = k_{on,s}^0 \\exp{\\left(\\frac{-K_c (r-\\ell)^2}{k_B T}\\right)} \\Delta s_u$$
+        If $k_B T = 0$, then the Arrhenius factor is ommitted. If $k_B T > 0$, we assume possible
+        connections can form if two sites are separated by $2\\sqrt{k_B T/K}$, where $K$ is the CL 
+        stiffness (two standard deviations of the Gaussian above). If $k_B T =0$ and the binding
+        probability is uniform, we stick to one standard deviation.
+        4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
+        5) Binding of both ends of a CL (rate _kDoubleOn. This rate is set to zero at present.)
+        6) Unbinding of both ends of a CL (rate _kDoubleOff. This rate is also set to zero.)
+        
+        Parameters
+        ----------
+        fiberCol: fiberCollection object 
+            The fibers we are simulating
+        Dom: Domain object
+            The periodic (sheared?) domain we are simulating
+        tstep: double
+            Time step we simulate over
+        
+        Returns
+        -------
+        Null
+            But updates the state of the networ internally. The actual update is done in C++.
+            On the python side, we get the neighbors and filter them so that fibers cannot link to
+            themselves. Then we pass the list of potential neighbors to C++ which updates its own chain.
+            The Python side is then synced with the C++ side.
         """
         # Obtain Chebyshev points and uniform points, and get
         # the neighbors of the uniform points
@@ -170,6 +247,9 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ##    PRIVATE METHODS (INVOLVED IN UPDATE)
     ## ======================================== ##         
     def syncPythonAndCpp(self):
+        """
+        Synchronizes the python and C++ codes by copying the C++ over to python
+        """
         self._HeadsOfLinks = self._cppNet.getLinkHeadsOrTails(True);
         self._TailsOfLinks = self._cppNet.getLinkHeadsOrTails(False); 
         self._nDoubleBoundLinks = len(self._HeadsOfLinks);     
