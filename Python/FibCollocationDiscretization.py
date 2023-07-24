@@ -272,7 +272,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         for explanation. 
         Otherwise, we use a grid of type 2 (endpoints included). 
         """
-        super().__init__(L,epsilon,Eb,mu,N,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc,FPIsLocal);
+        super().__init__(L,epsilon,Eb,mu,N,deltaLocal,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc,FPIsLocal);
 		# Chebyshev grid and weights
         self._sTau = cf.chebPts(self._Ntau,[0,self._L],chebGridType);
         self._wTau = cf.chebWts(self._Ntau,[0,self._L],chebGridType);
