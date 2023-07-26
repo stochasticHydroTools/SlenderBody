@@ -10,7 +10,7 @@ from StericForceEvaluator import StericForceEvaluator, SegmentBasedStericForceEv
 import numpy as np
 import chebfcns as cf
 from math import exp
-import sys, time
+import sys, time, os
 from warnings import warn
 
 """
@@ -36,6 +36,9 @@ def saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='
     writeArray('BundlingBehavior/LinkStrains'+OutputFileName,[LinkStrainSqu],wora=wora)
     writeArray('BundlingBehavior/FibCurvesF'+OutputFileName,FibCurvatures,wora=wora)
 
+if not os.path.exists('BundlingBehavior'):
+    os.makedirs('BundlingBehavior')
+    
 Input = open('SemiflexBundleInputFile.txt','r')
 for iLine in Input:
 	exec(iLine);
