@@ -8,7 +8,7 @@ import scipy.sparse as sp
 import time
 from math import sqrt, exp, pi
 from warnings import warn
-#import BatchedNBodyRPY as gpurpy
+import BatchedNBodyRPY as gpurpy
 
 # Definitions
 verbose = -1;               # debug / timings
