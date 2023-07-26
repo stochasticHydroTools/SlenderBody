@@ -1,5 +1,5 @@
-Fiber collections (class for many fiber operations)
-====================================================
+Many-fiber operations and solves (class fiberCollection)
+==========================================================
 .. autoclass:: fiberCollection.fiberCollection
     :members:
 .. autoclass:: fiberCollection.SemiflexiblefiberCollection

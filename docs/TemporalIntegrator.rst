@@ -1,4 +1,4 @@
-Temporal integration
+Temporal integration (class TemporalIntegrator)
 =======================================
 .. autoclass:: TemporalIntegrator.TemporalIntegrator
     :members:

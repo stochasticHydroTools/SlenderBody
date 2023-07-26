@@ -1,4 +1,4 @@
-Collocation discretization
+Collocation discretization (class FibCollocationDiscretization)
 =============================================
 .. autoclass:: FibCollocationDiscretization.FibCollocationDiscretization
     :members:
