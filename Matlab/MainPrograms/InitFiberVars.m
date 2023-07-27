@@ -151,10 +151,10 @@ elseif (exist('NFromFormin','var'))
         else
             theta_s((iFib-1)*Npsi+1:Npsi*iFib) = zeros(Npsi,1);
         end
+        theta0this = pinv(D)*RPsiToN*theta_s((iFib-1)*Npsi+1:Npsi*iFib) ;
+        theta0this = theta0this-barymat(L/2,s,b)*theta0this;
+        theta0((iFib-1)*N+1:N*iFib) = theta0this;
     end
-    theta0this = pinv(D)*RPsiToN*theta_s((iFib-1)*Npsi+1:Npsi*iFib) ;
-    theta0this = theta0this-barymat(L/2,s,b)*theta0this;
-    theta0((iFib-1)*N+1:N*iFib) = theta0this;
 else
     theta_s = TurnFreq/twmod*pinv(DPsi)*(Mrr \ ones(Npsi,1));
     theta_s = theta_s-barymat(L,sPsi,bPsi)*theta_s;

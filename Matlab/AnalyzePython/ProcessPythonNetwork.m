@@ -1,10 +1,9 @@
 addpath(genpath('../../Python'))
-names = ...%["UnifStericsBundlingLp2.0Dt_5e-05_" "SegStericsBundlingLp2.0Dt_5e-05_" ...
-    ["UnifStericsBundlingLp2.0Dt_2e-05_" "SegStericsBundlingLp2.0Dt_2e-05_" ...
-    "UnifStericsBundlingLp2.0Dt_1e-05_" "SegStericsBundlingLp2.0Dt_1e-05_" ...
-    "NoStericsBundlingLp2.0Dt_0.0001_"];
-%"UnifStericsBundlingLp2.0Dt_1e-05_" "SegStericsBundlingLp2.0Dt_1e-05_" ...  
-%names = ["DetN12IFQuadBundLp17.0Dt_0.0001_" "DetN12IFOSBundLp17.0Dt_0.0001_"];
+%names = [ "SegStLocHydBundLp2.0Dt_5e-05_" "SegStNLHydBundLp2.0Dt_5e-05_" "NoStLocHydBundLp2.0Dt_5e-05_" ...
+%"SegStLocHydBundLp2.0Dt_2e-05_" "SegStNLHydBundLp2.0Dt_2e-05_" "NoStLocHydBundLp2.0Dt_2e-05_"];
+names = ["CHKLocBundlingLp2.0Dt_0.0001_" "CHKLocQuBundlingLp2.0Dt_0.0001_" ...
+    "CHKNLBundlingLp2.0Dt_0.0001_"];
+dts = [5e-05 5e-05 5e-05 2e-05 2e-05 2e-05];
 tmaxes = 8*ones(1,length(names));
 dtsaves = 2e-2*ones(1,length(names));
 clear nLinks nBund nInBund MBAlign MaxBundSize meanDispP meanCurvatures meanBund
@@ -19,7 +18,7 @@ plots = 1;
 eebinwidths = [0.02 0.001 0.001 0.001 0.001 0.001];
 AllLinksPerFib = [];
 for iName=1:length(names)
-seedmax=5;
+seedmax=2;
 if (iName>0)
 N=13;
 [s,w,b]=chebpts(N,[0 L],2);
@@ -205,27 +204,27 @@ clear AllFibsInBundlesS MeanInBundleDispP MeanOutBundleDispP meanStepDisplacemen
 clear maxStepDisplacementsP nContactsTrials
 end
 if (plots)
-    subplot(3,2,1)
-    box on
+%     subplot(3,2,1)
+%     box on
     ErrorEvery = 20*ones(1,length(names));
     ErrStart=5;
-    for iP=1:parSet-1
-        hold on
-        nLinks = nLinksAll{iP};
-        [nTri,nSteps] = size(nLinks);
-        dtsave=dtsaves(iP);
-        plot((0:nSteps-1)*dtsave,mean(nLinks),'LineWidth',2.0)
-        hold on
-        set(gca,'ColorOrderIndex',iP)
-        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(nLinks(:,ErrStart*iP:ErrorEvery(iP):end)),...
-            std(nLinks(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
-            'o','MarkerSize',0.5,'LineWidth',1.0)
-    end
-    %xlabel('$t$','interpreter','latex')
-    ylabel('Link density (per fiber)')
-    xlim([0 min(tmaxes)])
+%     for iP=1:parSet-1
+%         hold on
+%         nLinks = nLinksAll{iP};
+%         [nTri,nSteps] = size(nLinks);
+%         dtsave=dtsaves(iP);
+%         plot((0:nSteps-1)*dtsave,mean(nLinks),'LineWidth',2.0)
+%         hold on
+%         set(gca,'ColorOrderIndex',iP)
+%         errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(nLinks(:,ErrStart*iP:ErrorEvery(iP):end)),...
+%             std(nLinks(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+%             'o','MarkerSize',0.5,'LineWidth',1.0)
+%     end
+%     %xlabel('$t$','interpreter','latex')
+%     ylabel('Link density (per fiber)')
+%     xlim([0 min(tmaxes)])
 
-    subplot(3,2,2)
+    subplot(2,2,1)
     for iP=1:parSet-1
         nBund = nBundAll{iP};
         [nTri,nSteps] = size(nBund);
@@ -241,7 +240,7 @@ if (plots)
     ylabel('Bundle density')
     box on
 
-    subplot(3,2,3)
+    subplot(2,2,2)
     for iP=1:parSet-1
         nInBun = nInBundAll{iP};
         [nTri,nSteps] = size(nInBun);
@@ -258,25 +257,25 @@ if (plots)
     ylabel('\% in bundles')
     xlim([0 min(tmaxes)])
     
-    subplot(3,2,4)
-    hold on
-    box on
-    for iP=1:parSet-1
-        meanBO = MBAlignAll{iP};
-        [nTri,nSteps] = size(meanBO);
-        dtsave=dtsaves(iP);
-        plot((0:nSteps-1)*dtsave,mean(meanBO),'LineWidth',2.0)
-        hold on
-        set(gca,'ColorOrderIndex',iP)
-        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(meanBO(:,ErrStart*iP:ErrorEvery(iP):end)),...
-            std(meanBO(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
-            'o','MarkerSize',0.5,'LineWidth',1.0)
-    end
-    %xlabel('$t/\tau_f$','interpreter','latex')
-    ylabel('Mean Bundle alignment')
-    xlim([0 max(tmaxes)])
+%     subplot(3,2,4)
+%     hold on
+%     box on
+%     for iP=1:parSet-1
+%         meanBO = MBAlignAll{iP};
+%         [nTri,nSteps] = size(meanBO);
+%         dtsave=dtsaves(iP);
+%         plot((0:nSteps-1)*dtsave,mean(meanBO),'LineWidth',2.0)
+%         hold on
+%         set(gca,'ColorOrderIndex',iP)
+%         errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(meanBO(:,ErrStart*iP:ErrorEvery(iP):end)),...
+%             std(meanBO(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+%             'o','MarkerSize',0.5,'LineWidth',1.0)
+%     end
+%     %xlabel('$t/\tau_f$','interpreter','latex')
+%     ylabel('Mean Bundle alignment')
+%     xlim([0 max(tmaxes)])
 
-    subplot(3,2,5)
+    subplot(2,2,3)
     hold on
     box on
     for iP=1:parSet-1
@@ -294,23 +293,23 @@ if (plots)
     ylabel('Mean displacement $(\Delta t = 0.02)$')
     xlim([0 max(tmaxes)])
 % % 
-    subplot(3,2,6)
-    hold on
-    box on
-    for iP=1:parSet-1
-        maxDispThis = MaxDispAll{iP};
-        [nTri,nSteps] = size(maxDispThis);
-        dtsave=dtsaves(iP);
-        plot((0:nSteps-1)*dtsave,mean(maxDispThis),'LineWidth',2.0)
-        hold on
-        set(gca,'ColorOrderIndex',iP)
-        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps)*dtsave,mean(maxDispThis(:,ErrStart*iP:ErrorEvery(iP):end)),...
-            std(maxDispThis(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
-            'o','MarkerSize',0.5,'LineWidth',1.0)
-    end
-    xlabel('$t$','interpreter','latex')
-    ylabel('Max displacement $(\Delta t = 0.02)$')
-    xlim([0 max(tmaxes)])
+%     subplot(3,2,6)
+%     hold on
+%     box on
+%     for iP=1:parSet-1
+%         maxDispThis = MaxDispAll{iP};
+%         [nTri,nSteps] = size(maxDispThis);
+%         dtsave=dtsaves(iP);
+%         plot((0:nSteps-1)*dtsave,mean(maxDispThis),'LineWidth',2.0)
+%         hold on
+%         set(gca,'ColorOrderIndex',iP)
+%         errorbar((ErrStart*iP:ErrorEvery(iP):nSteps)*dtsave,mean(maxDispThis(:,ErrStart*iP:ErrorEvery(iP):end)),...
+%             std(maxDispThis(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+%             'o','MarkerSize',0.5,'LineWidth',1.0)
+%     end
+%     xlabel('$t$','interpreter','latex')
+%     ylabel('Max displacement $(\Delta t = 0.02)$')
+%     xlim([0 max(tmaxes)])
 
 %     subplot(3,2,5)
 %     hold on
@@ -348,17 +347,19 @@ if (plots)
 %     ylabel('Max bundle size')
 %     xlim([0 max(tmaxes)])
 
-figure;
-dts=[2e-5 2e-5 1e-5 1e-5 1e-4];%2e-5 1e-5];
+subplot(2,2,4)
 %ErrorEvery=[500 1000 2500 5000];
-ErrorEvery=[500 500 500 500 500 500];
-for iP=1:parSet-2
-    skip1 = dts(end)/dts(iP);
-    nContactsThis = nContactsAll{iP}(:,1:skip1:end)./nContactsAll{1,end};
+ErrorEvery=500*ones(length(dtsaves),1);
+for iP=[1 2 4 5]
+    if (iP < 3)
+        pp=3;
+    else
+        pp=6;
+    end
+    nContactsThis = nContactsAll{iP}./nContactsAll{pp}(:,end);
     [nTri,nSteps] = size(nContactsThis);
-    dtsave=1e-4;%dts(iP);
-    plot((0:ErrorEvery(iP)/10:nSteps-1)*dtsave,...
-        mean(nContactsThis(:,1:ErrorEvery(iP)/10:nSteps)),'LineWidth',2.0)
+    dtsave=dts(iP);
+    plot((0:100:nSteps-1)*dtsave,mean(nContactsThis(:,1:100:end)),'LineWidth',2.0)
     hold on
     set(gca,'ColorOrderIndex',iP)
     errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,...

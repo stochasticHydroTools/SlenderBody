@@ -1,5 +1,5 @@
 Temporal integration (class TemporalIntegrator)
-=======================================
+================================================
 .. autoclass:: TemporalIntegrator.TemporalIntegrator
     :members:
 .. autoclass:: TemporalIntegrator.BackwardEuler
