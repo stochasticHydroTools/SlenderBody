@@ -12,20 +12,38 @@ verbose = -1;
 
 class RPYVelocityEvaluator(object):
     """
-    This is a class that evaluates the velocity on N blobs due to N forces 
-    The default is to do the "dumb" quadratic thing in free space - just 
-    evaluating the total RPY kernel
+    The purpose of this class is to evaluate the RPY velocity on $N$ blobs
+    in Stokes flow due to $N$ forces, where the sum is given by the RPY
+    kernel
+    $$U_i = \\sum_{j} M_{RPY}\\left(X_i,X_j;\\hat{a} \\right) F_j.$$
+    The RPY kernel $M_{RPY}$ describes the velocity on the surface of one sphere of 
+    radius $\\hat{a}$ due to force concentrated on the surface of another sphere
+    of radius $\\hat{a}$; see `this paper <https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/abs/generalization-of-the-rotneprageryamakawa-mobility-and-shear-disturbance-tensors/AB5299B98AB8FEEBA0D3D3624B7732C2>`_ for details. 
+    Here we use the notation $\\hat{a}$ for spheres because we typically use notation
+    $a$ for the radius of the filaments (although this class does not know about fibers, 
+    only blobs).
+    
+    In this abstract class, the sum is over free space and is computed using quadratic
+    summation. Child classes implement periodic summation (and could be extended to use
+    fast multipole methods in free space)
     """
     ## ========================================
     ##          METHODS FOR INITIALIZATION
     ## ========================================
     def __init__(self,a,mu,Npts):
         """
-        Input variables: a = hydrodynamic radius of the RPY blobs, mu = fluid viscosity,
-        Npts = total number of blobs
+        Constructor
+        
+        Parameters
+        ----------
+        a: double
+            Hydrodynamic radius
+        mu: double
+            System viscosity
+        Npts: int
+            Number of points
         """
         self._a = float(a);
-        print('Ewald radius %f' %self._a)
         self._mu = float(mu);
         self._Npts = Npts;
 
@@ -34,12 +52,27 @@ class RPYVelocityEvaluator(object):
     ## =========================================
     def calcBlobTotalVel(self,ptsxyz,forces,Dom,SpatialData,nThr):
         """
-        Compute the total velocity of Npts due to forces at those pts. 
-        Inputs: ptsxyz = Npts x 3 array of locations, forces = Npts x 3 array of forces,
-        Dom = Domain object where the computation is done, SpatialData = spatialDatabase
-        that has the array of points,nThr = number of OpenMP threads
-        Ouputs: Npts x 3 array of the velocities at the Npts by calling the Numba function
-        to do the free space computation
+        Compute the velocities on the $N$ points due to the forces there.
+        This class calls a C++ function which does the calculation faster than 
+        python (it is still quadratic complexity and slow).
+        
+        Parameters
+        ----------
+        ptsxyz: array
+            $N \\times 3$ array of point locations
+        forces: array
+            $N \\times 3$ array of forces
+        Dom: Domain object
+            The domain where the computation is done (not used in this abstract class)
+        SpatialData: SpatialDatabase object
+            Used to sort points if we truncate the kernel (not used in this abstract class)
+        nThr: int 
+            Number of threads
+        
+        Returns
+        --------
+        array
+            $N \\times 3$ array of velocities at the points ptsxyz
         """
         return RPYVelocityEvaluator.RPYKernel(self._Npts,ptsxyz,self._Npts,ptsxyz,forces,self._mu,self._a);
     
@@ -51,11 +84,30 @@ class RPYVelocityEvaluator(object):
     #    nb.float64[:,:],nb.float64,nb.float64))
     def RPYKernel(Ntarg,Xtarg,Nsrc,Xsrc,forces,mu,a):
         """
-        The dumb quadratic method to sum the RPY kernel. 
-        Inputs: Ntarg = # of targets, Xtarg = Ntarg x 3 array of locations of targets, 
-        Nsrc = # of sources, Xsrc = Nsrc x 3 array of locations of sources, forces = 
-        Nsrc x 3 array of forces, mu = viscosity, a = RPY radius. 
-        Output: the velocities at the targets
+        The quadratic method to sum the RPY kernel in native python. This can be used
+        in initialization steps where speed is not necessary. This is a static method.
+        
+        Parameters
+        ----------
+        Ntarg: int
+            Number of target points (where we want the velocity)
+        Xtarg: array
+            $N_t \\times 3$ array of target point locations
+        Nsrc: int
+            Number of source points (where we have the forces)
+        Xsrc: array 
+            $N_s \\times 3$ array of source point locations
+        forces: array
+            $N_s \\times 3$ array of forces
+        mu: double
+            System viscosity
+        a: double
+            Hydrodynamic radius
+        
+        Returns
+        --------
+        array
+            $N_t \\times 3$ array of velocities at the target points
         """
         utot=np.zeros((Ntarg,3));
         oneOvermu = 1.0/mu;
@@ -79,7 +131,26 @@ class RPYVelocityEvaluator(object):
     #@nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.float64,nb.float64))
     def RPYMatrix(N,X,mu,a):
         """
-        The dumb quadratic method to form the RPY matrix. 
+        The quadratic method to form the RPY matrix, implemented as a static method
+        in Python. Because it is native python, it is used only in initialization and 
+        precomputations.
+        
+        Parameters
+        ----------
+        N: int
+            Number of points
+        X: array
+            $N \\times 3$ array of source and target points
+        mu: double
+            System viscosity
+        a: double
+            Hydrodynamic radius
+        
+        Returns
+        --------
+        array
+            The mobility matrix $M$ (mapping forces on all points to velocities on 
+            all points) as a $3N \\times 3N$ array. 
         """
         M=np.zeros((3*N,3*N));
         oneOvermu = 1.0/mu;
@@ -302,17 +373,47 @@ GPUtol = 1e-3 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
     """
-    This class implements Ewald splitting using Raul's UAMMD code on the GPU. 
-    It is much faster than my code 
+    This class implements the RPY summation on a triply periodic domain
+    using Ewald splitting. The idea of Ewald splitting or Ewald summation is 
+    to split the RPY kernel into a "near field" part, which is short-ranged and 
+    can be truncated, and a "far field" part, which is long-ranged, but smooth, 
+    and can therefore be done by the NUFFT. In our case, the Ewald splitting 
+    has to be "positive," so that both the near field and far field matrices 
+    that result are SPD, and we can compute
+    $$M^{1/2}W =^d M_{NF}^{1/2}W_1 + M_{FF}^{1/2}W_2$$
+    where $W_1$ and $W_2$ are uncorrelated Gaussian vectors.
+    
+    More details on the positive split Ewald (PSE) method can be found in `here
+    <https://pubs.aip.org/aip/jcp/article/146/12/124116/636207>`_, while details
+    on the implementation (UAMMD by Raul Perez) can be found at the `UAMMD_PSE_Python
+    github page <https://github.com/RaulPPelaez/UAMMD_PSE_Python/tree/5bb1bacf6ed89bb4dacc53de14ad5acd106ba8b5>`_. 
+    Note that this class requires a GPU to run! While we have a CPU version for deterministic applications,
+    that version is not maintained and does not support Brownian increments. 
     """
     ## ========================================
     ##          METHODS FOR INITIALIZATION
     ## ========================================
     def __init__(self,a,mu,xi,PerDom,Npts,xiHalf=None):
         """
-        Constructor. Initialize the Ewald splitter. 
-        Extra input variables: xi = Ewald splitting parameter,
-        PerDom = PeriodicDomain object, Npts = number of blobs
+        Constructor
+        
+        Parameters
+        ----------
+
+        a: double
+            Hydrodynamic radius
+        mu: double
+            System viscosity
+        xi: double
+            Ewald parameter, determining how much of the computational cost goes
+            into the near field and far field
+        PerDom: PeriodicDomain object 
+            The domain on which we do the calculation
+        Npts: int
+            Number of points
+        xihalf: double, optional
+            Supply if you want to use a separate Ewald parameter when computing $M^{1/2}$. 
+            If not supplied, the same Ewald parameter will be used for $M^{1/2}$ and $M$.
         """
         self._a = float(a);
         self._mu = float(mu);
@@ -351,12 +452,32 @@ class GPUEwaldSplitter(EwaldSplitter):
     ## =========================================
     def calcBlobTotalVel(self,ptsxyz,forces,Dom,SpatialData,nThr=1):
         """
-        Total velocity due to Ewald (far field + near field). 
-        Inputs: ptsxyz = the list of points 
-        in undeformed, Cartesian coordinates, forces = forces at those points,
-        SpatialData = SpatialDatabase object for fast neighbor computation.
-        nThr = number of threads for parallel processing
-        Output: the total velocity as an Npts x 3 array.
+        Compute the velocities on the $N$ points due to the forces there.
+        This class calls the GPU implementation of PSE. Prior to doing so, it checks that
+        the Ewald truncation distance (in the near field) is smaller than half the 
+        simulation box, so that there are not interactions with more than one periodic
+        image (if there are, it increases the Ewald parameter so that the cutoff
+        distance is smaller).
+        
+        Parameters
+        ----------
+        ptsxyz: array
+            $N \\times 3$ array of point locations
+        forces: array
+            $N \\times 3$ array of forces
+        Dom: Domain object
+            The domain where the computation is done (to check the Ewald parameter
+            and set the shear strain)
+        SpatialData: SpatialDatabase object
+            Not used here, as the GPU does this for us. 
+        nThr: int 
+            Number of threads; not used because the GPU sets this. 
+        
+
+        Returns
+        --------
+        array
+            $N \\times 3$ array of velocities at the points ptsxyz
         """
         # First check if Ewald parameter is ok
         if (verbose > 0):
@@ -381,9 +502,24 @@ class GPUEwaldSplitter(EwaldSplitter):
     
     def calcMOneHalfW(self,ptsxyz,Dom):
         """
-        This method is used to compute M[X]^(1/2)*W. 
-        ptsxyz = the points in (x,y,z) space, Dom = the domain object (gives the
-        periodicity and the conversion to sheared coordinates)
+        This method is used to call the GPU code to compute 
+        $M[X]^{1/2} W$ when doing Brownian dynamics simulations. The GPU method
+        splits the computation into far field (where the square root can be computed
+        explicitly) and a near field (where the square root can be computed by
+        Lanczos iteration). 
+        
+        Parameters
+        ----------
+        ptsxyz: array
+            $N \\times 3$ array of point locations
+        Dom: Domain object
+            The domain where the computation is done (to check the Ewald parameter)
+        
+
+        Returns
+        --------
+        array
+            $3N$ array of Brownian velocities $M[X]^{1/2} W$
         """
         # First check if Ewald parameter is ok
         if (verbose > 0):
@@ -404,7 +540,7 @@ class GPUEwaldSplitter(EwaldSplitter):
     
     def updateFarFieldArrays(self):
         """
-        Update GPU if the Ewald parameter has to be enlarged
+        Updates internal GPU variables if the Ewald parameter has to be enlarged.
         """
         print('Updating GPU far field arrays')
         import uammd

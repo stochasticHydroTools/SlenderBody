@@ -11,4 +11,5 @@ Contents:
    FibCollocationDiscretization
    CrossLinkedNetwork
    DiscretizedFiber
+   RPYVelocityEvaluator
    Domain

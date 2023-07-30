@@ -314,8 +314,8 @@ class PeriodicShearedDomain(Domain):
         """
         Compute the wave numbers on a sheared grid from the 
         wave numbers on an unsheared grid. The wave numbers are discussed
-        in (86) of this paper
-        <https://journals.aps.org/prfluids/pdf/10.1103/PhysRevFluids.6.014102>
+        in (86) of `this paper.
+        <https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.6.014102>`_
         
         Parameters
         ----------
