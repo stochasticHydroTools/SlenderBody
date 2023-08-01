@@ -12,4 +12,5 @@ Contents:
    CrossLinkedNetwork
    DiscretizedFiber
    RPYVelocityEvaluator
+   SpatialDatabase
    Domain
