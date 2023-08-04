@@ -7,8 +7,6 @@ from scipy.linalg import lu_factor, lu_solve, sqrtm
 from warnings import warn
 from RPYVelocityEvaluator import RPYVelocityEvaluator
 
-# Documentation last updated: 01/21/2023
-
 aRPYFac = exp(1.5)/4        # equivalent RPY blob radius a = aRPYFac*epsilon*L;
 # Some definitions that are not specific to any particular discretization
 numBCs = 4; # number of boundary conditions

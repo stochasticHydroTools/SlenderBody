@@ -8,8 +8,6 @@ from warnings import warn
 
 verbose = -1;
 
-# Documentation last updated: 03/12/2021
-
 class RPYVelocityEvaluator(object):
     """
     The purpose of this class is to evaluate the RPY velocity on $N$ blobs

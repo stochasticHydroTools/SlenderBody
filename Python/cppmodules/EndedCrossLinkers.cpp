@@ -86,6 +86,11 @@ class EndedCrossLinkedNetwork {
         column is the bound end and the second column is the unbound end, of possible
         link binding site pairs.
         pyuniPts = 2D numpy array of uniform points. g = strain in coordinate system
+        
+        // TODO: Add motion of the links (motors). New event where links move down one site
+        // with some rate. Rejected if one of the sites is full. Each link should have a 
+        // velocity that gets passed in. The rate of motion is then vel/(site length). Then 
+        // add that to the heap.
         */
         // Convert numpy to C++ vector and reset heap for the beginning of the step
         intvec MaybeBindingPairs(pyMaybeBindingPairs.size());

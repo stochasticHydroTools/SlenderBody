@@ -13,8 +13,6 @@ itercap = 100; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-3; # larger than GPU tolerance
 verbose = -1;
 
-# Documentation last updated: 03/12/2021
-
 class TemporalIntegrator(object):
 
     """

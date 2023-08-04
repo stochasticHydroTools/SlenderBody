@@ -6,27 +6,44 @@ from StericForceEvaluatorC import StericForceEvaluatorC
 import time
 verbose = -1;
 
-# Documentation last updated: 02/25/2023
-
 class StericForceEvaluator(object):
 
     """
     The purpose of this class is to evaluate steric forces between fibers. 
-    The base class upsamples to uniform points and finds neighbors, then applies a 
-    spherical repulsive potential
     
-    There is a child class below (SegmentBasedStericForceEvaluator) which uses 
-    segments to obtain the force. 
+    In this base class, we upsample the fiber to uniform points, then apply a 
+    spherical potential between the uniform points. We then downsample that to the 
+    Chebyshev points.
+    
+    More information about this class can be found in Section 9.2 of `Maxian's
+    PhD thesis <https://www.proquest.com/docview/2832979813>`_. 
     
     """
     
     def __init__(self,nFib,Nx,Nunisites,fibDisc,X,Dom,radius,kbT,nThreads=1):
         """
-        Constructor. Inputs: number of fibers (nFib), number of Chebyshev collocation
-        points per fiber (Nx), number of uniform sites for resampling, a copy of the 
-        fiber discretization object (to form the uniform resampling matrix), and positions
-        X and Domain (to initialize). radius = the radius of the fibers (for the steric 
-        repulsion)
+        Constructor. 
+        
+        Parameters
+        ----------
+        nFib: int 
+            Number of fibers 
+        Nx: int 
+            Number of Chebyshev collocation points per fiber 
+        Nunisites: int 
+            Number of uniform sites for resampling
+        fibDisc: FibCollocationDiscretization object
+            A copy of the fiber discretization object (to form the uniform resampling matrix)
+        X: array
+            Collocation point positions
+        Dom: Domain object
+            The domain we are using (to establish the periodicity)
+        radius: double
+            The radius of the fibers (for the steric repulsion)
+        kbT: double
+            Thermal energy
+        nThreads: int, optional
+            The number of OpenMP threads
         """
         self._Npf = Nx; 
         self._NUni = Nunisites;
@@ -48,12 +65,23 @@ class StericForceEvaluator(object):
     
     def SetForceParameters(self,kbT):
         """
-        The force (per unit area) here is 
-        F(r) = F_0 when r < d and F_0*exp((d-r)/delta) when r > d. 
-        d is always the size of the fiber
-        There are then 2 free parameters: F_0 and delta. 
-        We choose F_0*delta*a^2 = 4*kBT, so this leaves the choice of delta, the 
-        radius at which potential decays. 
+        Throughout this class, we use an energy density (between two 
+        spheres) given by
+        $$\\hat{\\mathcal{E}}(r) = \\frac{\\mathcal{E}_0}{a^2}\\textrm{erf}\\left(r/(\\delta \\sqrt{2})\\right),$$
+        where $a$ is the fiber radius (set in the constructor). The force between blobs 
+        is the derivative of energy 
+        $$\\frac{d \\mathcal{E}}{d r} = \\frac{\\mathcal{E}_0}{a^2 \\delta} \\sqrt{\\frac{2}{\\pi}} \\exp{(-r^2/(2\\delta^2))}$$
+        times the displacement vector between points. 
+        
+        The purpose of this function is to set the parameters of the force and 
+        energy functions. We set $\\delta = a$ (although that can be changed here), 
+        $\\mathcal{E}_0=4 k_B T$, and set the the cutoff for the Gaussian at four 
+        standard deviations.
+        
+        Parameters
+        ----------
+        kbT: double
+            Thermal energy
         """
         nRadiusPerStd = 1;
         self._delta = nRadiusPerStd*self._radius;
@@ -65,10 +93,24 @@ class StericForceEvaluator(object):
         
     def StericForces(self,X,Dom):
         """
-        Compute steric forces. In this base class, this is two simple steps:
+        Compute steric forces. In this base class, this are two simple steps:
         first, upsample the fibers to uniform points (typical spacing 1/eps)
         and get a list of neighbors. Then, pass the list of neighbors to 
         C++ to compute forces. 
+        
+        This function will IGNORE the self steric force. 
+        
+        Parameters
+        ----------
+        X: array
+            The Chebyshev collocation points
+        Dom: Domain object
+            The Domain object (to find neighbors)
+        
+        Returns
+        -------
+        array
+            The steric forces along all fibers. 
         """
         if (verbose > 0):
             tiii = time.time();
@@ -86,10 +128,27 @@ class StericForceEvaluator(object):
         
     def CheckContacts(self,X,Dom,Cutoff=None,excludeSelf=False):
         """
-        Use upsampling to uniform points to check contacts between fibers. 
-        The arguments are the points X, the domain Dom, and the cutoff distance
-        (optional, if not passed code will use the size of the fibers), and 
-        whether to exclude the self term from the interactions
+        Use upsampling to uniform points to check contacts between fibers.
+        
+        Parameters
+        ----------
+        X: array
+            The Chebyshev collocation points
+        Dom: Domain object
+            The Domain object (to find neighbors)
+        Cutoff: double, optional
+            The cutoff distance at which we say fibers are in contact. If not 
+            passed, the code will use the size of the fibers (sometimes we might want
+            a buffer zone and pass a larger cutoff). 
+        excludeSelf: bool, defaults to False
+            Whether to exclude interactions between a fiber and itself.
+        
+        Returns
+        -------
+        (array, array)
+            Two arrays are returned. The first is a 2 column array that gives
+            the indices of neighboring uniform points (points within the cutoff distance).
+            The second is the uniform points. 
         """
         if (self._DontEvalContact):
             return np.zeros((0,2)), 0;
@@ -114,10 +173,30 @@ class StericForceEvaluator(object):
     
     def CheckIntersectWithPrev(self,fibList,iFib,Dom,nDiameters):
         """
-        This is for RSA of fibers. The idea is that you pass an object fibList, where the last
+        This function will check if a proposed fiber intersects with other fibers that 
+        are already in the domain. The purpose is to use this for random sequential addition (RSA). 
+        The idea is that you pass an object fibList, where the last
         fiber (fiber number iFib) is a candidate fiber. This code then loops through the previous
         fibers and checks if those two fibers are interacting. This is obviously slow (python based)
         but it is only called once at the beginning of the simulation.
+        
+        Parameters
+        ----------
+        fibList: list of DiscretizedFiber objects
+            List that contains the positions (Chebyshev collocation points) of all 
+            fibers already in the system
+        iFib: int
+            Index of fiber we want to add. Assumed to be at the END of fibList
+        Dom: Domain object
+            The domain that we do the computation on.
+        nDiameters: double
+            The minimum number of diameters we want the fibers to be apart
+        
+        Returns
+        --------
+        bool
+            True if the proposed fiber (iFib) is within nDiameters diameters 
+            of the ones already in the system, false if not. 
         """
         # Intersection of two fibers
         Xi, _, _= fibList[iFib].getPositions()
@@ -146,6 +225,16 @@ class StericForceEvaluator(object):
     def mapUniPtToFiber(self,sites):
         """
         The fiber(s) associated with a set of uniform site(s)
+        
+        Parameters
+        ----------
+        sites: array
+            Array of site indicies
+        
+        Returns
+        -------
+        array
+            Fiber numbers associated with those sites.
         """
         return sites//self._NUni;
 
@@ -153,7 +242,12 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
 
     """
     This is a more efficient implementation where we sample the fiber at a series of 
-    SEGMENTS, then try to find the closest points on those segments. 
+    SEGMENTS, then try to find the closest points on those segments. The method "StericForces"
+    gives a more precise listing of what we are doing, but the basic idea is to divide 
+    a fiber into segments, perform neighbor search using the segments to get an initial guess
+    for Newton's method, then use Newton's method to identify the closest points between 
+    pairs of fibers. We then put a quadrature grid around those closest points to compute 
+    the energy and force.
     
     We still leave the functionality to sample at 1/eps uniform points (the variable self._NUni)
     because it could be useful for checking. Here we add addditional functionality to pass
@@ -163,6 +257,35 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
     """
     
     def __init__(self,nFib,Nx,Nunisites,fibDisc,X,Dom,radius,kbT,Nsegments,NumQuadPointsPerStd=1,nThreads=1):
+        """
+        Constructor. 
+        
+        Parameters
+        ----------
+        nFib: int 
+            Number of fibers 
+        Nx: int 
+            Number of Chebyshev collocation points per fiber 
+        Nunisites: int 
+            Number of uniform sites for resampling
+        fibDisc: FibCollocationDiscretization object
+            A copy of the fiber discretization object (to form the uniform resampling matrix)
+        X: array
+            Collocation point positions
+        Dom: Domain object
+            The domain we are using (to establish the periodicity)
+        radius: double
+            The radius of the fibers (for the steric repulsion)
+        kbT: double
+            Thermal energy
+        Nsegments: int
+            Number of segments we use on each fiber for initial neighbor search
+        NumQuadPointsPerStd: double
+            Number of quadrature points we use per standard deviation of the Gaussian that
+            describes the steric force.
+        nThreads: int, optional
+            The number of OpenMP threads
+        """
         super().__init__(nFib,Nx,Nunisites,fibDisc,X,Dom,radius,kbT,nThreads);
         # Initialize parts of the code pertaining to SEGMENTS
         self._Nseg = Nsegments;
@@ -185,11 +308,15 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         computes a maximum number of points if the whole segment were to be included
         in the quadrature, then computes all grid sizes up to that size. The result goes
         into a big array of points and weights which gets passed to C++. 
+        
+        Parameters
+        ----------
+        NumQuadPointsPerStd: double
+            Number of quadrature points we use per standard deviation of the Gaussian that
+            describes the steric force.
         """
         MaxPts = int((self._Lseg*self._Nseg)/self._delta*NumQuadPointsPerStd)+1;
         TotNum = int((1+MaxPts)*MaxPts/2);
-        print(NumQuadPointsPerStd)
-        print(TotNum)
         StartIndex=0;
         AllGLPts = np.zeros(TotNum);
         AllGLWts = np.zeros(TotNum);
@@ -202,7 +329,41 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         
     def StericForces(self,X,Dom):
         """
-        Compute steric forces in the segment-based algorithm
+        Compute steric forces in the segment-based algorithm. The steps are as follows (see 
+        the link at the top of this class for more information):
+        
+        1) Sample the fiber to form straight segments of length $L_{seg}$.
+           Perform a neighbor search over the segment midpoints using the
+           cutoff distance $r_c+L_{seg}$ to obtain list of potentially 
+           interacting segments
+        2) For each pair of fiber pieces triggered by the neighbor search,
+           approximate curved fiber pieces as straight segments and solve
+           a quadratic equation to determine closest point of interaction
+           between straight segments. 
+        3) Use this distance to determine if the fiber pieces are close
+           enough to interact. 
+        4) Use the segment minimum as an initial guess for Newton's method
+           to the true minimum distance between the fiber curves.
+        5) Use a quadratic approximation around the point with minimum distance
+           to find the region where the fibers are interacting.
+        6) Merge intervals that overlap from the same pair of fibers.
+        7) Put down a Chebyshev grid on this region and integrate to get forces.
+        
+        This function will NOT compute steric forces if the "closest points" 
+        found in step 4 are actually the same point on the same fiber. By doing this,
+        we ignore the self steric force.
+        
+        Parameters
+        ----------
+        X: array
+            The Chebyshev collocation points
+        Dom: Domain object
+            The Domain object (to find neighbors)
+        
+        Returns
+        -------
+        array
+            The steric forces along all fibers. 
         """
         if (self._DontEvalForce):
             return 0
@@ -265,7 +426,17 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
         
     def mapSegToFiber(self,segs):
         """
-        The fiber(s) associated with a set of uniform site(s)
+        The fiber(s) associated with a set of segment(s)
+        
+        Parameters
+        ----------
+        segs: array
+            Array of segment indicies
+        
+        Returns
+        -------
+        array
+            Fiber numbers associated with those segments.
         """
         return segs//self._Nseg;
           

@@ -2,7 +2,6 @@ import numpy as np
 from DomainC import DomainC as DomCpp
 from math import sqrt
 
-# Documentation last updated: 03/12/2021
 
 class Domain(object):
     """
