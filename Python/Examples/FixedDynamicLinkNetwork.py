@@ -19,12 +19,8 @@ This can be used (a) to create steady state networks with fiber turnover whose m
 we want to study or (b) simulate the dynamics of bundling of actin filaments. 
 
 The first thing this script does is read the input file (SemiflexBundleInputFile.txt) and write a copy in
-the folder BundlingBehavior (create such a folder if you do not have one). In the input file, there is a list of inputs
-to the simulation. It is currently set up to take 3 command line arguments in this order: the seed, the time step size, and 
-the persistence length. So, for example, running
-python BundlingNew.py 1 0.0001 10
-will simulate fibers with persistence length 10 using a time step 0.0001 and a seed of 1. 
-There are a number of outputs which are detailed in the README file. 
+the folder BundlingBehavior (it will create such a folder if you do not have one). 
+In the input file, there is a list of inputs to the simulation.
 """
 
 
@@ -47,10 +43,10 @@ copyInput = open(InputCopyName,'w')
 Input = open('SemiflexBundleInputFile.txt','r')
 for iLine in Input:
 	copyInput.write(iLine);
-copyInput.write('COMMAND LINE ARGS \n')
-copyInput.write('CLseed = '+str(seed)+'\n')
-copyInput.write('dt = '+str(dt)+'\n')
-copyInput.write('lp = '+str(lp)+'\n')
+#copyInput.write('COMMAND LINE ARGS \n')
+#copyInput.write('CLseed = '+str(seed)+'\n')
+#copyInput.write('dt = '+str(dt)+'\n')
+#copyInput.write('lp = '+str(lp)+'\n')
 copyInput.close();
 Input.close();
     

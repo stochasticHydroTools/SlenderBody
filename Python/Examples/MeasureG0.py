@@ -26,26 +26,22 @@ def saveCurvaturesAndStrains(allFibers,CLNet,OutputFileName,wora='a'):
 if not os.path.exists('DynamicRheo'):
     os.makedirs('DynamicRheo')
 
-try:
-	Input = open('StrainInputFile.txt','r')
-	for iLine in Input:
-		exec(iLine);
-	InputCopyName='DynamicRheo/InputFile_'+OutFileString;
-	copyInput = open(InputCopyName,'w')
-	Input = open('StrainInputFile.txt','r')
-	for iLine in Input:
-		copyInput.write(iLine);
-	copyInput.write('COMMAND LINE ARGS \n')
-	copyInput.write('seed = '+str(seed)+'\n')
-	copyInput.write('dt = '+str(dt)+'\n')
-	copyInput.write('Omega = '+str(omHz)+'\n')
-	copyInput.write('Strain = '+str(maxStrain)+'\n')
-	copyInput.write('l_p = '+str(lp)+'\n')
-	copyInput.close();
-	Input.close()
-except:
-	raise ValueError('This file takes three command line arguments: the seed (for CL network),\
-dt, the frequency omega to shear at, the maximum strain (on [0,1]), and l_p, in that order')
+Input = open('StrainInputFile.txt','r')
+for iLine in Input:
+	exec(iLine);
+InputCopyName='DynamicRheo/InputFile_'+OutFileString;
+copyInput = open(InputCopyName,'w')
+Input = open('StrainInputFile.txt','r')
+for iLine in Input:
+	copyInput.write(iLine);
+copyInput.write('COMMAND LINE ARGS \n')
+#copyInput.write('seed = '+str(seed)+'\n')
+#copyInput.write('dt = '+str(dt)+'\n')
+#copyInput.write('Omega = '+str(omHz)+'\n')
+#copyInput.write('Strain = '+str(maxStrain)+'\n')
+#copyInput.write('l_p = '+str(lp)+'\n')
+copyInput.close();
+Input.close()
 
 
 # Array of frequencies in Hz 
@@ -71,7 +67,7 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,deltaLocal=deltaLocal,\
 if (FluctuatingFibs):
     allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidDetFibs);
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs);
 
 Ewald = None;
 if (nonLocal==1):
@@ -94,13 +90,17 @@ CLNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,K
 CLNet.setLinksFromFile('BundlingBehavior/FinalLinks'+InFileString,'BundlingBehavior/FinalFreeLinkBound'+InFileString);
            
 # Initialize the temporal integrator
-TIntegrator = BackwardEuler(allFibers,CLNet);
 if (FluctuatingFibs):
     TIntegrator = MidpointDriftIntegrator(allFibers,CLNet);
-# Number of GMRES iterations for nonlocal solves
-# 1 = block diagonal solver
-# N > 1 = N-1 extra iterations of GMRES
-TIntegrator.setMaxIters(gitersDeterministic);
+else:
+    TIntegrator = BackwardEuler(allFibers,CLNet);
+    # Number of GMRES iterations for nonlocal solves
+    # 1 = block diagonal solver
+    # N > 1 = N-1 extra iterations of GMRES
+    if (nonLocal==1):
+        TIntegrator.setMaxIters(2);
+    else:
+        TIntegrator.setMaxIters(1);
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;

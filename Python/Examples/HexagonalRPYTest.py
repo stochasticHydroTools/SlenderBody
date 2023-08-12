@@ -1,5 +1,5 @@
 from RPYVelocityEvaluator import EwaldSplitter
-from SpatialDatabase import SpatialDatabase,ckDSpatial, LinkedListSpatial
+from SpatialDatabase import SpatialDatabase,ckDSpatial
 from Domain import Domain, PeriodicShearedDomain
 import numpy as np
 import time

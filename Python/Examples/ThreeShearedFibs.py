@@ -28,14 +28,14 @@ def makeThreeSheared(Lf,N,fibDisc):
 
 # Inputs 
 nFib=3          # number of fibers
-N=int(sys.argv[1]);            # number of points per fiber
+N=16;           # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=1      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
+nonLocal=4      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
 Ld=2.4          # length of the periodic domain
 mu=1            # fluid viscosity
 eps=1e-3        # slenderness ratio
 Eb=1e-2        # fiber bending stiffness
-dt=float(sys.argv[2]);       # timestep
+dt=0.01;       # timestep
 omega=0         # frequency of oscillations
 gam0=1          # base rate of strain
 tf=2.4        # final time
