@@ -9,19 +9,19 @@ import sys
 from FileIO import prepareOutFile
 
 """
-This file runs the stability test in Section 5.2. 
+This file runs a stability test. 1000 fibers in shear flow. 
 """
 
 # Inputs for the slender body simulation
 nFib=1000		    # number of fibers
-N=32		    # number of points per fiber
+N=16		    # number of points per fiber
 Lf=2		    # length of each fiber
 nonLocal=1	    # doing nonlocal solves? See fiberCollection.py for list of possible values. 
 deltaLocal=0;
 #Ld=4		    # length of the periodic domain
 mu=1		    # fluid viscosity
 eps=1e-2;	    # slenderness ratio
-dt=1e-2		    # timestep
+dt=5e-2		    # timestep
 omega=2*pi	    # frequency of oscillations
 gam0=0.2*pi	    # base rate of strain 
 tf=5		    # final time
@@ -29,12 +29,12 @@ if (eps < 5e-3):
     Ldlist = [2.4];
 else:
     Ldlist = [3];
-RPYSQ=True;
-RPYOversamp = not (RPYSQ); # matches nonlocal
-if (RPYOversamp):
-    NDirect = int(1/eps);
+RPYSQ=True; # Special quadrature
+RPYOversamp = not (RPYSQ);  # Oversampled quadrature
+if (RPYOversamp):           # Number of points for oversampled quad
+    NDirect = int(1/eps);   # If doing self with oversampled, use 1/epsilon pts.
 else:
-    NDirect = 128;
+    NDirect = 128;  # If not doing self, use fixed number of points.
 
 Iters=[];
 for Ld in Ldlist:

@@ -10,7 +10,8 @@ import numpy as np
 import sys
 
 """
-This file performs the three sheared fiber test in Section 5.1.2
+Three sheared fibers example. See Section 7.4.2 in Maxian's PhD thesis 
+for more information on the set-up. 
 """
 
 def makeThreeSheared(Lf,N,fibDisc):
@@ -28,9 +29,9 @@ def makeThreeSheared(Lf,N,fibDisc):
 
 # Inputs 
 nFib=3          # number of fibers
-N=16;           # number of points per fiber
+N=16;           # number of tangent vectors per fiber
 Lf=2            # length of each fiber
-nonLocal=4      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
+nonLocal=1      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
 Ld=2.4          # length of the periodic domain
 mu=1            # fluid viscosity
 eps=1e-3        # slenderness ratio
@@ -39,7 +40,8 @@ dt=0.01;       # timestep
 omega=0         # frequency of oscillations
 gam0=1          # base rate of strain
 tf=2.4        # final time
-giters = 1;
+giters = 1;   # Number of GMRES iterations. The number of iterations on the residual hydrodynamic system is giters-1. 
+              # So if this number is set to 1 it will do hydrodynamic interactions explicitly by time lagging. 
 
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
@@ -54,10 +56,10 @@ allFibers.initFibList(fibList,Dom);
 allFibers.fillPointArrays();
 
 # Initialize Ewald for non-local velocities
-Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
-#totnumDir = fibDisc._nptsDirect*nFib;
-#xi = 3*totnumDir**(1/3)/Ld; # Ewald param
-#Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
+#Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
+totnumDir = fibDisc._nptsDirect*nFib;
+xi = 3*totnumDir**(1/3)/Ld; # Ewald param
+Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
 
 # Initialize the temporal integrator
 TIntegrator = BackwardEuler(allFibers);
@@ -67,8 +69,7 @@ TIntegrator = BackwardEuler(allFibers);
 TIntegrator.setMaxIters(giters);
 
 # Prepare the output file and write initial locations
-#FileString='Eps3SqDblSigThreeSh_N'+str(N)+'_dt'+str(dt)+'.txt';
-FileString='ThreeShChk.txt'
+FileString='ThreeShearedLocations.txt'
 allFibers.writeFiberLocations(FileString,'w');
 
 # Time loop

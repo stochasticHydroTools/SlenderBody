@@ -6,7 +6,7 @@ from DiscretizedFiber import DiscretizedFiber
 from RPYVelocityEvaluator import EwaldSplitter, GPUEwaldSplitter
 import numpy as np
 from math import exp
-import sys
+import sys, os
 
 """
 This file runs trajectories of free fibers which go from straight to fluctuating in their equilibrium state. 
@@ -14,11 +14,10 @@ See Sections 4 and 5 in
 "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
 by O. Maxian, B. Sprinkle, and A. Donev. 
 
-As written right now, this function takes two command line arguments: 
-the -log of epsilonRPY (so 2 for epsRPY = 1e-2, 3 for epsRPY=1e-3),
-and the random seed. So calling
-python EndToEndFlucts.py 2 3
-would simulate fibers with aRPY/L = 1e-2 and seed = 3. 
+This can also be found in Section 8.4 of Maxian's PhD thesis.
+
+The goal of this is to measure the equilibrium distribution of fiber lengths and make sure that it matches that
+obtained from MCMC. 
 """
 
 def makeStraightFibs(nFib,Lf,N,fibDisc,Ld=0):
@@ -38,7 +37,7 @@ def makeStraightFibs(nFib,Lf,N,fibDisc,Ld=0):
 nFib=100         # number of fibers
 N=12          # number of points per fiber
 Lf=2            # length of each fiber
-nonLocal=1   # doing nonlocal solves? 0 = local drag, > 1 = nonlocal hydro on each fiber.
+nonLocal=1   # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro on each fiber.
 nThr = 8;   # Number of OpenMP threads
 # Mobility options (can do SBT if all are set to false, otherwise some variant of RPY as described below)
 MobStr='NLOS64';
@@ -46,21 +45,23 @@ RPYQuad = False;        # Special quadrature
 RPYDirect = False;       # Direct Clenshaw-Curtis quadrature
 RPYOversample = True;  # Oversampled quad
 NupsampleForDirect = 64; # Number of pts for oversampled quad
-Ld=float(sys.argv[4]);        # length of the periodic domain
+Ld=4;        # length of the periodic domain
 mu=1            # fluid viscosity
-logeps = float(sys.argv[1]);
+logeps = 2;
 eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3). The factor 4/exp(1.5) converts to actual fiber slenderness. 
 lpstar = 10;    
 kbT = 4.1e-3;
 Eb=lpstar*kbT*Lf;         # fiber bending stiffness
 tfund = 0.003*4*np.pi*mu*Lf**4/(np.log(10**logeps)*Eb) 
 tf = 10*tfund;
-dtfund = float(sys.argv[3]);
+dtfund = 0.005;
 dt = tfund*dtfund;
 penaltyParam = 0;
-seed = int(sys.argv[2]);
-#nSaves = 100; # target number
+seed = 1;
 saveEvery = max(np.floor(0.01/dtfund),1);#int(tf/(nSaves*dt)+1e-6);
+
+if not os.path.exists('SemiflexFlucts'):
+    os.makedirs('SemiflexFlucts')
 
 saveStr='NLTol2Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
 FileString = 'SemiflexFlucts/Locs'+saveStr;
@@ -69,7 +70,7 @@ FileString = 'SemiflexFlucts/Locs'+saveStr;
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,deltaLocal=1,\
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
     RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,NupsampleForDirect=NupsampleForDirect);
     
 # Initialize the master list of fibers
@@ -103,5 +104,4 @@ for iT in range(stopcount):
     maxX, its, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString);
     itsNeeded[iT]=its;
 np.savetxt('SemiflexFlucts/ItsNeeded'+saveStr,itsNeeded)
-np.savetxt('SemiflexFlucts/LanczosNeeded'+saveStr,np.array(TIntegrator._nLanczos))
         

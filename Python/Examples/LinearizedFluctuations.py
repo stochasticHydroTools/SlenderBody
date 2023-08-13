@@ -5,17 +5,12 @@ from TemporalIntegrator import MidpointDriftIntegrator
 from DiscretizedFiber import DiscretizedFiber
 import numpy as np
 from math import exp
-import sys
+import sys, os
 
 """
 This file runs trajectories of linearized fluctuations around a curved base state. See Appendix D in 
 "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
-by O. Maxian, B. Sprinkle, and A. Donev. 
-
-As written right now, this function takes two command line arguments: l_pstar (dimensionless persistence length = l_p/L), 
-and the random seed. So it can be called by typing
-python LinearizedFluctuations.py 10 1
-which would simulate persistence length l_p = 10*L with seed =1. 
+by O. Maxian, B. Sprinkle, and A. Donev, or Section 8.3 in Maxian's PhD thesis.
 """
 
 def makeCurvedFib(Lf,N,fibDisc):
@@ -39,7 +34,7 @@ nonLocal=4     # doing nonlocal solves? 0 = local drag, >0 = nonlocal hydro.
 Ld=2.4          # length of the periodic domain (not relevant here because no nonlocal hydro)
 mu=1            # fluid viscosity
 eps=1e-3*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3)
-lpstar = float(sys.argv[1]); 
+lpstar = 1 
 tf = 0.5;
 dt = 5e-4;
 omega=0         # frequency of oscillations
@@ -48,13 +43,15 @@ kbT = 4.1e-3;
 Eb=lpstar*kbT*Lf;         # fiber bending stiffness
 penaltyParam = 1.6e4*kbT/Lf**3;
 saveEvery = 1;
-seed = int(sys.argv[2]);
+seed = 1;
 RPYQuad = True;
 RPYDirect = False;
 RPYOversample = False;
 NupsampleForDirect = 20;
-# Eigenvalue truncation point. Assumes eps=1e-3 for now. 
-FileString = 'TESTCurved.txt';#'SemiflexFlucts/Penalty_N'+str(N)+'_Lp'+str(lpstar)+'_dt'+str(dtnum)+'_'+str(seed)+'.txt'
+
+if not os.path.exists('SemiflexFlucts'):
+    os.makedirs('SemiflexFlucts') 
+FileString = 'SemiflexFlucts/Penalty_N'+str(N)+'_Lp'+str(lpstar)+'_dt'+str(dt)+'_'+str(seed)+'.txt'
 
 # Initialize the domain
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
