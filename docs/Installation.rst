@@ -1,16 +1,16 @@
 Installing the software
 ===================================================
 
-Instructions for running code 
-   1) Clone the repo using 
+**Instructions for running code**
+   1) Clone the repo using
     
-       .. code-block:: bash
+      .. code-block:: bash
        
-        git clone --recursive https://github.com/stochasticHydroTools/SlenderBody
+       git clone --recursive https://github.com/stochasticHydroTools/SlenderBody
        
       This will also clone the submodules in the dependency folder. 
        
-   2) Run 
+   2) Run
    
       .. code-block:: bash
       
@@ -27,9 +27,12 @@ Instructions for running code
         
         bash install.sh
       
-      again
+      again.
 
    3) Common mistakes:
+        - `UAMMD <https://github.com/RaulPPelaez/UAMMD>`_, which we use for hydrodynamic interactions, requires a GPU
+          and a system with a working CUDA environment. You can still run the software without a GPU, but you cannot
+          compute hydrodynamics between fibers.
         - When compiling UAMMD in the dependencies, the compiler may complain depending on what version of nvcc you use.
           If it complains that there is no file called cub, cd into SlenderBody/Python/Dependencies/UAMMD_PSE_Python/uammd/src/third_party
           and change the folder called "cub_bak" to "cub." This should fix that issue. See also the `UAMMD webpage <https://github.com/RaulPPelaez/UAMMD>`_
@@ -43,6 +46,7 @@ Instructions for running code
             icpc -O3 -Wall -shared EndedCrossLinkers.cpp -o EndedCrossLinkedNetwork.so     -L/($SLENDERROOT)/Fortran/ -lFortranHeap -std=c++11 -fPIC -fopenmp -llapack -lblas -llapacke `python3 -m pybind11 --includes`
           
           where (SLENDERROOT) is the location of installation. Make sure that ($SLENDERROOT)/Fortran is also added to your LD_LIBRARY_PATH. 
+        - The file `VectorMethods.cpp <https://github.com/stochasticHydroTools/SlenderBody/blob/b0982fcad18dddf88f04dc82c41dadb47c5f25c9/Python/cppmodules/VectorMethods.cpp#L3>`_ is set up to use LAPACKE and CBLAS. If you compile using Intel's MKL, then simply comment lines 3 and 4 and uncomment line 18.
               
 
    4) Run the python scripts in Python/Examples. For example,
@@ -53,7 +57,7 @@ Instructions for running code
        
       will run ThreeShearedFibs.py (see Examples page for documentation).
 
-Parallelization
+**Parallelization**
 
 The number of OpenMP threads (environment variable) MUST be set to one to obtain good performance. 
 In particular, you must use 
@@ -65,7 +69,7 @@ In particular, you must use
 in linux prior to running our code.
 The parallelization is then implemented in the C++ class FiberCollectionC.cpp which takes as an inpute the number of threads. The number of threads in these calculations can be set by passing an integer to the constructor of fiberCollection.py.
 
-Uninstalling 
+**Uninstalling**
     1) Run 
        
        .. code-block:: bash

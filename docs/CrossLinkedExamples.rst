@@ -10,8 +10,8 @@ cross linked actin networks:
     3) StrainDynamicNetwork.py -- small amplitude oscillatory shear test; also requires an input
        network. The input file is StrainInputFile.txt.
        
-The ideal workflow is to first run FixedDynamicLinkNetwork.py, which generates a steady state network. 
-This network can then be used to measure stress (MeasureG0.py and StrainDynamicNetwork.py). 
+**The ideal workflow is to first run FixedDynamicLinkNetwork.py, which generates a steady state network. 
+This network can then be used to measure stress (MeasureG0.py and StrainDynamicNetwork.py).**
 
 The input files (SemiflexBundleInputFile.txt and StrainInputFile.txt) contain the following variables:
     - nFib = number of fibers
