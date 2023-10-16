@@ -1,5 +1,5 @@
 %% Plotting a movie
-iTrial=4;
+iTrial=1;
 AllLfacs = AllExtensions{iTrial};
 Xpts = AllPositions{iTrial};
 nLinksT = AllnLinks{iTrial};
@@ -7,13 +7,14 @@ AllLinks = AllLinksConfs{iTrial};
 Thetass = AllAngles{iTrial};
 D1s = AllMatFrames{iTrial};
 f=figure;
+f.Position = [100 100 1000 1000];
 savedt=saveEvery*dt;
-tmovies = [0 0.05 0.1 0.2 0.5 1];
+tmovies = 0:0.01:2;
 %tmovies = [0 0.01 0.02 0.04 0.06 0.08 0.1 0.15 0.2 0.3];
 nSaves = length(nLinksT);
-for iT=1:length(tmovies)
-    subplot(2,3,iT)
-    saveIndex=tmovies(iT)/(savedt)+1;
+for iT=nSaves
+    %subplot(2,3,iT)
+    saveIndex=iT;%tmovies(iT)/(savedt)+1;
     linkEnd = sum(nLinksT(1:saveIndex));
     nLinks = nLinksT(saveIndex);
     links=AllLinks(linkEnd-nLinks+1:linkEnd,:);

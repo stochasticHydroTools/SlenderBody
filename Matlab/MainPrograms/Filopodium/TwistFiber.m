@@ -114,7 +114,7 @@ for count=0:stopcount-1
     velmax(count+1)=max(abs(Xt-Xp1)/dt);
     Xt = Xp1;
     Xst = Xsp1;
-    theta_s = theta_sp1;
+    %theta_s = theta_sp1; DO NOT UPDATE theta (assume it's at steady state)
     XMP=XMPor0_p1;
     D1((iFib-1)*N+1:iFib*N,:)=D1next;
 end

@@ -31,14 +31,14 @@ for iFib=1:nFib
     Eligible = (RCirc > (1-MotorCircleFrac)*RFilo & (sNp1/L <= MotorLengthFrac));
     ForceVec = [-sin(angleCirc) cos(angleCirc) zeros(Nx,1)];
     NormalForce = -[cos(angleCirc) sin(angleCirc) zeros(Nx,1)];
-    fmotorFib = fmot0*ForceVec.*Eligible ;%+ fmot0*NormalForce.*(RCirc > RFilo);
+    fmotorFib = fmot0*ForceVec.*Eligible -fmotDwn*[0 0 1].*Eligible...
+        + MembraneForce*NormalForce.*(RCirc > (1-MotorCircleFrac)*RFilo);
     inds = (iFib-1)*Nx+1:iFib*Nx;
     indsTorq = (iFib-1)*Npsi+1:iFib*Npsi;
     fmotors(inds,:)=fmotors(inds,:)+fmotorFib;
-    %RPsi = RNp1ToPsi*RCirc;
-    %EligiblePsi = (RPsi > RMotorBounds(1) & ...
-    % RPsi < RMotorBounds(2) & (sPsi/L <= MotorLengthFrac));
-    %nmotors(indsTorq)=fmot0*rtrue.*EligiblePsi;
+    RPsi = RNp1ToPsi*RCirc;
+    EligiblePsi = (RPsi > (1-MotorCircleFrac)*RFilo  & sPsi/L <= MotorLengthFrac);
+    nmotors(indsTorq)=MotorTorq.*EligiblePsi;
 end
 fextAll = ExtForceDen+fmotors;
 n_extAll = nmotors;

@@ -1,6 +1,8 @@
 maxTrial = 10;
 nErrorBars = 2;
 nPerErrorBar = maxTrial/nErrorBars;
+nOuter=12;
+AllRVals=zeros(nErrorBars,nPerErrorBar*nOuter);
 for iError=1:nErrorBars
 for jTrial=1:nPerErrorBar
 iTrial=(iError-1)*nPerErrorBar+jTrial;
@@ -68,10 +70,13 @@ for iT=1:nSaves
         AllAxisAngles(iT,iFib)=acos((EPthis(3)-Zerothis(3))/norm(EPthis-Zerothis));
     end
 end
-%AllDeltaThetas(AllDeltaThetas < -1)=AllDeltaThetas(AllDeltaThetas<-1)+2*pi;
-%AllDeltaThetas(AllDeltaThetas > 5)=AllDeltaThetas(AllDeltaThetas>5)-2*pi;
-%plot(AllXVals(end,11:22),AllYVals(end,11:22),'ko')
+inds=1:nSaves;
+AllDeltaThetas(AllDeltaThetas < -1)=AllDeltaThetas(AllDeltaThetas<-1)+2*pi;
+AllDeltaThetas(AllDeltaThetas > 5)=AllDeltaThetas(AllDeltaThetas>5)-2*pi;
+%plot(AllXVals(end,11:22),AllYVals(end,11:22),'b>')
 %hold on
+AllRVals(iError,nOuter*(jTrial-1)+1:jTrial*nOuter) = ...
+    sqrt(AllXVals(end,11:22).^2+AllYVals(end,11:22).^2);
 % Statistics by circle
 %plot(AllDeltaThetas)
 %drawnow
@@ -83,6 +88,7 @@ for iCirc=1:nCircles
     if (length(CircleInds{iCirc})==1)
         MeanThisCirc=AllMeanCurves(:,CircleInds{iCirc})/(2*pi);
         MeanBendAngle=AllAxisAngles(:,CircleInds{iCirc})*180/pi;
+        MeanZ = AllZVals(:,CircleInds{iCirc});
         MeanEPNumRots = 0;
         MeanMPNumRots = 0;
     else
@@ -90,56 +96,50 @@ for iCirc=1:nCircles
         MeanBendAngle=mean(AllAxisAngles(:,CircleInds{iCirc})')'*180/pi;
         MeanMPNumRots=mean(AllDeltaThetas(:,CircleInds{iCirc})')'/pi;
         MeanEPNumRots=mean(AllDeltaThetas(:,nFib+CircleInds{iCirc})')'/pi;
+        MeanZ = mean(AllZVals(:,CircleInds{iCirc})')';
     end
     if (jTrial==1)
         CurvesByCirc{iCirc}(iError,:)=zeros(1,nSaves);
         AnglesByCirc{iCirc}(iError,:)=zeros(1,nSaves);
         MPRotsByCirc{iCirc}(iError,:)=zeros(1,nSaves);
         EPRotsByCirc{iCirc}(iError,:)=zeros(1,nSaves);
+        ZByCirc{iCirc}(iError,:)=zeros(1,nSaves);
     end
     CurvesByCirc{iCirc}(iError,:)=CurvesByCirc{iCirc}(iError,:)+MeanThisCirc'/nPerErrorBar;
     AnglesByCirc{iCirc}(iError,:)=AnglesByCirc{iCirc}(iError,:)+MeanBendAngle'/nPerErrorBar;
     MPRotsByCirc{iCirc}(iError,:)=MPRotsByCirc{iCirc}(iError,:)+MeanMPNumRots'/nPerErrorBar;
     EPRotsByCirc{iCirc}(iError,:)=EPRotsByCirc{iCirc}(iError,:)+MeanEPNumRots'/nPerErrorBar;
-end
-% for iT=nSaves %Central fiber at t=2
-%     PtsThisT = Xpts((iT-1)*nPerSave+1:iT*nPerSave,:);
-%     for iFib=1
-%         fibInds = (iFib-1)*Nx+1:iFib*Nx;
-%         XFib = RplNp1*PtsThisT(fibInds,:);
-%         plot(XFib(:,1),XFib(:,2))%,XFib(:,3))
-%         hold on
-%         XsCentral=DNp1*PtsThisT(fibInds,:);
-%         set(gca,'ColorOrderIndex',iTrial)
-%         quiver(PtsThisT(fibInds,1),PtsThisT(fibInds,2),...
-%             XsCentral(:,1),XsCentral(:,2),'LineWidth',2)
-%     end
-% end
+    ZByCirc{iCirc}(iError,:)=ZByCirc{iCirc}(iError,:)+MeanZ'/nPerErrorBar;
 end
 end
+end
+
 ts=0:saveEvery*dt:tf;
 for iCirc=1:nCircles
     MeanCurvesByCirc(iCirc,:) = mean(CurvesByCirc{iCirc});
     MeanAnglesByCirc(iCirc,:) = mean(AnglesByCirc{iCirc});
     MeanMPRotsByCirc(iCirc,:) = mean(MPRotsByCirc{iCirc});
     MeanEPRotsByCirc(iCirc,:) = mean(EPRotsByCirc{iCirc});
+    MeanZByCirc(iCirc,:) = mean(ZByCirc{iCirc});
     StdCurvesByCirc(iCirc,:) = 2*std(CurvesByCirc{iCirc})/sqrt(nErrorBars);
     StdAnglesByCirc(iCirc,:) = 2*std(AnglesByCirc{iCirc})/sqrt(nErrorBars);
     StdMPRotsByCirc(iCirc,:) = 2*std(MPRotsByCirc{iCirc})/sqrt(nErrorBars);
     StdEPRotsByCirc(iCirc,:) = 2*std(EPRotsByCirc{iCirc})/sqrt(nErrorBars);
-    plot(ts,MeanAnglesByCirc(iCirc,:),'-')
+    StdZByCirc(iCirc,:) = 2*std(ZByCirc{iCirc})/sqrt(nErrorBars);
+    plot(ts,MeanMPRotsByCirc(iCirc,:),':')
     hold on
     errorEvery=100;
     startval=iCirc*errorEvery/nCircles;
     set(gca,'ColorOrderIndex',iCirc)
-    errorbar(ts(startval:errorEvery:end),MeanAnglesByCirc(iCirc,startval:errorEvery:end),...
-        StdAnglesByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
-%     set(gca,'ColorOrderIndex',iCirc)
-%     plot(ts,MeanEPRotsByCirc(iCirc,:),'-')
-%     startval=iCirc*errorEvery/nCircles;
-%     set(gca,'ColorOrderIndex',iCirc)
-%     errorbar(ts(startval:errorEvery:end),MeanEPRotsByCirc(iCirc,startval:errorEvery:end),...
-%         StdEPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
+    errorbar(ts(startval:errorEvery:end),MeanMPRotsByCirc(iCirc,startval:errorEvery:end),...
+        StdMPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
+    set(gca,'ColorOrderIndex',iCirc)
+    plot(ts,MeanEPRotsByCirc(iCirc,:),'-')
+    hold on
+    startval=iCirc*errorEvery/nCircles;
+    set(gca,'ColorOrderIndex',iCirc)
+    errorbar(ts(startval:errorEvery:end),MeanEPRotsByCirc(iCirc,startval:errorEvery:end),...
+        StdEPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
 end
 return
 % 
@@ -155,14 +155,14 @@ return
 % % plot(ts,mean(AllZVals')',':k')
 % % title('$z$ coordinate')
 % subplot(3,2,5.5)
-% % nT = length(AllXVals(:,1));
-% % for iT=1:nT
-% %     for iFib=1:nFib
-% %         set(gca,'ColorOrderIndex',iFib)
-% %         scatter(AllXVals(iT,iFib),AllYVals(iT,iFib),'filled','MarkerFaceAlpha',0.1+0.9*iT/nT);
-% %         hold on
-% %     end
-% % end
+nT = length(AllXVals(:,1));
+for iT=1:nT
+    for iFib=1:nFib
+        set(gca,'ColorOrderIndex',iFib)
+        scatter(AllXVals(iT,iFib),AllYVals(iT,iFib),'filled','MarkerFaceAlpha',0.1+0.9*iT/nT);
+        hold on
+    end
+end
 % box on
 % title('Trajectories in $(x,y)$ plane')
 % xlabel('$x$')

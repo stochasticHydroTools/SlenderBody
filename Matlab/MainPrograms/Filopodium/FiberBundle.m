@@ -1,7 +1,7 @@
 % Twisting cross-linked bundle
 %close all;
 addpath(genpath('../../../Matlab'))
-addpath(genpath('../../../chebfun-master'))
+addpath(genpath('/home/om759/Documents/MATLAB/'))
 
 %% Physical parameters
 KCL = 100;
@@ -10,16 +10,19 @@ startRandomCL=0;
 konCL = 0.2;
 koffCL = 10;
 Ktorq = 0;
-ellCL = 0.1; % um = 50 nm (alpha actinin)
+MembraneForce = 0;
+ellCL = 0.1; % um = 100 nm (alpha actinin)
 MotorLengthFrac = 1/2; % fraction for motors 
-MotorCircleFrac = 1/4; % motors on the outer 1/3 of the circle
+MotorCircleFrac = 1/4; % motors on the outer 1/4 of the circle
 fmot0 = 50; % pN/um (assuming 5 pN per motor x 10 motors/micron)
+fmotDwn = 0.5; 
 poly = 1;
 KPoly = 2; % deterministic coeff in units of 1/s
 SDPoly = 0.05; % standard deviation of length rate
 Poly0 = 0.5; % Base Rate
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
+MotorTorq = 0*fmot0*rtrue;
 eps = rtrue/L;
 kbT = 4.1e-3;
 Eb = 17*kbT; % pN*um^2 (Lp=17 um)
@@ -29,26 +32,26 @@ nTurnsPerMicron = (NFromFormin/twmod)*L/(2*pi);
 doSterics = 1;
 clamp0 = 1;
 TwistTorq=1;
-nTrial=30;
-for iTrial=4
+nTrial=10;
+BigBundle=0;
+for iTrial=1:nTrial
 rng(iTrial);
 
-
 %% Set up fiber positions
-nCircles = 4;
-nPerCircle = [1 3 6 12];
-fibsToLink =[1 2; 1 3; 1 4; 2 3; 3 4; 4 2; ...
-    5 2; 6 2; 7 3; 8 3; 9 4; 10 4; 5 6; 6 7; 7 8; 8 9; 9 10; 10 5; ...
-    11 5; 12 5; 13 6; 14 6; 15 7; 16 7; 17 8; 18 8; 19 9; 20 9; 21 10; 22 10; ...
-    11 12; 12 13; 13 14; 14 15; 15 16; 16 17; 17 18; 18 19; 19 20; 20 21; 21 22; 22 11];
-%fibsToLink = [1 2; 2 3; 3 4; 4 1; 1 5; 2 5; 3 5; 4 5]+8;
-%fibsToLink = [fibsToLink; 1 2; 2 3; 3 4; 4 5; 5 6; 6 7; 7 8; 8 1;...
-%    1 9; 2 9; 2 10; 3 10; 4 10; 4 11; 5 11; 6 11; 6 12; 7 12; 8 12; 8 9];
-rEachCircle = [0 ellCL 2*ellCL 3*ellCL];
-% nCircles = 2;
-% nPerCircle = [4 1];
-% fibsToLink = [1 2; 2 3; 3 4; 1 4; 1 5; 2 5; 3 5; 4 5];
-% rEachCircle = [ellCL 0];
+if (BigBundle)
+    nCircles = 4;
+    nPerCircle = [1 3 6 12];
+    rEachCircle = [0 ellCL 2*ellCL 3*ellCL];
+    fibsToLink =[1 2; 1 3; 1 4; 2 3; 3 4; 4 2; ...
+        5 2; 6 2; 7 3; 8 3; 9 4; 10 4; 5 6; 6 7; 7 8; 8 9; 9 10; 10 5; ...
+        11 5; 12 5; 13 6; 14 6; 15 7; 16 7; 17 8; 18 8; 19 9; 20 9; 21 10; 22 10; ...
+        11 12; 12 13; 13 14; 14 15; 15 16; 16 17; 17 18; 18 19; 19 20; 20 21; 21 22; 22 11];
+else
+    nCircles = 2;
+    nPerCircle = [4 1];
+    fibsToLink = [1 2; 2 3; 3 4; 1 4; 1 5; 2 5; 3 5; 4 5];
+    rEachCircle = [ellCL 0];
+end
 nFib = sum(nPerCircle);
 RFilo = max(rEachCircle);
 XMP=[];
@@ -81,7 +84,7 @@ upsamp=0;
 mu=1;
 a=rtrue*exp(3/2)/4;
 deltaLocal = 1; % part of the fiber to make ellipsoidal
-makeMovie = 1;
+makeMovie =1;
 updateFrame = 1;
 N = 20;
 dt = 1e-4;
@@ -89,7 +92,7 @@ tf = 2;
 [s,w,b] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE.
 D = diffmat(N, 1, [0 L], 'chebkind1');
 initZeroTheta=0;
-saveEvery=max(floor(1e-3/dt),1);
+saveEvery=max(floor(1e-2/dt),1);
 X_s=[];
 %Lfacs = 1/L*ones(nFib,1);
 Lfacs = ones(nFib,1);
@@ -153,8 +156,8 @@ AllBCShift = BCShift;
 DotProducts=[]; d1=1; d2=1;
 XMPSave=[];
 if (makeMovie)
-f=figure;
-%tiledlayout(1,5, 'Padding', 'none', 'TileSpacing', 'compact');
+    %f=figure;
+    %tiledlayout(1,4, 'Padding', 'none', 'TileSpacing', 'compact');
 end
 D1mids=[];
 AllLinks=[];
@@ -162,6 +165,7 @@ AllLfacs=[];
 nLinksT=[];
 frameNum=0;
 Lprimes=[];
+tmovies = [0.02 0.25 0.6 1];
 %% Computations
 for count=0:stopcount
     t=count*dt;
@@ -175,7 +179,8 @@ for count=0:stopcount
         PtsThisT = reshape(AllX,3,Nx*nFib)';
         %max(abs(sqrt(sum(fTw3.*fTw3,2))))
         if (makeMovie)% && abs(t-tmovies(frameNum+1)) < dt/2) 
-            clf;
+            %clf;
+            %nexttile
             frameNum=frameNum+1;
             %subplot(3,3,frameNum)
             for iFib=1:nFib
@@ -202,9 +207,9 @@ for count=0:stopcount
             %view([ -59.1403    5.5726])
             view([210.7240   34.8854])
             PlotAspect
-            %title(strcat('$t=$',num2str(tmovies(frameNum))))
-            title(strcat('$t=$',num2str((frameNum-1)*saveEvery*dt)))
-            movieframes(frameNum)=getframe(f);
+            title(strcat('$t=$',num2str(tmovies(frameNum))))
+            %title(strcat('$t=$',num2str((frameNum-1)*saveEvery*dt)))
+            %movieframes(frameNum)=getframe(f);
         end
         [nLinks,~]=size(links);
         nLinksT=[nLinksT;nLinks];
@@ -241,6 +246,6 @@ AllPositions{iTrial}=Xpts;
 AllAngles{iTrial}=Thetass;
 AllMatFrames{iTrial}=D1s;
 AllExtensions{iTrial}=AllLfacs;
-%save(strcat('Motors',num2str(fmot0>0),'ForminTw',num2str(NFromFormin>0),'.mat'))
+save(strcat('DwnMotorsForminTw.mat'))
 end
-%exit;
+exit;

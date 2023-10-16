@@ -7,7 +7,7 @@ twmod = 10*kbT; % pN*um^2 (LpTwist = 10 um)
 N = 16;
 [spl,wpl,bpl] = chebpts(1000,[0 L]);
 c= log(1/eps^2)/(8*pi*mu);
-psi = 1.41*(2*pi/L)*(Eb/twmod);
+psi = 1.4*(2*pi/L)*(Eb/twmod);
 H = chebop(0,L);
 H.op = @(s,u) c*(-Eb*diff(u,4)+1i*twmod*psi*diff(u,3));
 H.lbc = @(u) [diff(u,2); diff(u,3)];
