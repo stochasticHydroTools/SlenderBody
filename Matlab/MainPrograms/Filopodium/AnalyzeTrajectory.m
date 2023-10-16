@@ -73,8 +73,8 @@ end
 inds=1:nSaves;
 AllDeltaThetas(AllDeltaThetas < -1)=AllDeltaThetas(AllDeltaThetas<-1)+2*pi;
 AllDeltaThetas(AllDeltaThetas > 5)=AllDeltaThetas(AllDeltaThetas>5)-2*pi;
-%plot(AllXVals(end,11:22),AllYVals(end,11:22),'b>')
-%hold on
+plot(AllXVals(end,11:22),AllYVals(end,11:22),'r>')
+hold on
 AllRVals(iError,nOuter*(jTrial-1)+1:jTrial*nOuter) = ...
     sqrt(AllXVals(end,11:22).^2+AllYVals(end,11:22).^2);
 % Statistics by circle
@@ -113,6 +113,7 @@ for iCirc=1:nCircles
 end
 end
 end
+return
 
 ts=0:saveEvery*dt:tf;
 for iCirc=1:nCircles

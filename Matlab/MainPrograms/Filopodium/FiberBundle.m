@@ -15,7 +15,7 @@ ellCL = 0.1; % um = 100 nm (alpha actinin)
 MotorLengthFrac = 1/2; % fraction for motors 
 MotorCircleFrac = 1/4; % motors on the outer 1/4 of the circle
 fmot0 = 50; % pN/um (assuming 5 pN per motor x 10 motors/micron)
-fmotDwn = 0.5; 
+fmotDwn = 0; 
 poly = 1;
 KPoly = 2; % deterministic coeff in units of 1/s
 SDPoly = 0.05; % standard deviation of length rate
@@ -33,7 +33,7 @@ doSterics = 1;
 clamp0 = 1;
 TwistTorq=1;
 nTrial=10;
-BigBundle=0;
+BigBundle=1;
 for iTrial=1:nTrial
 rng(iTrial);
 
@@ -246,6 +246,6 @@ AllPositions{iTrial}=Xpts;
 AllAngles{iTrial}=Thetass;
 AllMatFrames{iTrial}=D1s;
 AllExtensions{iTrial}=AllLfacs;
-save(strcat('DwnMotorsForminTw.mat'))
+save(strcat('SanityCheckCLs.mat'))
 end
 exit;
