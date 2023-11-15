@@ -1,5 +1,7 @@
-# SlenderBody
-Slender-body hydrodynamics
+# SPHARCLE
+Slender Particle Hydrodynamics And Reacting Cytoskeletal Linking Elements.
+
+See the [documentation](https://slenderbody.readthedocs.io/en/latest/) on readthedocs for installation instructions, as well as how to run and modify the examples. 
 
 This repository contains the Python/C++ and Matlab codes for the publications:
 * [1] "An integral-based spectral method for inextensible slender fibers in
@@ -9,34 +11,35 @@ See [arxiv](https://arxiv.org/abs/2007.11728) for text and
 version.
 * [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions," 
 by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, Dec. 2021. 
-See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v3) for text and 
+See [biorxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453) for text and 
 [PLoS Comp. Bio](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009240)
 for published version.
 * [3] "Interplay between Brownian motion and cross-linking kinetics controls bundling dynamics in actin networks," 
-by O. Maxian, A. Donev, and A. Mogilner. Biophysical Journal, April 2022. 
-See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v2) for text and [BJ](https://www.cell.com/biophysj/fulltext/S0006-3495(22)00154-0) for 
+by O. Maxian, A. Donev, and A. Mogilner, April 2022. 
+See [biorxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819) for text and [Biophys. J.](https://www.cell.com/biophysj/fulltext/S0006-3495(22)00154-0) for 
 published version.
 * [4] "The hydrodynamics of a twisting, bending, inextensible fiber in Stokes flow," 
 by O. Maxian, B. Sprinkle, C.S. Peskin, and A. Donev, July 2022. 
 See [arxiv](https://arxiv.org/abs/2201.04187) for text and [Phys. Rev. Fluids](https://journals.aps.org/prfluids/abstract/10.1103/PhysRevFluids.7.074101) for published
 version.
-* [5] "Slender body theories for rotating filaments," by O. Maxian and A. Donev, Nov. 2022. See [JFM](https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/slender-body-theories-for-rotating-filaments/0A9E1AB691DC4AFDB57C6471928745AE) for published version, which is open access. This is primarily a theoretical study which has some numerical calculations. The relevant files are under Matlab/Matlab/NumericalSBT/SingleLayer/
-* [6] "Bending fluctuations in semiflexible, inextensible, slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2023. See [arxiv](link) for text. 
+* [5] "Slender body theories for rotating filaments," by O. Maxian and A. Donev, Nov. 2022. See [J. of Fluid Mech.](https://www.cambridge.org/core/journals/journal-of-fluid-mechanics/article/slender-body-theories-for-rotating-filaments/0A9E1AB691DC4AFDB57C6471928745AE) for published version, which is open access. This is primarily a theoretical study which has some numerical calculations. The relevant files are under Matlab/Matlab/NumericalSBT/SingleLayer/
+* [6] "Bending fluctuations in semiflexible, inextensible, slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2023. See [arxiv](https://arxiv.org/abs/2301.11123) for text and [J. Chem. Phys](https://pubs.aip.org/aip/jcp/article/158/15/154114/2884532/Bending-fluctuations-in-semiflexible-inextensible) for published version. 
+* [7] "Helical motors and formins synergize to compact chiral filopodial bundles: a theoretical perspective," by O. Maxian and A. Mogilner, Nov. 2023. See [biorxiv](https://www.biorxiv.org/content/10.1101/2023.07.24.550422) for text. The codes for this publication are [here](https://github.com/stochasticHydroTools/SlenderBody/tree/master/Matlab/MainPrograms/Filopodium). 
 
 Organization is as follows:
 * Python: directory with python codes
 * Python/cppmodules: directory with C++ modules linked to python using pybind11 (compile with included makefile)
 * Python/Examples: python scripts to reproduce the tests and examples [1-3] and [6]. See the README there for more information. 
 * Python/Dependencies: contains all dependencies for the python codes. Some are submodules, while some are modified copies of the libraries. 
-* Matlab: directory with matlab codes. These are the only codes used in [4] and [5]. 
+* Matlab: directory with matlab codes. These are the only codes used in [4], [5], and [7]. 
 
 # External dependencies:
-* [FINUFFT](https://github.com/flatironinstitute/finufft). I have modified some of the v 1.0 code and included the raw code in Python/Dependencies. Note that this dependency is not strictly necessary; it is only needed if you wish to run nonlocal hydrodynamics and do not have a GPU. 
 * [krypy](https://github.com/andrenarchy/krypy).  I have modified some of this and included the raw code in Python/Dependencies.
 * [scipy](https://github.com/scipy/scipy)
 * LaPack (for C++ functions)
 * [PyBind11](https://github.com/pybind/pybind11) (to link python and C++)
 * [UAMMD](https://github.com/RaulPPelaez/UAMMD) (for Ewald splitting on the GPU). This is used as a submodule in Python/Dependencies. 
+* [FINUFFT](https://github.com/flatironinstitute/finufft). I have modified some of the v 1.0 code and included the raw code in Python/Dependencies. Note that this dependency is not strictly necessary; it is only needed if you wish to run nonlocal hydrodynamics and do not have a GPU.
 
 # Instructions for running code 
 1) Clone this repo using 

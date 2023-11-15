@@ -73,8 +73,8 @@ end
 inds=1:nSaves;
 AllDeltaThetas(AllDeltaThetas < -1)=AllDeltaThetas(AllDeltaThetas<-1)+2*pi;
 AllDeltaThetas(AllDeltaThetas > 5)=AllDeltaThetas(AllDeltaThetas>5)-2*pi;
-plot(AllXVals(end,11:22),AllYVals(end,11:22),'r>')
-hold on
+%plot(AllXVals(end,11:22),AllYVals(end,11:22),'b>')
+%hold on
 AllRVals(iError,nOuter*(jTrial-1)+1:jTrial*nOuter) = ...
     sqrt(AllXVals(end,11:22).^2+AllYVals(end,11:22).^2);
 % Statistics by circle
@@ -113,7 +113,7 @@ for iCirc=1:nCircles
 end
 end
 end
-return
+%return
 
 ts=0:saveEvery*dt:tf;
 for iCirc=1:nCircles
@@ -127,20 +127,20 @@ for iCirc=1:nCircles
     StdMPRotsByCirc(iCirc,:) = 2*std(MPRotsByCirc{iCirc})/sqrt(nErrorBars);
     StdEPRotsByCirc(iCirc,:) = 2*std(EPRotsByCirc{iCirc})/sqrt(nErrorBars);
     StdZByCirc(iCirc,:) = 2*std(ZByCirc{iCirc})/sqrt(nErrorBars);
-    plot(ts,MeanMPRotsByCirc(iCirc,:),':')
+    plot(ts,MeanZByCirc(iCirc,:),'-')
     hold on
     errorEvery=100;
     startval=iCirc*errorEvery/nCircles;
     set(gca,'ColorOrderIndex',iCirc)
-    errorbar(ts(startval:errorEvery:end),MeanMPRotsByCirc(iCirc,startval:errorEvery:end),...
-        StdMPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
-    set(gca,'ColorOrderIndex',iCirc)
-    plot(ts,MeanEPRotsByCirc(iCirc,:),'-')
-    hold on
-    startval=iCirc*errorEvery/nCircles;
-    set(gca,'ColorOrderIndex',iCirc)
-    errorbar(ts(startval:errorEvery:end),MeanEPRotsByCirc(iCirc,startval:errorEvery:end),...
-        StdEPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
+    errorbar(ts(startval:errorEvery:end),MeanZByCirc(iCirc,startval:errorEvery:end),...
+        StdZByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
+%     set(gca,'ColorOrderIndex',iCirc)
+%     plot(ts,MeanEPRotsByCirc(iCirc,:),'-')
+%     hold on
+%     startval=iCirc*errorEvery/nCircles;
+%     set(gca,'ColorOrderIndex',iCirc)
+%     errorbar(ts(startval:errorEvery:end),MeanEPRotsByCirc(iCirc,startval:errorEvery:end),...
+%         StdEPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
 end
 return
 % 

@@ -16,6 +16,7 @@ MotorLengthFrac = 1/2; % fraction for motors
 MotorCircleFrac = 1/4; % motors on the outer 1/4 of the circle
 fmot0 = 50; % pN/um (assuming 5 pN per motor x 10 motors/micron)
 fmotDwn = 0; 
+AdjustForceTangential = 0;
 poly = 1;
 KPoly = 2; % deterministic coeff in units of 1/s
 SDPoly = 0.05; % standard deviation of length rate
@@ -32,7 +33,7 @@ nTurnsPerMicron = (NFromFormin/twmod)*L/(2*pi);
 doSterics = 1;
 clamp0 = 1;
 TwistTorq=1;
-nTrial=10;
+nTrial=1;
 BigBundle=1;
 for iTrial=1:nTrial
 rng(iTrial);
@@ -84,7 +85,7 @@ upsamp=0;
 mu=1;
 a=rtrue*exp(3/2)/4;
 deltaLocal = 1; % part of the fiber to make ellipsoidal
-makeMovie =1;
+makeMovie =0;
 updateFrame = 1;
 N = 20;
 dt = 1e-4;
@@ -156,7 +157,7 @@ AllBCShift = BCShift;
 DotProducts=[]; d1=1; d2=1;
 XMPSave=[];
 if (makeMovie)
-    %f=figure;
+    f=figure;
     %tiledlayout(1,4, 'Padding', 'none', 'TileSpacing', 'compact');
 end
 D1mids=[];
@@ -179,7 +180,7 @@ for count=0:stopcount
         PtsThisT = reshape(AllX,3,Nx*nFib)';
         %max(abs(sqrt(sum(fTw3.*fTw3,2))))
         if (makeMovie)% && abs(t-tmovies(frameNum+1)) < dt/2) 
-            %clf;
+            clf;
             %nexttile
             frameNum=frameNum+1;
             %subplot(3,3,frameNum)
@@ -207,9 +208,9 @@ for count=0:stopcount
             %view([ -59.1403    5.5726])
             view([210.7240   34.8854])
             PlotAspect
-            title(strcat('$t=$',num2str(tmovies(frameNum))))
-            %title(strcat('$t=$',num2str((frameNum-1)*saveEvery*dt)))
-            %movieframes(frameNum)=getframe(f);
+            %title(strcat('$t=$',num2str(tmovies(frameNum))))
+            title(strcat('$t=$',num2str((frameNum-1)*saveEvery*dt)))
+            movieframes(frameNum)=getframe(f);
         end
         [nLinks,~]=size(links);
         nLinksT=[nLinksT;nLinks];
@@ -246,6 +247,6 @@ AllPositions{iTrial}=Xpts;
 AllAngles{iTrial}=Thetass;
 AllMatFrames{iTrial}=D1s;
 AllExtensions{iTrial}=AllLfacs;
-save(strcat('SanityCheckCLs.mat'))
+%save(strcat('DownwardControl.mat'))
 end
-exit;
+%exit;

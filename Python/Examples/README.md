@@ -8,15 +8,16 @@ See [arxiv](https://arxiv.org/abs/2007.11728) for text and
 version.
 * [2] "Simulations of dynamically cross-linked actin networks: morphology, rheology, and hydrodynamic interactions," 
 by O. Maxian, R. P. Peláez, A. Mogilner, and A. Donev, Dec. 2021. 
-See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453v3) for text and 
+See [biorxiv](https://www.biorxiv.org/content/10.1101/2021.07.07.451453) for text and 
 [PLoS Comp. Bio](https://journals.plos.org/ploscompbiol/article?id=10.1371/journal.pcbi.1009240)
 for published version.
 * [3] "Interplay between Brownian motion and cross-linking kinetics controls bundling dynamics in actin networks," 
-by O. Maxian, A. Donev, and A. Mogilner. Biophysical Journal, April 2022. 
-See [bioarxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819v2) for text and [BJ](https://www.cell.com/biophysj/fulltext/S0006-3495(22)00154-0) for 
+by O. Maxian, A. Donev, and A. Mogilner, April 2022. 
+See [biorxiv](https://www.biorxiv.org/content/10.1101/2021.09.17.460819) for text and [Biophys. J.](https://www.cell.com/biophysj/fulltext/S0006-3495(22)00154-0) for 
 published version.
-* [6] "Bending fluctuations in semiflexible, inextensible, slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2023. See [arxiv](link) for text. 
+* [6] "Bending fluctuations in semiflexible, inextensible, slender filaments in Stokes flow: towards a spectral discretization," by O. Maxian, B. Sprinkle, and A. Donev, Jan. 2023. See [arxiv](https://arxiv.org/abs/2301.11123) for text and [J. Chem. Phys](https://pubs.aip.org/aip/jcp/article/158/15/154114/2884532/Bending-fluctuations-in-semiflexible-inextensible) for published version. 
 
+Detailed instructions for running the examples can be found on the [documentation page](https://slenderbody.readthedocs.io/en/latest/Examples.html). Here we give a brief summary. 
 
 # Tests from [1]:
 1) ThreeShearedFibs.py corresponds to the 3 fibers being sheared in Section 5.1.2.
