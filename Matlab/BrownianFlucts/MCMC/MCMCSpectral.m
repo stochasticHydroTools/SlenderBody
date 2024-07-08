@@ -1,16 +1,17 @@
 addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
 % Generate initial chain
-L = 2;
+L = 1;
 kbT = 4.1e-3; % pN * um
-lp = 1*L;
+lp = L;
 K_b = lp*kbT;
 a = 1e-2;
 eps=a/L;
-nSamp = 1e3;
+nSamp = 1e7;
+saveEvery = 2e4;
 nSaveSamples = 0.8*nSamp;
-nTrial = 10;
+nTrial = 3;
 OversampCheb = 1;
-N = 16;
+N = 4; % number tangent vectors
 UConst = 7.5e-3*L;
 TauConst=0.04*sqrt(L/lp)*12/N;
 lpstar = (K_b)/kbT*1/L;
@@ -20,9 +21,9 @@ penaltyCoeff = 1.6e4/L^3*kbT*PenaltyForceInsteadOfFlow;
 %%% Base state
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 [s,w,b] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE
-q=1; 
 gam0 = penaltyCoeff;
 if (penaltyCoeff > 0)
+    q=1; 
     X_s = [cos(q*s.^3 .* (s-L).^3) sin(q*s.^3.*(s - L).^3) ones(N,1)]/sqrt(2);
 else
     X_s = [ones(N,1) zeros(N,2)];
@@ -44,7 +45,6 @@ end
 SampleInds = [0 1/4 1/2 3/4 1]*(length(xUni)-1)+1;
 ResampFromNp1 = stackMatrix(barymat(xUni,sNp1,bNp1));
 nBins = 1000;
-
 
 % The energy matrix and expected covariance
 EMatParams = XonNp1Mat'*EMat_Np1*XonNp1Mat;
@@ -119,7 +119,7 @@ for iSamp=1:nSamp
             end
         end
     end
-    if (iSamp > nSamp-nSaveSamples)
+    if (mod(iSamp,saveEvery)==0)
         if (penaltyCoeff > 0)
             SecOrderCoeffs = Vtrue2nd'*Wts*deltaX;
             MeanSqSecCoeffs = MeanSqSecCoeffs+SecOrderCoeffs.*SecOrderCoeffs;
@@ -128,33 +128,35 @@ for iSamp=1:nSamp
             ChainDev = deltaX'*Wts*deltaX;
             MeanDev = MeanDev+ChainDev;
         else
-            X3 = reshape(deltaX,3,[]);
-            KeyPoints = X3(:,SampleInds);
-            EndBinNum = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,end))/L*nBins),nBins); % [0,1000]
-            AllEndToEndDists(iTrial,EndBinNum)=AllEndToEndDists(iTrial,EndBinNum)+1;
-            MidBinNum = min(ceil(norm(KeyPoints(:,2)-KeyPoints(:,4))/(0.5*L)*nBins),nBins);
-            AllMiddleHalfDists(iTrial,MidBinNum) = AllMiddleHalfDists(iTrial,MidBinNum)+1;
-            EMidBinNum1 = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,3))/(0.5*L)*nBins),nBins); 
-            EMidBinNum2 = min(ceil(norm(KeyPoints(:,5)-KeyPoints(:,3))/(0.5*L)*nBins),nBins); 
-            AllEndToMiddleDists(iTrial,EMidBinNum1) = ...
-                AllEndToMiddleDists(iTrial,EMidBinNum1)+1; 
-            AllEndToMiddleDists(iTrial,EMidBinNum2) = ...
-                AllEndToMiddleDists(iTrial,EMidBinNum2)+1;
-            EQtrBinNum1 = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,2))/(0.25*L)*nBins),nBins); 
-            EQtrBinNum2 = min(ceil(norm(KeyPoints(:,5)-KeyPoints(:,4))/(0.25*L)*nBins),nBins);
-            AllEndToQuarterDists(iTrial,EQtrBinNum1) = ...
-                AllEndToQuarterDists(iTrial,EQtrBinNum1)+1; 
-            AllEndToQuarterDists(iTrial,EQtrBinNum2) = ...
-                AllEndToQuarterDists(iTrial,EQtrBinNum2)+1;
-            % Tangent vector dot products
-            for iPt=1:N
-                for jPt=iPt:N
-                    ds = abs(s(iPt)-s(jPt));
-                    index = find(Deltas==ds);
-                    nSamplesDs(index)=nSamplesDs(index)+1;
-                    TanVecDots(index)=TanVecDots(index)+dot(X_s(iPt,:),X_s(jPt,:));
-                end
-            end
+%             X3 = reshape(deltaX,3,[]);
+%             KeyPoints = X3(:,SampleInds);
+%             EndBinNum = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,end))/L*nBins),nBins); % [0,1000]
+%             AllEndToEndDists(iTrial,EndBinNum)=AllEndToEndDists(iTrial,EndBinNum)+1;
+%             MidBinNum = min(ceil(norm(KeyPoints(:,2)-KeyPoints(:,4))/(0.5*L)*nBins),nBins);
+%             AllMiddleHalfDists(iTrial,MidBinNum) = AllMiddleHalfDists(iTrial,MidBinNum)+1;
+%             EMidBinNum1 = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,3))/(0.5*L)*nBins),nBins); 
+%             EMidBinNum2 = min(ceil(norm(KeyPoints(:,5)-KeyPoints(:,3))/(0.5*L)*nBins),nBins); 
+%             AllEndToMiddleDists(iTrial,EMidBinNum1) = ...
+%                 AllEndToMiddleDists(iTrial,EMidBinNum1)+1; 
+%             AllEndToMiddleDists(iTrial,EMidBinNum2) = ...
+%                 AllEndToMiddleDists(iTrial,EMidBinNum2)+1;
+%             EQtrBinNum1 = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,2))/(0.25*L)*nBins),nBins); 
+%             EQtrBinNum2 = min(ceil(norm(KeyPoints(:,5)-KeyPoints(:,4))/(0.25*L)*nBins),nBins);
+%             AllEndToQuarterDists(iTrial,EQtrBinNum1) = ...
+%                 AllEndToQuarterDists(iTrial,EQtrBinNum1)+1; 
+%             AllEndToQuarterDists(iTrial,EQtrBinNum2) = ...
+%                 AllEndToQuarterDists(iTrial,EQtrBinNum2)+1;
+%             % Tangent vector dot products
+%             for iPt=1:N
+%                 for jPt=iPt:N
+%                     ds = abs(s(iPt)-s(jPt));
+%                     index = find(Deltas==ds);
+%                     nSamplesDs(index)=nSamplesDs(index)+1;
+%                     TanVecDots(index)=TanVecDots(index)+dot(X_s(iPt,:),X_s(jPt,:));
+%                 end
+%             end
+            ind = floor(iSamp/saveEvery+1e-5)+1;
+            AllXPos(:,ind,iTrial)=dX;
         end
     end
 end

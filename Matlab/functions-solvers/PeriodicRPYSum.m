@@ -1,10 +1,10 @@
-% Compute the action of the non-local mobility matrix in an UNBOUNDED DOMAIN. 
+% Compute the action of the non-local mobility matrix in a periodic DOMAIN. 
 % This code just performs an O(N^2) sum
-function U = PeriodicRPYSum(nFib,X,F,Lds,xi,g,a,mu,Rupsample,wup,WTildeInverse,direct)
+function U = PeriodicRPYSum(nFib,X,F,Lds,xi,g,a,mu,Rupsample,wup,WTildeInverse,directquad)
     FINUUFT=1; % use FINUFFT
     % Compile list of upsampled points and forces
     [Nup,Nx]=size(Rupsample);
-    if (direct)
+    if (directquad)
         Nup=Nx;
     end
     Forces = zeros(Nup*nFib,3);
@@ -13,7 +13,7 @@ function U = PeriodicRPYSum(nFib,X,F,Lds,xi,g,a,mu,Rupsample,wup,WTildeInverse,d
     for iFib=1:nFib
         inds = (iFib-1)*Nx+1:iFib*Nx;
         UpInds = (iFib-1)*Nup+1:iFib*Nup;
-        if (direct)
+        if (directquad)
             Forces(inds,:)=F(inds,:);
             UpPoints(inds,:)=X(inds,:);
         else
@@ -33,7 +33,7 @@ function U = PeriodicRPYSum(nFib,X,F,Lds,xi,g,a,mu,Rupsample,wup,WTildeInverse,d
     for iFib=1:nFib
         inds = (iFib-1)*Nx+1:iFib*Nx;
         UpInds = (iFib-1)*Nup+1:iFib*Nup;
-        if (direct)
+        if (directquad)
             U(inds,:)=velEwald(UpInds,:);
         else
             U(inds,:) = WTildeInverse*Rupsample'*diag(wup)*velEwald(UpInds,:);

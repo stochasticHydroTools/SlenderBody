@@ -6,14 +6,15 @@ nLinksT = AllnLinks{iTrial};
 AllLinks = AllLinksConfs{iTrial};
 Thetass = AllAngles{iTrial};
 D1s = AllMatFrames{iTrial};
-f=figure;
-f.Position = [100 100 1000 1000];
+%f=figure;
+%f.Position = [100 100 1000 1000];
 savedt=saveEvery*dt;
 tmovies = 0:0.01:2;
 %tmovies = [0 0.01 0.02 0.04 0.06 0.08 0.1 0.15 0.2 0.3];
 nSaves = length(nLinksT);
 for iT=nSaves
     %subplot(2,3,iT)
+    nexttile
     saveIndex=iT;%tmovies(iT)/(savedt)+1;
     linkEnd = sum(nLinksT(1:saveIndex));
     nLinks = nLinksT(saveIndex);
@@ -45,5 +46,5 @@ for iT=nSaves
     view([-109.5316   19.7340])
     title(strcat('$t=$',num2str(tmovies(iT))))
     hold off
-    movieframes(iT)=getframe(f);
+    %movieframes(iT)=getframe(f);
 end

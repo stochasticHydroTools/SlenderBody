@@ -15,8 +15,9 @@ ellCL = 0.1; % um = 100 nm (alpha actinin)
 MotorLengthFrac = 1/2; % fraction for motors 
 MotorCircleFrac = 1/4; % motors on the outer 1/4 of the circle
 fmot0 = 50; % pN/um (assuming 5 pN per motor x 10 motors/micron)
-fmotDwn = 0; 
-AdjustForceTangential = 0;
+fmotDwn = 3/8*fmot0; % accounts for pitch
+AdjustForceTangential = 1;
+CancelAllZForce = 0;
 poly = 1;
 KPoly = 2; % deterministic coeff in units of 1/s
 SDPoly = 0.05; % standard deviation of length rate
@@ -88,7 +89,7 @@ deltaLocal = 1; % part of the fiber to make ellipsoidal
 makeMovie =0;
 updateFrame = 1;
 N = 20;
-dt = 1e-4;
+dt = 5e-5;
 tf = 2;
 [s,w,b] = chebpts(N, [0 L], 1); % 1st-kind grid for ODE.
 D = diffmat(N, 1, [0 L], 'chebkind1');
@@ -247,6 +248,6 @@ AllPositions{iTrial}=Xpts;
 AllAngles{iTrial}=Thetass;
 AllMatFrames{iTrial}=D1s;
 AllExtensions{iTrial}=AllLfacs;
-%save(strcat('DownwardControl.mat'))
+save(strcat('TESTTanMotorsDwn',num2str(fmotDwn>0),'CancelZ',num2str(CancelAllZForce),'.mat'))
 end
 %exit;

@@ -107,6 +107,10 @@ class SingleFiberMobilityEvaluator {
         
     }
     
+    void SetEigValThreshold(double Thres){
+        _eigValThres = Thres;
+    }
+    
     void MobilityForceMatrix(const vec &LocalPoints, bool nonLocalParts, int NBands, vec &MForce, vec &EigVecs, vec &EigVals){
         /*
         Main method to compute the mobility M[X]

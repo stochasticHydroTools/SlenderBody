@@ -37,5 +37,5 @@ function FPMat = DoubletFinitePartMatrix(X,Xs,Xss,D,s,L,N,mu,Allbs)
             end
         end
     end
-    FPMat = 1/(8*pi*mu)*0.5*L*(ActualFPMat+DfPart*stackMatrix(D));
+    FPMat = 1/(8*pi*mu)*2/L*(ActualFPMat+DfPart*stackMatrix(D));
 end

@@ -4,9 +4,9 @@ names = ["SpecMCMCFreeConstKbT_N12_Lp1.mat" ...
 for iName = 1:length(names)
 load(names(iName))
 plotIndex=iName;
-nbins = 250;
-AllEndToEndDists = AllEndToQuarterDists;
-L = 0.25*L;
+nbins = 100;
+%AllEndToEndDists = AllEndToQuarterDists;
+%L = L;
 histedges=(0:nbins)*L/nbins;
 NumPerBin = 1000/nbins;
 dshist = histedges(2)-histedges(1);

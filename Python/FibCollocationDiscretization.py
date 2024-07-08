@@ -372,6 +372,8 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         """
         # We only want to set the eigenvalue threshold when we do special quad
         self._EigValThres = 0;
+        #self._EigValThres = -100;
+        #return
         if ((not self._RPYDirectQuad) and (not self._RPYOversample)):
             NToUpsamp = int(1/self._epsilon);
             # Compute mobility for straight fiber on upsampled grid
@@ -387,7 +389,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             MRPY = RPYVelocityEvaluator.RPYMatrix(NToUpsamp,StraightFiber,self._mu,self._a)
             MRPYOversamp = np.dot(OversamplingWtsMat.T,np.dot(MRPY,OversamplingWtsMat));
             self._EigValThres = SpecialQuadEigenvalueSafetyFactor*np.min(np.linalg.eigvalsh(MRPYOversamp));
-        print('Eigenvalue threshold %1.2E' %self._EigValThres)
+        print('Eigenvalue threshold %1.8E' %self._EigValThres)
     
     def UniformUpsamplingMatrix(self,Nunipts,typ='u'):
         """
@@ -416,7 +418,16 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         else:
             ds = self._L/Nunipts;
             su = np.arange(0.5,Nunipts)*ds;
-        return su, cf.ResamplingMatrix(Nunipts, self._Nx,typ,self._XGridType);  
+        return su, cf.ResamplingMatrix(Nunipts, self._Nx,typ,self._XGridType); 
+    
+    def ResampleFromOtherGrid(self,XOther,Nother,typeOther):
+         return np.dot(cf.ResamplingMatrix(self._Nx,Nother,self._XGridType,typeOther),XOther); 
+    
+    def SampleToOtherGrid(self,XSelf,Nother,typeOther):
+         return np.dot(cf.ResamplingMatrix(Nother,self._Nx,typeOther,self._XGridType),XSelf); 
+         
+    def ForceFromForceDensity(self,ForceDen):
+        return np.dot(self._WtildeNx,ForceDen);
     
     def DiffXMatrix(self):
         return self._DXGrid; 
@@ -626,7 +637,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
             AllDs[iPt,:]=qd;
         self._FPMatrix =  1.0/(8.0*np.pi*self._mu)*0.5*self._L*np.linalg.solve(ChebCoeffsToVals.T,AllQs.T);
         if (self._RPYSpecialQuad):
-            self._DoubletFPMatrix =  1.0/(8.0*np.pi*self._mu)*0.5*self._L*np.linalg.solve(ChebCoeffsToVals.T,AllDs.T);
+            self._DoubletFPMatrix =  1.0/(8.0*np.pi*self._mu)*2.0/self._L*np.linalg.solve(ChebCoeffsToVals.T,AllDs.T);
             # Initialize the resampling matrices for R < 2a
             # The only thing that can be precomputed are the matrices on [s-a, s] and [s,s+a] for resampling the
             # fiber positions

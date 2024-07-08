@@ -29,17 +29,22 @@ for iFib=1:nFib
     angleCirc = atan2(XThis(:,2),XThis(:,1));
     RCirc = sqrt(XThis(:,1).^2+XThis(:,2).^2);
     Eligible = (RCirc > (1-MotorCircleFrac)*RFilo & (sNp1/L <= MotorLengthFrac));
+    NormalForce = -[cos(angleCirc) sin(angleCirc) zeros(Nx,1)];
     ForceVec = [-sin(angleCirc) cos(angleCirc) zeros(Nx,1)];
     DownwardDir = [0 0 1];
     if (AdjustForceTangential)
         DownwardDir = DNp1*XThis;
         DownwardDir = DownwardDir./sqrt(sum(DownwardDir.*DownwardDir,2));
-        ForceVec = ForceVec - sum(DownwardDir.*ForceVec,2).*DownwardDir;
-        ForceVec = ForceVec./sqrt(sum(ForceVec.*ForceVec,2));
+        % Make motor come in at 90 degree angle
+        NormalForce = NormalForce - sum(DownwardDir.*NormalForce,2).*DownwardDir;
+        NormalForce = NormalForce./sqrt(sum(NormalForce.*NormalForce,2));
+        ForceVec = cross(NormalForce,DownwardDir);
     end
-    NormalForce = -[cos(angleCirc) sin(angleCirc) zeros(Nx,1)];
     fmotorFib = fmot0*ForceVec.*Eligible -fmotDwn*DownwardDir.*Eligible...
         + MembraneForce*NormalForce.*(RCirc > (1-MotorCircleFrac)*RFilo);
+    if (CancelAllZForce)
+        fmotorFib(:,3)=0;
+    end
     inds = (iFib-1)*Nx+1:iFib*Nx;
     indsTorq = (iFib-1)*Npsi+1:iFib*Npsi;
     fmotors(inds,:)=fmotors(inds,:)+fmotorFib;

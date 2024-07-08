@@ -127,20 +127,20 @@ for iCirc=1:nCircles
     StdMPRotsByCirc(iCirc,:) = 2*std(MPRotsByCirc{iCirc})/sqrt(nErrorBars);
     StdEPRotsByCirc(iCirc,:) = 2*std(EPRotsByCirc{iCirc})/sqrt(nErrorBars);
     StdZByCirc(iCirc,:) = 2*std(ZByCirc{iCirc})/sqrt(nErrorBars);
-    plot(ts,MeanZByCirc(iCirc,:),'-')
-    hold on
+%     plot(ts,MeanZByCirc(iCirc,:),'-')
+%     hold on
     errorEvery=100;
     startval=iCirc*errorEvery/nCircles;
+%     set(gca,'ColorOrderIndex',iCirc)
+%     errorbar(ts(startval:errorEvery:end),MeanZByCirc(iCirc,startval:errorEvery:end),...
+%         StdZByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
     set(gca,'ColorOrderIndex',iCirc)
-    errorbar(ts(startval:errorEvery:end),MeanZByCirc(iCirc,startval:errorEvery:end),...
-        StdZByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
-%     set(gca,'ColorOrderIndex',iCirc)
-%     plot(ts,MeanEPRotsByCirc(iCirc,:),'-')
-%     hold on
-%     startval=iCirc*errorEvery/nCircles;
-%     set(gca,'ColorOrderIndex',iCirc)
-%     errorbar(ts(startval:errorEvery:end),MeanEPRotsByCirc(iCirc,startval:errorEvery:end),...
-%         StdEPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
+    plot(ts,MeanEPRotsByCirc(iCirc,:),'-')
+    hold on
+    startval=iCirc*errorEvery/nCircles;
+    set(gca,'ColorOrderIndex',iCirc)
+    errorbar(ts(startval:errorEvery:end),MeanEPRotsByCirc(iCirc,startval:errorEvery:end),...
+        StdEPRotsByCirc(iCirc,startval:errorEvery:end),'o','MarkerSize',0.01,'LineWidth',2)
 end
 return
 % 

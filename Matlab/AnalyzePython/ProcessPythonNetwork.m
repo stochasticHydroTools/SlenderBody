@@ -1,8 +1,7 @@
 addpath(genpath('../../Python'))
-%names = [ "SegStLocHydBundLp2.0Dt_5e-05_" "SegStNLHydBundLp2.0Dt_5e-05_" "NoStLocHydBundLp2.0Dt_5e-05_" ...
-%"SegStLocHydBundLp2.0Dt_2e-05_" "SegStNLHydBundLp2.0Dt_2e-05_" "NoStLocHydBundLp2.0Dt_2e-05_"];
-names = ["CHKLocBundlingLp2.0Dt_0.0001_" "CHKLocQuBundlingLp2.0Dt_0.0001_" ...
-    "CHKNLBundlingLp2.0Dt_0.0001_"];
+names = [ "SegStLocHydBundLp2.0Dt_5e-05_" "SegStNLHydBundLp2.0Dt_5e-05_" "NoStLocHydBundLp2.0Dt_5e-05_" ...
+"SegStLocHydBundLp2.0Dt_2e-05_" "SegStNLHydBundLp2.0Dt_2e-05_" "NoStLocHydBundLp2.0Dt_2e-05_"];
+%names = ["SegStNLHydBundLp2.0Dt_5e-05_" "CHKSegStNLHydBundLp2.0Dt_5e-05_"];
 dts = [5e-05 5e-05 5e-05 2e-05 2e-05 2e-05];
 tmaxes = 8*ones(1,length(names));
 dtsaves = 2e-2*ones(1,length(names));
@@ -17,8 +16,8 @@ Ld = 2;
 plots = 1;
 eebinwidths = [0.02 0.001 0.001 0.001 0.001 0.001];
 AllLinksPerFib = [];
-for iName=1:length(names)
-seedmax=2;
+for iName=1:0%length(names)
+seedmax=5;
 if (iName>0)
 N=13;
 [s,w,b]=chebpts(N,[0 L],2);
@@ -348,18 +347,21 @@ if (plots)
 %     xlim([0 max(tmaxes)])
 
 subplot(2,2,4)
-%ErrorEvery=[500 1000 2500 5000];
-ErrorEvery=500*ones(length(dtsaves),1);
-for iP=[1 2 4 5]
-    if (iP < 3)
-        pp=3;
+ErrorEvery=[500 1000 2500 5000 10000 10000];
+%ErrorEvery=500*ones(length(dtsaves),1);
+for iP=1:5
+    pp=6;
+    if (iP<4)
+        nContactsThis = nContactsAll{iP}(:,2:2:end)./mean(nContactsAll{pp}(:,5:5:end));
     else
-        pp=6;
+        nContactsThis = nContactsAll{iP}./mean(nContactsAll{pp});
     end
-    nContactsThis = nContactsAll{iP}./nContactsAll{pp}(:,end);
     [nTri,nSteps] = size(nContactsThis);
     dtsave=dts(iP);
-    plot((0:100:nSteps-1)*dtsave,mean(nContactsThis(:,1:100:end)),'LineWidth',2.0)
+    if (iP<4)
+        dtsave=dtsave*2;
+    end
+    plot((1000:100:nSteps)*dtsave,mean(nContactsThis(:,1000:100:end)),'LineWidth',2.0)
     hold on
     set(gca,'ColorOrderIndex',iP)
     errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,...

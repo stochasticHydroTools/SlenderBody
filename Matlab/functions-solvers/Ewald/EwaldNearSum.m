@@ -16,6 +16,7 @@ function velNear = EwaldNearSum(Npts,pts,forces,xi,Lx,Ly,Lz,a,mu,g)
             break;
         end
     end
+    % Do neighbor search
     for iPt=1:Npts
         Mself = RPYNear([0 0 0],xi,a,mu);
         velNear(:,iPt)=velNear(:,iPt)+Mself*(forces(iPt,:)');

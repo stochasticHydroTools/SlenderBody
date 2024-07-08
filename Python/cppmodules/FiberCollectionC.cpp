@@ -32,8 +32,9 @@ class FiberCollectionC {
     //        METHODS FOR INITIALIZATION
     //===========================================
     FiberCollectionC(int nFib,int nXPerFib,int nTauPerFib,int nThreads,bool rigid,
-        double a, double L, double mu,double kbT, double svdtol, double svdrigid, bool quadRPY, bool directRPY, bool oversampleRPY)
-        :_MobilityEvaluator(nXPerFib,a,L,mu,quadRPY,directRPY,oversampleRPY){
+        double a, double aFat, double L, double mu,double kbT, double svdtol, double svdrigid, bool quadRPY, bool directRPY, bool oversampleRPY)
+        :_MobilityEvaluator(nXPerFib,a,L,mu,quadRPY,directRPY,oversampleRPY), 
+         _FatMobilityEvaluator(nXPerFib,aFat,L,mu,quadRPY,directRPY,oversampleRPY){
         /**
         Initialize variables relating to each fiber
         nFib = number of fibers
@@ -61,7 +62,7 @@ class FiberCollectionC {
     void initMobilityMatrices(npDoub pyXNodes,npDoub pyRegXNodes,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
         npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyXDiffMatrix,npDoub pyWTildeX, 
         npDoub pyWTildeXInverse, npDoub pyOversampleForDirectQuad, npDoub pyUpsamplingMatrix, double eigValThres){  
-
+        
         _MobilityEvaluator.initMobilitySubmatrices(pyXNodes,pyRegXNodes,pyFPMatrix,pyDoubFPMatrix,pyRL2aResampMatrix,
             pyRLess2aWts,pyXDiffMatrix,pyWTildeXInverse,pyOversampleForDirectQuad,pyUpsamplingMatrix,eigValThres);
         _nUpsample = _MobilityEvaluator.getNupsample();
@@ -69,6 +70,19 @@ class FiberCollectionC {
         _WTildeXInv = vec(pyWTildeXInverse.size());
         std::memcpy(_WTildeX.data(),pyWTildeX.data(),pyWTildeX.size()*sizeof(double));
         std::memcpy(_WTildeXInv.data(),pyWTildeXInverse.data(),pyWTildeXInverse.size()*sizeof(double));
+    }
+    
+    void initFatMobilityEvaluator(npDoub pyXNodes,npDoub pyRegXNodes,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
+        npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyXDiffMatrix,npDoub pyWTildeX,
+        npDoub pyWTildeXInverse, npDoub pyOversampleForDirectQuad,npDoub pyUpsamplingMatrix, double eigValThres){  
+        
+        _FatMobilityEvaluator.initMobilitySubmatrices(pyXNodes,pyRegXNodes,pyFPMatrix,pyDoubFPMatrix,pyRL2aResampMatrix,
+            pyRLess2aWts,pyXDiffMatrix,pyWTildeXInverse,pyOversampleForDirectQuad,pyUpsamplingMatrix,eigValThres);
+    }
+    
+    void SetEigValThreshold(double Thresh){
+        _MobilityEvaluator.SetEigValThreshold(Thresh);  
+        _FatMobilityEvaluator.SetEigValThreshold(Thresh);
     }
     
     void initResamplingMatrices(int Nuniform, npDoub pyMatfromNtoUniform){    
@@ -208,7 +222,7 @@ class FiberCollectionC {
         vec chebPts(pyPoints.size());
         std::memcpy(chebPts.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
         vec AllUpsampPoints(3*_NFib*_nUpsample);
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
         for (int iFib = 0; iFib < _NFib; iFib++){
             vec FiberPoints(3*_nXPerFib);
             vec LocalUpsampPts(3*_nUpsample);
@@ -227,7 +241,7 @@ class FiberCollectionC {
         vec chebForces(pyForces.size());
         std::memcpy(chebForces.data(),pyForces.data(),pyForces.size()*sizeof(double));
         vec AllUpsampForces(3*_NFib*_nUpsample);
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
         for (int iFib = 0; iFib < _NFib; iFib++){
             vec FiberForces(3*_nXPerFib);
             vec LocalUpsampForces(3*_nUpsample);
@@ -269,7 +283,7 @@ class FiberCollectionC {
         vec chebUpVels(pyUpVelocities.size());
         std::memcpy(chebUpVels.data(),pyUpVelocities.data(),pyUpVelocities.size()*sizeof(double));
         vec AllDownVels(3*_NFib*_nXPerFib);
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
         for (int iFib = 0; iFib < _NFib; iFib++){
             vec FiberUpVels(3*_nUpsample);
             vec LocalDownSampVel(3*_nXPerFib);
@@ -284,7 +298,7 @@ class FiberCollectionC {
         return makePyDoubleArray(AllDownVels);
     }
        
-    py::array evalLocalVelocities(npDoub pyChebPoints, npDoub pyForces, bool includeFP){
+    py::array evalLocalVelocities(npDoub pyChebPoints, npDoub pyForces, bool includeFP, bool Fat){
         /*
         Evaluate the local velocities M_local*f on the fiber.
         */
@@ -297,7 +311,7 @@ class FiberCollectionC {
         
         vec AllLocalVelocities(ChebPoints.size(),0.0);
         int NFibIn = ChebPoints.size()/(3*_nXPerFib); // determine how many fibers we are working with
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator, _FatMobilityEvaluator)
         for (int iFib=0; iFib < NFibIn; iFib++){
             int start = 3*iFib*_nXPerFib;
             vec LocalPts(3*_nXPerFib);
@@ -307,7 +321,11 @@ class FiberCollectionC {
                 LocalForces[iPt]=Forces[start+iPt];
             }
             vec MLoc(9*_nXPerFib*_nXPerFib), EigVecs(9*_nXPerFib*_nXPerFib), EigVals(3*_nXPerFib);
-            _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, -1,MLoc,EigVecs,EigVals);
+            if (Fat){
+                _FatMobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, -1,MLoc,EigVecs,EigVals);
+            } else {
+                _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, -1,MLoc,EigVecs,EigVals);
+            }
             vec LocalVel(3*_nXPerFib);
             ApplyMatrixPowerFromEigDecomp(3*_nXPerFib, 1.0, EigVecs, EigVals, LocalForces, LocalVel);  
             for (int iPt=0; iPt < 3*_nXPerFib; iPt++){
@@ -317,7 +335,7 @@ class FiberCollectionC {
         return make1DPyArray(AllLocalVelocities);
     }
     
-    py::array SingleFiberRPYSum(int NPerFib, npDoub pyChebPoints, npDoub pyForces){
+    py::array SingleFiberRPYSum(int NPerFib, npDoub pyChebPoints, npDoub pyForces, bool Fat){
         /*
         Evaluate the free space RPY kernel M*F on the fiber.
         pyChebPoints = collocation points
@@ -333,7 +351,7 @@ class FiberCollectionC {
         
         vec AllLocalVelocities(ChebPoints.size(),0.0);
         int NFibIn = ChebPoints.size()/(3*NPerFib); // determine how many fibers we are working with
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator, _FatMobilityEvaluator)
         for (int iFib=0; iFib < NFibIn; iFib++){
             int start = 3*iFib*NPerFib;
             vec LocalPts(3*NPerFib);
@@ -343,7 +361,11 @@ class FiberCollectionC {
                 LocalForces[iPt]=Forces[start+iPt];
             }
             vec ULocal(3*NPerFib);
-            _MobilityEvaluator.RPYVelocityFromForces(LocalPts, LocalForces,ULocal);
+            if (Fat){
+                _FatMobilityEvaluator.RPYVelocityFromForces(LocalPts, LocalForces,ULocal);
+            } else {
+                _MobilityEvaluator.RPYVelocityFromForces(LocalPts, LocalForces,ULocal);
+            }
             for (int iPt=0; iPt < 3*NPerFib; iPt++){
                 AllLocalVelocities[start+iPt]=ULocal[iPt];
             }
@@ -367,7 +389,7 @@ class FiberCollectionC {
         
         vec AlluFP(ChebPoints.size(),0.0);
         int NFibIn = ChebPoints.size()/(3*_nXPerFib); // determine how many fiber we are working with
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
         for (int iFib=0; iFib < NFibIn; iFib++){
             int start = 3*iFib*_nXPerFib;
             vec LocalPts(3*_nXPerFib);
@@ -408,7 +430,7 @@ class FiberCollectionC {
         std::memcpy(RandVec1.data(),pyRandVec1.data(),pyRandVec1.size()*sizeof(double));   
         
         vec AllAlphas(6*_NFib);
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
         for (int iFib = 0; iFib < _NFib; iFib++){
 	        vec LocalPoints(3*_nXPerFib);
             vec LocalTangents(3*_nTauPerFib);
@@ -450,7 +472,7 @@ class FiberCollectionC {
         }
         int nFibs = chebPoints.size()/(3*_nXPerFib);   
         vec LambasAndAlphas(3*_nXPerFib*nFibs+nAlphas*nFibs);
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
         for (int iFib = 0; iFib < nFibs; iFib++){
 	        vec LocalPoints(3*_nXPerFib);
             vec LocalTangents(3*_nTauPerFib);
@@ -560,7 +582,7 @@ class FiberCollectionC {
     // METHODS FOR SEMIFLEXIBLE FLUCTUATING FIBERS 
     //=============================================
                 
-    py::array MHalfAndMinusHalfEta(npDoub pyPoints, npDoub pyRandVec1, bool FPisLocal){
+    py::array MHalfAndMinusHalfEta(npDoub pyPoints, npDoub pyRandVec1, bool FPisLocal, bool FatCorrection){
         /*
         This method computes M[X]^(1/2)*W and M[X}^(-1/2)*W in the case when the mobility is given
         by local drag only. The boolean FPisLocal says whether to include the finite part
@@ -575,7 +597,7 @@ class FiberCollectionC {
         int sysDim = 3*_nXPerFib;
         
         vec BothHalfAndMinusHalf(2*sysDim*_NFib);
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator, _FatMobilityEvaluator)
         for (int iFib = 0; iFib < _NFib; iFib++){
             //std::cout << "Doing fiber " << iFib << " on thread " << omp_get_thread_num() << std::endl;
 	        vec LocalPoints(sysDim);
@@ -588,6 +610,23 @@ class FiberCollectionC {
             // M and Schur complement block B
             vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
             _MobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, -1,MWsym, EigVecs, EigVals);
+            if (FatCorrection){
+                vec MWsymFat(sysDim*sysDim), EigVecsFat(sysDim*sysDim), EigValsFat(sysDim);
+                _FatMobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, -1,MWsymFat, EigVecsFat, EigValsFat);
+                // Compute the difference 
+                for (uint i=0; i < sysDim*sysDim; i++){
+                    MWsym[i]-=MWsymFat[i];
+                }
+                // Do the eigenvalue decomp
+                SymmetrizeAndDecomposePositive(sysDim, MWsym, -100, EigVecs, EigVals); 
+                double MinEig=1000; 
+                for (int i=0; i < sysDim; i++){
+                    if (EigVals[i] < MinEig){
+                        MinEig = EigVals[i];
+                    }
+                }  
+                std::cout << "Minimum eigenvalue " << MinEig << std::endl;
+            }
             vec MWHalfetaLoc(sysDim);
             vec MWMinusHalfetaLoc(sysDim);
             ApplyMatrixPowerFromEigDecomp(sysDim, 0.5, EigVecs, EigVals, LocalRand1, MWHalfetaLoc);
@@ -706,7 +745,7 @@ class FiberCollectionC {
         int sysDim = 3*_nXPerFib;
 
         vec U0Drift(3*_nXPerFib*_NFib);
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
         for (int iFib = 0; iFib < _NFib; iFib++){
             //std::cout << "Doing fiber " << iFib << " on thread " << omp_get_thread_num() << std::endl;
 	        vec XTilde(sysDim);
@@ -784,7 +823,7 @@ class FiberCollectionC {
         if (_rigid){
             numAlphas = 6;
         }
-        #pragma omp parallel for num_threads(_nOMPThr)
+        #pragma omp parallel for num_threads(_nOMPThr) 
         for (int iFib=0; iFib < _NFib; iFib++){
             // Rotate tangent vectors
             vec LocalAlphas(numAlphas);
@@ -833,7 +872,7 @@ class FiberCollectionC {
     vec _UnifRSMat, _BendMatX0;
     double _svdtol, _svdRigid, _kbT;
     bool _rigid;
-    SingleFiberMobilityEvaluator _MobilityEvaluator;
+    SingleFiberMobilityEvaluator _MobilityEvaluator, _FatMobilityEvaluator;
     std::vector <SingleFiberSaddlePointSolver> _SaddlePointSolvers;
     // Variables for K and elastic force
     vec _D4BC, _D4BCForce,_BendForceMatHalf, _WTildeX, _WTildeXInv,_XFromTauMat;
@@ -915,9 +954,11 @@ class FiberCollectionC {
 
 PYBIND11_MODULE(FiberCollectionC, m) {
     py::class_<FiberCollectionC>(m, "FiberCollectionC")
-        .def(py::init<int,int,int,int,bool,double,double,double,double,double,double,bool,bool,bool>())
+        .def(py::init<int,int,int,int,bool,double,double,double,double,double,double,double,bool,bool,bool>())
         .def("initMatricesForPreconditioner", &FiberCollectionC::initMatricesForPreconditioner)
         .def("initMobilityMatrices", &FiberCollectionC::initMobilityMatrices)
+        .def("SetEigValThreshold", &FiberCollectionC::SetEigValThreshold)
+        .def("initFatMobilityEvaluator",&FiberCollectionC::initFatMobilityEvaluator)
         .def("initResamplingMatrices", &FiberCollectionC::initResamplingMatrices)
         .def("evalBendForces",&FiberCollectionC::evalBendForces)
         .def("evalBendStress",&FiberCollectionC::evalBendStress)

@@ -41,7 +41,7 @@ class fiberCollection(object):
     ## ====================================================
     ##              METHODS FOR INITIALIZATION
     ## ====================================================
-    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=1,rigidFibs=False,dt=1e-3):
+    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,fibDiscFat=None,nThreads=1,rigidFibs=False,dt=1e-3):
         """
         Constructor for the fiberCollection class. This constructor initializes both the python and 
         corresponding C++ class.
@@ -66,6 +66,8 @@ class fiberCollection(object):
             Used to initialize the SpatialDatabase objects, 
         kbT: double 
             The thermal energy
+        fibDiscFat: FibCollocationDiscretization object
+            A discretization object for a "fatter" fiber
         nThreads: int (default is 1)
             The number of OMP threads for parallel calculations 
         rigidFibs: bool (default is False)
@@ -99,18 +101,36 @@ class fiberCollection(object):
             svdRigidTol = self._kbT*dt/(svdRigid*svdRigid);
         else:
             svdRigidTol = svdTolerance;
+            
+        aFat = fibDisc._a;
+        if (fibDiscFat is not None):
+            if (fibDiscFat._a <= fibDisc._a):
+                raise ValueError('You cannot have the fatter discretization be skinnier')    
+            aFat = fibDiscFat._a;     
+            
         self._FibColCpp = FiberCollectionC(nFibs,self._NXpf,self._NTaupf,nThreads,self._rigid,\
-            self._fiberDisc._a,self._fiberDisc._L,self._mu,self._kbT,svdTolerance,svdRigidTol,self._fiberDisc._RPYSpecialQuad,\
-            self._fiberDisc._RPYDirectQuad,self._fiberDisc._RPYOversample);
-        self._FibColCpp.initMatricesForPreconditioner(self._fiberDisc._D4BCForce,  \
-            self._fiberDisc._D4BCForceHalf,self._fiberDisc._XonNp1MatNoMP,self._fiberDisc._XsFromX,\
-            self._fiberDisc._MidpointMat,self._fiberDisc._BendMatX0);
-        self._FibColCpp.initResamplingMatrices(self._fiberDisc._nptsUniform,self._fiberDisc._MatfromNtoUniform);
-        self._FibColCpp.initMobilityMatrices(self._fiberDisc._sX, fibDisc._sRegularized,\
-            self._fiberDisc._FPMatrix.T,self._fiberDisc._DoubletFPMatrix.T,\
-            self._fiberDisc._RLess2aResamplingMat,self._fiberDisc._RLess2aWts,\
-            self._fiberDisc._DXGrid,self._fiberDisc._stackWTilde_Nx, self._fiberDisc._stackWTildeInverse_Nx,\
-            self._fiberDisc._OversamplingWtsMat,self._fiberDisc._EUpsample,self._fiberDisc._EigValThres);
+            fibDisc._a,aFat,fibDisc._L,self._mu,self._kbT,svdTolerance,svdRigidTol,fibDisc._RPYSpecialQuad,\
+            fibDisc._RPYDirectQuad,fibDisc._RPYOversample);
+        self._FibColCpp.initMatricesForPreconditioner(fibDisc._D4BCForce,  \
+            fibDisc._D4BCForceHalf,fibDisc._XonNp1MatNoMP,fibDisc._XsFromX,\
+            fibDisc._MidpointMat,fibDisc._BendMatX0);
+        self._FibColCpp.initResamplingMatrices(fibDisc._nptsUniform,fibDisc._MatfromNtoUniform);
+        self._FibColCpp.initMobilityMatrices(fibDisc._sX, fibDisc._sRegularized,\
+            fibDisc._FPMatrix.T,fibDisc._DoubletFPMatrix.T,\
+            fibDisc._RLess2aResamplingMat,fibDisc._RLess2aWts,\
+            fibDisc._DXGrid,fibDisc._stackWTilde_Nx, fibDisc._stackWTildeInverse_Nx,\
+            fibDisc._OversamplingWtsMat,fibDisc._EUpsample,fibDisc._EigValThres);
+        if (fibDiscFat is not None and nonLocal==1):
+            print('You have a fatter correction discretization - resetting eigenvalue thresholds to zero')
+            fibDiscFat._EigValThres = -np.inf;
+            fibDisc._EigValThres = -np.inf;
+            self._FibColCpp.initFatMobilityEvaluator(fibDiscFat._sX, fibDiscFat._sRegularized,\
+                fibDiscFat._FPMatrix.T,fibDiscFat._DoubletFPMatrix.T,\
+                fibDiscFat._RLess2aResamplingMat,fibDiscFat._RLess2aWts,\
+                fibDiscFat._DXGrid,fibDiscFat._stackWTilde_Nx, fibDiscFat._stackWTildeInverse_Nx,\
+                fibDiscFat._OversamplingWtsMat,fibDiscFat._EUpsample,fibDiscFat._EigValThres);
+            self._FibColCpp.SetEigValThreshold(fibDisc._EigValThres);
+            
     
     def initFibList(self,fibListIn, Dom,XFileName=None):
         """
@@ -569,12 +589,12 @@ class fiberCollection(object):
         if (verbose>=0):
             print('Upsampled Ewald time %f' %(time.time()-thist));
             thist=time.time();
-        SelfTerms = self.SubtractSelfTerms(self._Ndirect,Xupsampled,Fupsampled,RPYEval.NeedsGPU());
+        if (subSelf):
+            SelfTerms = self.SubtractSelfTerms(self._Ndirect,Xupsampled,Fupsampled,RPYEval._a,RPYEval.NeedsGPU());
+            RPYVelocityUp -= SelfTerms;
         if (verbose>=0):
             print('Self time %f' %(time.time()-thist));
             thist=time.time();
-        if (subSelf):
-            RPYVelocityUp -= SelfTerms;
         RPYVelocity = self.getDownsampledVelocity(RPYVelocityUp);
         if (verbose>=0):
             print('Downsampling time %f' %(time.time()-thist));
@@ -782,6 +802,29 @@ class fiberCollection(object):
         """
         return self._FibColCpp.getDownsampledVelocities(upsampledVel);
         
+    def ResampleFromOtherGrid(self,Xother,Nother,typeother):
+        XCheb=np.zeros((self._totnumX,3)); 
+        for iFib in range(self._Nfib):
+            indsNew = np.arange(iFib*self._NXpf, (iFib+1)*self._NXpf);
+            indsUni = np.arange(iFib*Nother,(iFib+1)*Nother);
+            XCheb[indsNew,:]=self._fiberDisc.ResampleFromOtherGrid(Xother[indsUni,:],Nother,typeother);
+        return XCheb;
+    
+    def SampleToOtherGrid(self,XSelf,Nother,typeother):
+        Xnew=np.zeros((self._Nfib*Nother,3)); 
+        for iFib in range(self._Nfib):
+            indsNew = np.arange(iFib*self._NXpf, (iFib+1)*self._NXpf);
+            indsUni = np.arange(iFib*Nother,(iFib+1)*Nother);
+            Xnew[indsUni,:]=self._fiberDisc.SampleToOtherGrid(XSelf[indsNew,:],Nother,typeother);
+        return Xnew;
+    
+    def ForceFromForceDensity(self,ForceDen):
+        Forces=np.zeros((self._Nfib*self._NXpf,3)); 
+        for iFib in range(self._Nfib):
+            indsNew = np.arange(iFib*self._NXpf, (iFib+1)*self._NXpf);
+            Forces[indsNew,:]=self._fiberDisc.ForceFromForceDensity(ForceDen[indsNew,:]);
+        return Forces;
+    
     def getg(self,t):
         """
         Get the value of the strain g according to what the background flow dictates.
@@ -994,7 +1037,7 @@ class fiberCollection(object):
     ## ====================================================
     ##  "PRIVATE" METHODS NOT ACCESSED OUTSIDE OF THIS CLASS
     ## ====================================================
-    def SubtractSelfTerms(self,Ndir,Xupsampled,fupsampled,useGPU=False):
+    def SubtractSelfTerms(self,Ndir,Xupsampled,fupsampled,hydroRadius,useGPU=False):
         """
         Compute the self integrals of the RPY kernel along a single fiber. 
         The reason for doing this is to subtract them from the result we 
@@ -1011,6 +1054,8 @@ class fiberCollection(object):
             Upsampled positions of Chebyshev points
         fupsampled: array 
             Upsampled forces (not densities) on the Chebyshev points
+        hydroRadius: double
+            The hydrodynamic radius
         useGPU: bool, optional
             Whether to use a GPU to compute the self interactions
             (default is false, as C++ is fast enough to not be even close to a 
@@ -1024,12 +1069,15 @@ class fiberCollection(object):
             where j and i are Chebyshev collocation points on the same fiber.
         """
         if (not useGPU):
-            U1=self._FibColCpp.SingleFiberRPYSum(Ndir,Xupsampled,fupsampled);
+            Fat = False;
+            if (hydroRadius > self._fiberDisc._a):
+                Fat = True;
+            U1=self._FibColCpp.SingleFiberRPYSum(Ndir,Xupsampled,fupsampled,Fat);
             return np.reshape(U1,(self._Nfib*Ndir,3));
         
+        #print('Using GPU self')
         # GPU Version
-        hydrodynamicRadius = self._fiberDisc._a;
-        selfMobility= 1.0/(6*pi*self._mu*hydrodynamicRadius);
+        selfMobility= 1.0/(6*pi*self._mu*hydroRadius);
         
         precision = np.float64;
         fupsampledg = np.array(fupsampled,precision);
@@ -1039,12 +1087,12 @@ class fiberCollection(object):
         # python will just silently pass by copy and the results will be lost
         MF=np.zeros(self._Nfib*3*Ndir, precision);
         gpurpy.computeMdot(np.reshape(Xupsampledg,self._Nfib*3*Ndir), np.reshape(fupsampledg,self._Nfib*3*Ndir), MF,
-                       self._Nfib, Ndir,selfMobility, hydrodynamicRadius)
+                       self._Nfib, Ndir,selfMobility, hydroRadius)
         if (np.amax(np.abs(MF))==0 and np.amax(np.abs(fupsampledg)) > 0):
         	raise ValueError('You are getting zero velocity with finite force, your UAMMD precision is wrong!') 
         return np.reshape(MF,(self._Nfib*Ndir,3));
         
-    def LocalVelocity(self,X,Forces):
+    def LocalVelocity(self,X,Forces,Fat=False):
         """
         Compute the local velocity on each fiber. Given a vector of points
         and forces, this method computes $$U = M_L[X]F.$$ The nature of $M_L$
@@ -1062,8 +1110,8 @@ class fiberCollection(object):
         array
             The local velocity $M_L[X]F$ on all fibers as a 1D array
         """
-        return self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc);
-           
+        return self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc, Fat);
+
     def evalU0(self,Xin,t):
         """
         Compute the background flow on the Chebyshev points. Here we only
@@ -1193,13 +1241,12 @@ class SemiflexiblefiberCollection(fiberCollection):
     There are some additional methods required in this case. In particular, we need
     methods to compute the stochastic drift terms and Brownian velocity $M^{1/2}W$
     """
-
-    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, kbT,nThreads=1,rigidFibs=False,dt=1e-3):
-        super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads,rigidFibs,dt);
+    def __init__(self,nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom, kbT,fibDiscFat=None,nThreads=1,rigidFibs=False,dt=1e-3):
+        super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,fibDiscFat,nThreads,rigidFibs,dt);
         self._iT = 0;
         SPDMatrix = self._fiberDisc._RPYDirectQuad or self._fiberDisc._RPYOversample;
-        if (self._nonLocal==1 and not SPDMatrix):
-            raise TypeError('If doing nonlocal hydro with fluctuations, can only do direct quadrature or oversampled')
+        if (self._nonLocal==1 and not SPDMatrix and fibDiscFat is None):
+            raise TypeError('If doing nonlocal hydro with fluctuations, can only do direct quadrature or oversampled or fat discretization')
         
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY
@@ -1256,7 +1303,7 @@ class SemiflexiblefiberCollection(fiberCollection):
         """
         warn('The Brownian update is implemented as part of the solve, not a separate split step!') 
        
-    def MHalfAndMinusHalfEta(self,X,Ewald,Dom):
+    def MHalfAndMinusHalfEta(self,X,RPYEvaluator,Dom):
         """
         This method computes $M[X]^{1/2}W$, where $W \\sim$randn(0,1) is 
         a random vector of i.i.d. Gaussian variables. The method we use to
@@ -1286,13 +1333,21 @@ class SemiflexiblefiberCollection(fiberCollection):
         """
         if (self._nonLocal==1):
             Xupsampled = self.getPointsForUpsampledQuad(X);
-            MHalfEtaUp = Ewald.calcMOneHalfW(Xupsampled,Dom);
+            MHalfEtaUp = RPYEvaluator.calcMOneHalfW(Xupsampled,Dom);
             MHalfEta = np.reshape(self.getDownsampledVelocity(MHalfEtaUp),3*self._Nfib*self._NXpf);
             MMinusHalfEta = 0; # never used
+            if (RPYEvaluator._a > self._fiberDisc._a):
+                # Add the correction for the skinnier radius   
+                RandVec1 = np.random.randn(3*self._Nfib*self._NXpf);
+                np.savetxt('RandVec1.txt',RandVec1)
+                MHalfCorrection = self._FibColCpp.MHalfAndMinusHalfEta(X,RandVec1, self._FPLoc,True);
+                MHalfCorrection = MHalfCorrection[:3*self._Nfib*self._NXpf];
+                MHalfEta = MHalfEta + MHalfCorrection;
+            return MHalfEta, MMinusHalfEta;
         else:
             RandVec1 = np.random.randn(3*self._Nfib*self._NXpf);
-            #np.savetxt('RandVec1.txt',RandVec1)
-            MHalfAndMinusHalf = self._FibColCpp.MHalfAndMinusHalfEta(X,RandVec1, self._FPLoc); # Replace with PSE 
+            np.savetxt('RandVec1.txt',RandVec1)
+            MHalfAndMinusHalf = self._FibColCpp.MHalfAndMinusHalfEta(X,RandVec1, self._FPLoc,False);
             MHalfEta = MHalfAndMinusHalf[:3*self._Nfib*self._NXpf];
             MMinusHalfEta = MHalfAndMinusHalf[3*self._Nfib*self._NXpf:];
         return MHalfEta, MMinusHalfEta;

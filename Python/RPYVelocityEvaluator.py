@@ -367,7 +367,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
 
 
 # Parameters for Raul's code 
-GPUtol = 1e-3 # single precision, so 1e-6 is smallest tolerance
+GPUtol = 1e-6 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
     """
