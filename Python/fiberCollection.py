@@ -121,9 +121,9 @@ class fiberCollection(object):
             fibDisc._DXGrid,fibDisc._stackWTilde_Nx, fibDisc._stackWTildeInverse_Nx,\
             fibDisc._OversamplingWtsMat,fibDisc._EUpsample,fibDisc._EigValThres);
         if (fibDiscFat is not None and nonLocal==1):
-            print('You have a fatter correction discretization - resetting eigenvalue thresholds to zero')
-            fibDiscFat._EigValThres = -np.inf;
-            fibDisc._EigValThres = -np.inf;
+            #print('You have a fatter correction discretization - resetting eigenvalue thresholds to zero')
+            #fibDiscFat._EigValThres = -np.inf;
+            #fibDisc._EigValThres = -np.inf;
             self._FibColCpp.initFatMobilityEvaluator(fibDiscFat._sX, fibDiscFat._sRegularized,\
                 fibDiscFat._FPMatrix.T,fibDiscFat._DoubletFPMatrix.T,\
                 fibDiscFat._RLess2aResamplingMat,fibDiscFat._RLess2aWts,\
@@ -596,11 +596,17 @@ class fiberCollection(object):
             print('Self time %f' %(time.time()-thist));
             thist=time.time();
         RPYVelocity = self.getDownsampledVelocity(RPYVelocityUp);
+        RPYVelocity =  np.reshape(RPYVelocity,self._Nfib*self._NXpf*3);
         if (verbose>=0):
             print('Downsampling time %f' %(time.time()-thist));
+        if (not subSelf and RPYEval._a > self._fiberDisc._a):
+            # Adding correction velocity in nonlocal mobility
+            print('Adding correction to nonlocal mobility to account for fatness')
+            SelfTerms = self.LocalVelocityCorrection(X, forces);
+            RPYVelocity += SelfTerms;
         if (np.any(np.isnan(RPYVelocity))):
             raise ValueError('Velocity is nan - stability issue!') 
-        return np.reshape(RPYVelocity,self._Nfib*self._NXpf*3)+doFinitePart*finitePart;
+        return RPYVelocity+doFinitePart*finitePart;
          
     def updateLambdaAlpha(self,lamalph):
         """
@@ -1112,6 +1118,17 @@ class fiberCollection(object):
         """
         return self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc, Fat);
 
+    def LocalVelocityCorrection(self,X,Forces):
+        """
+        This corrects the nonlocal velocity if it is computed on a fatter grid. 
+        That is, the calculation here is $$U^* = M_L[X]F - M_L^*[X]F,$$ where $M_L$
+        is the local mobility with the true RPY radius and $M_L^*$ is the mobility
+        with the fattened radius
+        """
+        vr = self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc, False);
+        vfat = self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc, True);
+        return vr-vfat;
+    
     def evalU0(self,Xin,t):
         """
         Compute the background flow on the Chebyshev points. Here we only

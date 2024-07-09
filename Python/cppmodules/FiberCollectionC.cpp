@@ -619,13 +619,6 @@ class FiberCollectionC {
                 }
                 // Do the eigenvalue decomp
                 SymmetrizeAndDecomposePositive(sysDim, MWsym, -100, EigVecs, EigVals); 
-                double MinEig=1000; 
-                for (int i=0; i < sysDim; i++){
-                    if (EigVals[i] < MinEig){
-                        MinEig = EigVals[i];
-                    }
-                }  
-                std::cout << "Minimum eigenvalue " << MinEig << std::endl;
             }
             vec MWHalfetaLoc(sysDim);
             vec MWMinusHalfetaLoc(sysDim);

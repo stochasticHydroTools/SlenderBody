@@ -371,9 +371,9 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         and never need eigenvalue truncation.
         """
         # We only want to set the eigenvalue threshold when we do special quad
-        self._EigValThres = 0;
+        self._EigValThres = 0.001;
         #self._EigValThres = -100;
-        #return
+        return
         if ((not self._RPYDirectQuad) and (not self._RPYOversample)):
             NToUpsamp = int(1/self._epsilon);
             # Compute mobility for straight fiber on upsampled grid

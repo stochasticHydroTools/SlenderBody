@@ -9,9 +9,9 @@ from warnings import warn
 from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
-itercap = 100; # cap on GMRES iterations if we converge all the way
+itercap = 10; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-3; # larger than GPU tolerance
-verbose = -1;
+verbose = 1;
 
 class TemporalIntegrator(object):
 
@@ -331,7 +331,7 @@ class TemporalIntegrator(object):
             #print('RHS max %f' %np.amax(np.abs(RHS)))
             res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
             #print(np.amax(np.abs(res)))
-            resno = Solution.resnorms
+            #resno = Solution.resnorms
             #print(resno)
             #print('Last residual %1.2E' %resno[len(resno)-1])
             #np.savetxt('LamAlph.txt',lamalph)
@@ -342,7 +342,7 @@ class TemporalIntegrator(object):
                 thist = time.time()
         return lamalph, itsneeded, XforNL;
 
-    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=1,\
+    def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=False,\
         updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False,StericEval=None):
         """
         This is the main update method which updates the fiber collection and cross linked network. 
@@ -718,6 +718,8 @@ class MidpointDriftIntegrator(BackwardEuler):
             thist = time.time()  
         # Compute M^(1/2)*W for later use
         MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
+        #np.savetxt('MHalfEta.txt',MHalfEta);
+        MHalfEta = np.loadtxt('MHalfEta.txt');
         if (verbose > 0):
             print('Time to do M^1/2 %f' %(time.time()-thist))
             thist = time.time()  
@@ -756,7 +758,7 @@ class MidpointDriftIntegrator(BackwardEuler):
                 print(resno)
                 print('Number of iterations %d' %len(resno))
                 print('Last residual %1.1E' %resno[len(resno)-1])
-            if (itsneeded == itercap):
+            if (itsneeded == itercap+1):
                 resno = Solution.resnorms
                 print('WARNING: GMRES did not actually converge. The error at the last residual was %1.1E' %resno[len(resno)-1])
             #res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XMidtime,TauMidtime,Dom,Ewald,tvalSolve,UBrown,ExForce);
@@ -767,5 +769,6 @@ class MidpointDriftIntegrator(BackwardEuler):
             itsneeded=0;
         if (verbose > 0):
             print('Time to solve system %f' %(time.time()-thist))
+        np.savetxt('LamAlph.txt',lamalph);
         return lamalph, itsneeded, XMidtime;
 
