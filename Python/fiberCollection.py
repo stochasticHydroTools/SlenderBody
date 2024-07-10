@@ -825,10 +825,16 @@ class fiberCollection(object):
         return Xnew;
     
     def ForceFromForceDensity(self,ForceDen):
+        RSAns = False;
+        if (ForceDen.shape[0] == 3*self._Nfib*self._NXpf):
+            ForceDen = np.reshape(ForceDen,(self._Nfib*self._NXpf,3))
+            RSAns = True;
         Forces=np.zeros((self._Nfib*self._NXpf,3)); 
         for iFib in range(self._Nfib):
             indsNew = np.arange(iFib*self._NXpf, (iFib+1)*self._NXpf);
             Forces[indsNew,:]=self._fiberDisc.ForceFromForceDensity(ForceDen[indsNew,:]);
+        if (RSAns):
+            Forces = np.reshape(Forces,3*self._Nfib*self._NXpf);
         return Forces;
     
     def getg(self,t):
