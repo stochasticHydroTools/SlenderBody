@@ -9,9 +9,9 @@ from warnings import warn
 from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
-itercap = 10; # cap on GMRES iterations if we converge all the way
+itercap = 100; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-3; # larger than GPU tolerance
-verbose = 1;
+verbose = -1;
 
 class TemporalIntegrator(object):
 
@@ -719,7 +719,9 @@ class MidpointDriftIntegrator(BackwardEuler):
         # Compute M^(1/2)*W for later use
         MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
         #np.savetxt('MHalfEta.txt',MHalfEta);
-        MHalfEta = np.loadtxt('MHalfEta.txt');
+        #MHalfEta = np.loadtxt('MHalfEta.txt');
+        #MHalfEta = MHalfEta[:self._allFibers.getBlockOneSize()];
+        #MMinusHalfEta = 0;
         if (verbose > 0):
             print('Time to do M^1/2 %f' %(time.time()-thist))
             thist = time.time()  
