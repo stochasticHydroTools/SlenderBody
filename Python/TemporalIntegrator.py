@@ -9,9 +9,9 @@ from warnings import warn
 from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
-itercap = 10; # cap on GMRES iterations if we converge all the way
+itercap = 100; # cap on GMRES iterations if we converge all the way
 GMREStolerance=1e-3; # larger than GPU tolerance
-verbose = 1;
+verbose = -1;
 
 class TemporalIntegrator(object):
 
@@ -448,9 +448,7 @@ class TemporalIntegrator(object):
         XforNL, XsforNL = self.getXandXsNonLoc(); # for M and K
         
         # Forces from gravity and CLs to be treated EXPLICITLY
-        gravden = 1;
         forceExt = self._allFibers.uniformForce([0,0,gravden]);
-        thist = time.time()
         if (gravden > 0):
             forceExt = self._allFibers.ForceFromForceDensity(forceExt)
         if (self._CLNetwork is not None):
@@ -722,7 +720,7 @@ class MidpointDriftIntegrator(BackwardEuler):
             thist = time.time()  
         # Compute M^(1/2)*W for later use
         MHalfEta, MMinusHalfEta = self._allFibers.MHalfAndMinusHalfEta(XforNL,Ewald,Dom);
-        np.savetxt('MHalfEta.txt',MHalfEta);
+        #np.savetxt('MHalfEta.txt',MHalfEta);
         #MHalfEta = np.loadtxt('MHalfEta.txt');
         #MHalfEta = MHalfEta[:self._allFibers.getBlockOneSize()];
         #MMinusHalfEta = 0;
