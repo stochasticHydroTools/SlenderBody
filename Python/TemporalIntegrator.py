@@ -10,7 +10,7 @@ from fiberCollection import fiberCollection, SemiflexiblefiberCollection
 
 # Definitions 
 itercap = 100; # cap on GMRES iterations if we converge all the way
-GMREStolerance=1e-3; # larger than GPU tolerance
+GMREStolerance=1e-10; # larger than GPU tolerance
 verbose = -1;
 
 class TemporalIntegrator(object):
@@ -449,8 +449,10 @@ class TemporalIntegrator(object):
         
         # Forces from gravity and CLs to be treated EXPLICITLY
         forceExt = self._allFibers.uniformForce([0,0,gravden]);
-        if (gravden > 0):
+        print('Gravity %f' %gravden)
+        if (gravden != 0):
             forceExt = self._allFibers.ForceFromForceDensity(forceExt)
+            print('External force sum %f' %np.sum(forceExt))
         if (self._CLNetwork is not None):
             uniPoints = self._allFibers.getUniformPoints(XforNL);
             forceExt += self._CLNetwork.CLForce(uniPoints,XforNL,Dom,self._allFibers);
@@ -729,6 +731,9 @@ class MidpointDriftIntegrator(BackwardEuler):
             thist = time.time()  
         # Use M^(1/2)*W to step to the midpoint
         TauMidtime, MPMidtime, XMidtime = self._allFibers.StepToMidpoint(MHalfEta,dt);
+        #print('IMPORTANT WARNING: Ignoring midpoint for debugging')
+        TauMidtime = XsforNL;
+        XMidtime = XforNL;
         self._allFibers.FactorizePreconditioner(XMidtime,TauMidtime,self._impco,dt);
         if (verbose > 0):
             print('Time to step to MP %f' %(time.time()-thist))
@@ -749,6 +754,7 @@ class MidpointDriftIntegrator(BackwardEuler):
             # Add velocity from external forcing
             UExForce = self._allFibers.nonLocalVelocity(XMidtime,ExForce,Dom,Ewald,subSelf=False);
             RHS = np.concatenate((UBrown+U0+UExForce,np.zeros(BlockTwo)));
+            np.savetxt('RHS.txt',RHS);
             A = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.Mobility,impcodt=self._impco*dt,\
                 X=XMidtime, Xs=TauMidtime, Dom=Dom,RPYEval=Ewald),dtype=np.float64);
             Pinv = LinearOperator((systemSize,systemSize), matvec=partial(self._allFibers.BlockDiagPrecond, \
@@ -765,10 +771,18 @@ class MidpointDriftIntegrator(BackwardEuler):
             if (itsneeded == itercap+1):
                 resno = Solution.resnorms
                 print('WARNING: GMRES did not actually converge. The error at the last residual was %1.1E' %resno[len(resno)-1])
-            #res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XMidtime,TauMidtime,Dom,Ewald,tvalSolve,UBrown,ExForce);
-            #print(np.amax(abs(res)))
+            res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XMidtime,TauMidtime,Dom,Ewald,tvalSolve,UBrown,ExForce);
+            print(np.amax(abs(res)))
         else:
             # Just apply block-diag precond
+            # REMOVE ALL THIS LATER
+            UExForce = self._allFibers.LocalVelocity(XMidtime,ExForce);
+            systemSize = self._allFibers.getSysDimension();
+            BlockOne = self._allFibers.getBlockOneSize();
+            BlockTwo = systemSize - BlockOne;
+            RHS = np.concatenate((UBrown+U0+UExForce,np.zeros(BlockTwo)));
+            np.savetxt('RHS.txt',RHS);
+            ## END REMOVE
             lamalph = self._allFibers.BlockDiagPrecond(UBrown+U0,ExForce);
             itsneeded=0;
         if (verbose > 0):
