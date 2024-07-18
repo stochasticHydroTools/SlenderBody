@@ -21,23 +21,24 @@ def makeThreeSheared(Lf,N,fibDisc):
     """
     Xs13 = np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T;
     fibList = [None]*3;
-    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([-0.75,0,0]));
-    fibList[1] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0.75,0,0]));
+    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([-1.2,0,0]));
+    fibList[1] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([1.2,0,0]));
     return fibList;
 
 # Inputs 
 nFib=2          # number of fibers
-N=16;           # number of tangent vectors per fiber
+N=32;           # number of tangent vectors per fiber
 Lf=1            # length of each fiber
 nonLocal=1      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
-Ld=4          # length of the periodic domain
+Ld=5          # length of the periodic domain
 mu=1            # fluid viscosity
-eps=4e-3        # slenderness ratio
-Eb=1e-3        # fiber bending stiffness
+eps=1.0/2109        # slenderness ratio
+kbT = 1e-10;
+Eb=1e-3;       # fiber bending stiffness
 dt=0.05;       # timestep
 omega=0         # frequency of oscillations
 gam0=0          # base rate of strain
-tf=20        # final time
+tf=600       # final time
 giters = 1;   # Number of GMRES iterations. The number of iterations on the residual hydrodynamic system is giters-1. 
               # So if this number is set to 1 it will do hydrodynamic interactions explicitly by time lagging. 
 FluctuatingFibs=True;
@@ -50,7 +51,6 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=False,\
 
 # Initialize the master list of fibers
 if (FluctuatingFibs):
-    kbT = 1e-3;
     allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT);
 else:
     allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0);
@@ -61,7 +61,7 @@ allFibers.fillPointArrays();
 # Initialize Ewald for non-local velocities
 #Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
 totnumDir = fibDisc._nptsDirect*nFib;
-xi = 3*totnumDir**(1/3)/Ld; # Ewald param
+xi = 10*totnumDir**(1/3)/Ld; # Ewald param
 Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
 
 
