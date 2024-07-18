@@ -113,8 +113,10 @@ class RPYKernelEvaluator {
         }
         // Return 2D numpy array
         ssize_t              ndim    = 2;
-        std::vector<ssize_t> shape   = { Points.size() ,Points.size()};
-        std::vector<ssize_t> strides = { sizeof(double)*Points.size() , sizeof(double) };
+        uint nPtsThr =  Points.size();
+        uint stride =  sizeof(double)*nPtsThr;
+        std::vector<ssize_t> shape   = { nPtsThr,nPtsThr};
+        std::vector<ssize_t> strides = { stride, sizeof(double) };
 
         // return 2-D NumPy array
         return py::array(py::buffer_info(

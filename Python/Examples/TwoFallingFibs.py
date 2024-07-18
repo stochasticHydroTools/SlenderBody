@@ -21,8 +21,8 @@ def makeThreeSheared(Lf,N,fibDisc):
     """
     Xs13 = np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T;
     fibList = [None]*3;
-    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([-1.2,0,0]));
-    fibList[1] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([1.2,0,0]));
+    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([-1.5,0,0]));
+    fibList[1] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([1.5,0,0]));
     return fibList;
 
 # Inputs 
@@ -30,7 +30,7 @@ nFib=2          # number of fibers
 N=32;           # number of tangent vectors per fiber
 Lf=1            # length of each fiber
 nonLocal=1      # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
-Ld=5          # length of the periodic domain
+Ld=50          # length of the periodic domain
 mu=1            # fluid viscosity
 eps=1.0/2109        # slenderness ratio
 kbT = 1e-10;
@@ -61,7 +61,7 @@ allFibers.fillPointArrays();
 # Initialize Ewald for non-local velocities
 #Ewald = RPYVelocityEvaluator(fibDisc._a,mu,fibDisc._nptsDirect*nFib);
 totnumDir = fibDisc._nptsDirect*nFib;
-xi = 10*totnumDir**(1/3)/Ld; # Ewald param
+xi = 8*totnumDir**(1/3)/Ld; # Ewald param
 Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
 
 
