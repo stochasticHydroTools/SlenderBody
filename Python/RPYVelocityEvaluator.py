@@ -5,6 +5,7 @@ from RPYKernelEvaluator import RPYKernelEvaluator as RPYcpp
 import time
 from math import pi
 from warnings import warn
+from scipy.linalg import sqrtm
 
 verbose = -1;
 
@@ -44,6 +45,7 @@ class RPYVelocityEvaluator(object):
         self._a = float(a);
         self._mu = float(mu);
         self._Npts = Npts;
+        self._RPYcpp = RPYcpp(self._a,self._mu,self._Npts,[np.inf,np.inf,np.inf]);
 
     ## =========================================
     ##    PUBLIC METHODS CALLED OUTSIDE CLASS
@@ -72,101 +74,38 @@ class RPYVelocityEvaluator(object):
         array
             $N \\times 3$ array of velocities at the points ptsxyz
         """
-        return RPYVelocityEvaluator.RPYKernel(self._Npts,ptsxyz,self._Npts,ptsxyz,forces,self._mu,self._a);
+        return self._RPYcpp.RPYVelocityFreeSpace(ptsxyz,forces,nThr)
     
     def NeedsGPU(self):
         return False;
-    
-    #@staticmethod
-    #@nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.int64,nb.float64[:,:],\
-    #    nb.float64[:,:],nb.float64,nb.float64))
-    def RPYKernel(Ntarg,Xtarg,Nsrc,Xsrc,forces,mu,a):
-        """
-        The quadratic method to sum the RPY kernel in native python. This can be used
-        in initialization steps where speed is not necessary. This is a static method.
         
-        Parameters
-        ----------
-        Ntarg: int
-            Number of target points (where we want the velocity)
-        Xtarg: array
-            $N_t \\times 3$ array of target point locations
-        Nsrc: int
-            Number of source points (where we have the forces)
-        Xsrc: array 
-            $N_s \\times 3$ array of source point locations
-        forces: array
-            $N_s \\times 3$ array of forces
-        mu: double
-            System viscosity
-        a: double
-            Hydrodynamic radius
-        
-        Returns
-        --------
-        array
-            $N_t \\times 3$ array of velocities at the target points
+    def calcMOneHalfW(self,ptsxyz,Dom,nThr=1):
         """
-        utot=np.zeros((Ntarg,3));
-        oneOvermu = 1.0/mu;
-        for iTarg in range(Ntarg):
-            for iSrc in range(Nsrc):
-                rvec = Xtarg[iTarg,:]-Xsrc[iSrc,:];
-                r = np.linalg.norm(rvec);
-                rhat = rvec/r;
-                rhat[np.isnan(rhat)]=0;
-                rdotf = np.sum(rhat*forces[iSrc,:]);
-                if (r>2*a):
-                    fval = (2*a**2 + 3*r**2)/(24*pi*r**3);
-                    gval = (-2*a**2 + 3*r**2)/(12*pi*r**3);
-                else:
-                    fval = (32*a - 9*r)/(192*a**2*pi);
-                    gval = (16*a - 3*r)/(96*a**2*pi);
-                utot[iTarg,:]+= oneOvermu*(fval*forces[iSrc,:]+rdotf*(gval-fval)*rhat);
-        return utot;
+        This method is used to call the GPU code to compute 
+        $M[X]^{1/2} W$ when doing Brownian dynamics simulations.         
 
-    #@staticmethod
-    #@nb.njit(nb.float64[:,:](nb.int64,nb.float64[:,:],nb.float64,nb.float64))
-    def RPYMatrix(N,X,mu,a):
-        """
-        The quadratic method to form the RPY matrix, implemented as a static method
-        in Python. Because it is native python, it is used only in initialization and 
-        precomputations.
-        
         Parameters
         ----------
-        N: int
-            Number of points
-        X: array
-            $N \\times 3$ array of source and target points
-        mu: double
-            System viscosity
-        a: double
-            Hydrodynamic radius
-        
+        ptsxyz: array
+            $N \\times 3$ array of point locations
+        Dom: Domain object
+            The domain where the computation is done 
+
         Returns
         --------
+
         array
-            The mobility matrix $M$ (mapping forces on all points to velocities on 
-            all points) as a $3N \\times 3N$ array. 
+            $3N$ array of Brownian velocities $M[X]^{1/2} W$
+
         """
-        M=np.zeros((3*N,3*N));
-        oneOvermu = 1.0/mu;
-        for iTarg in range(N):
-            for iSrc in range(N):
-                rvec = X[iTarg,:]-X[iSrc,:];
-                r = np.linalg.norm(rvec);
-                rhat = rvec/r;
-                rhat[np.isnan(rhat)]=0;
-                rhatrhat = np.dot(np.reshape(rhat,(3,1)),np.reshape(rhat,(1,3)))
-                if (r>2*a):
-                    fval = (2*a**2 + 3*r**2)/(24*pi*r**3);
-                    gval = (-2*a**2 + 3*r**2)/(12*pi*r**3);
-                else:
-                    fval = (32*a - 9*r)/(192*a**2*pi);
-                    gval = (16*a - 3*r)/(96*a**2*pi);
-                M[3*iTarg:3*(iTarg+1),3*iSrc:3*(iSrc+1)]= oneOvermu*(fval*np.identity(3)+(gval-fval)*rhatrhat);
-        return M;
+        # First check if Ewald parameter is ok
+        M = self._RPYcpp.RPYMatrixFreeSpace(ptsxyz,nThr);
+        W = np.random.randn(3*self._Npts,1);
+        np.savetxt('RandVecRPY.txt',W);
+        Mhalf = sqrtm(M);
+        MhalfW = np.dot(Mhalf,W);
+        np.savetxt('MhalfWR.txt',MhalfW);
+        return MhalfW;
 
 ## Some parameters specific to Ewald
 nearcut = 1e-4; # cutoff for near field interactions
@@ -367,7 +306,7 @@ class EwaldSplitter(RPYVelocityEvaluator):
 
 
 # Parameters for Raul's code 
-GPUtol = 1e-6 # single precision, so 1e-6 is smallest tolerance
+GPUtol = 1e-3 # single precision, so 1e-6 is smallest tolerance
 class GPUEwaldSplitter(EwaldSplitter):
     
     """
@@ -498,7 +437,7 @@ class GPUEwaldSplitter(EwaldSplitter):
             print('Method Raul time: %f' %(time.time()-thist));
         return np.array(np.reshape(MF,(self._Npts,3)),np.float64);
     
-    def calcMOneHalfW(self,ptsxyz,Dom):
+    def calcMOneHalfW(self,ptsxyz,Dom,nThr=1):
         """
         This method is used to call the GPU code to compute 
         $M[X]^{1/2} W$ when doing Brownian dynamics simulations. The GPU method

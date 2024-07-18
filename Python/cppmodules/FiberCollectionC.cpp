@@ -80,6 +80,7 @@ class FiberCollectionC {
             pyRLess2aWts,pyXDiffMatrix,pyWTildeXInverse,pyOversampleForDirectQuad,pyUpsamplingMatrix,eigValThres);
     }
     
+    
     void SetEigValThreshold(double Thresh){
         _MobilityEvaluator.SetEigValThreshold(Thresh);  
         _FatMobilityEvaluator.SetEigValThreshold(Thresh);
@@ -322,9 +323,9 @@ class FiberCollectionC {
             }
             vec MLoc(9*_nXPerFib*_nXPerFib), EigVecs(9*_nXPerFib*_nXPerFib), EigVals(3*_nXPerFib);
             if (Fat){
-                _FatMobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, -1,MLoc,EigVecs,EigVals);
+                _FatMobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MLoc,EigVecs,EigVals);
             } else {
-                _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, -1,MLoc,EigVecs,EigVals);
+                _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MLoc,EigVecs,EigVals);
             }
             vec LocalVel(3*_nXPerFib);
             ApplyMatrixPowerFromEigDecomp(3*_nXPerFib, 1.0, EigVecs, EigVals, LocalForces, LocalVel);  
@@ -456,7 +457,7 @@ class FiberCollectionC {
         return make1DPyArray(AllAlphas);      
     }
     
-    void FactorizePreconditioner(npDoub pyPoints, npDoub pyTangents,double impco, double dt, bool implicitFP, int NBands){
+    void FactorizePreconditioner(npDoub pyPoints, npDoub pyTangents,double impcodt, bool FPisLocal, bool FatCorrection){
         /*
         See documentation for this method in fiberCollection.py
         */
@@ -470,9 +471,10 @@ class FiberCollectionC {
         if (_rigid){
             nAlphas = 6;
         }
-        int nFibs = chebPoints.size()/(3*_nXPerFib);   
+        int nFibs = chebPoints.size()/(3*_nXPerFib);  
+        int sysDim =  3*_nXPerFib;
         vec LambasAndAlphas(3*_nXPerFib*nFibs+nAlphas*nFibs);
-        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator)
+        #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator, _FatMobilityEvaluator)
         for (int iFib = 0; iFib < nFibs; iFib++){
 	        vec LocalPoints(3*_nXPerFib);
             vec LocalTangents(3*_nTauPerFib);
@@ -482,8 +484,23 @@ class FiberCollectionC {
             for (int i=0; i< 3*_nTauPerFib; i++){
                 LocalTangents[i] = Tangents[3*_nTauPerFib*iFib+i];
             }
-            
-            _SaddlePointSolvers[iFib].FormSaddlePointMatrices(LocalPoints, LocalTangents, impco, dt, implicitFP, _MobilityEvaluator, NBands);
+            vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
+            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal,MWsym);
+            if (FatCorrection){
+                vec MWsymFat(sysDim*sysDim);
+                _FatMobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, MWsymFat);
+                vec MWsymFatOS(sysDim*sysDim);
+                _FatMobilityEvaluator.OversampleMobilityForceMatrix(LocalPoints,MWsymFatOS);
+                // Compute the difference 
+                for (uint i=0; i < sysDim*sysDim; i++){
+                    MWsym[i]+=-MWsymFat[i]+MWsymFatOS[i];
+                }
+                SymmetrizeAndDecomposePositive(sysDim, MWsym, -100, EigVecs, EigVals); // Don't truncate PC
+            } else {
+                SymmetrizeAndDecomposePositive(sysDim, MWsym, _MobilityEvaluator.getEigThreshold(), EigVecs, EigVals); 
+            }
+            // Do the eigenvalue decomp
+            _SaddlePointSolvers[iFib].FormSaddlePointMatrices(EigVecs,EigVals,LocalTangents, impcodt);
         }
     }
         
@@ -609,19 +626,19 @@ class FiberCollectionC {
             
             // M and Schur complement block B
             vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
-            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, -1,MWsym, EigVecs, EigVals);
+            _MobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, MWsym);
             if (FatCorrection){
-                vec MWsymFat(sysDim*sysDim), EigVecsFat(sysDim*sysDim), EigValsFat(sysDim);
-                _FatMobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, -1,MWsymFat, EigVecsFat, EigValsFat);
+                vec MWsymFat(sysDim*sysDim);
+                _FatMobilityEvaluator.MobilityForceMatrix(LocalPoints, FPisLocal, MWsymFat);
                 // Compute the difference 
                 for (uint i=0; i < sysDim*sysDim; i++){
                     MWsym[i]-=MWsymFat[i];
                 }
-                // Do the eigenvalue decomp
-                SymmetrizeAndDecomposePositive(sysDim, MWsym, -100, EigVecs, EigVals); 
             }
+            // Do the eigenvalue decomp
+            SymmetrizeAndDecomposePositive(sysDim, MWsym,  _MobilityEvaluator.getEigThreshold(), EigVecs, EigVals); 
             vec MWHalfetaLoc(sysDim);
-            vec MWMinusHalfetaLoc(sysDim);
+            vec MWMinusHalfetaLoc(sysDim);   
             ApplyMatrixPowerFromEigDecomp(sysDim, 0.5, EigVecs, EigVals, LocalRand1, MWHalfetaLoc);
             ApplyMatrixPowerFromEigDecomp(sysDim,-0.5, EigVecs, EigVals, LocalRand1, MWMinusHalfetaLoc);
             for (int i=0; i < sysDim; i++){
@@ -755,7 +772,7 @@ class FiberCollectionC {
             
             // Compute tilde variables
             vec MWsymTilde(sysDim*sysDim), EigVecsTilde(sysDim*sysDim), EigValsTilde(sysDim);
-            _MobilityEvaluator.MobilityForceMatrix(XTilde, FPisLocal,-1,MWsymTilde, EigVecsTilde, EigValsTilde);
+            _MobilityEvaluator.MobilityForceMatrix(XTilde, FPisLocal,MWsymTilde, EigVecsTilde, EigValsTilde);
             
             // RFD term
             vec URFDPlus(sysDim);

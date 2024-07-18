@@ -38,7 +38,6 @@ class SingleFiberSaddlePointSolver {
         }
         _K = vec(_nAlphas*3*_nXPerFib);
         _KWithImpPart = vec(_nAlphas*3*_nXPerFib);
-        _MForce = vec(9*_nXPerFib*_nXPerFib);
         _EigValsM = vec(3*_nXPerFib);
         _EigVecsM = vec(9*_nXPerFib*_nXPerFib);
         _SchurComplement = vec(_nAlphas*_nAlphas);
@@ -70,8 +69,7 @@ class SingleFiberSaddlePointSolver {
         std::memcpy(_MidpointSamp.data(),pyMP.data(),pyMP.size()*sizeof(double));
     }
     
-    void FormSaddlePointMatrices(const vec &LocalPoints, const vec &LocalTangents, double impco, 
-        double dt, bool implicitFP,SingleFiberMobilityEvaluator MobEvaluator,int NBands){
+    void FormSaddlePointMatrices(const vec &EigVecsM, const vec &EigValsM, const vec &LocalTangents, double impcodt){
         /*
         The purpose of this method is to compute K, the Schur Complement and its psuedo-inverse,
         and the mobility M. They are computed once, and then when we solve a saddle point system
@@ -83,14 +81,22 @@ class SingleFiberSaddlePointSolver {
         } else {
             calcK(LocalTangents,_K);
         }
-        MobEvaluator.MobilityForceMatrix(LocalPoints, implicitFP, NBands,_MForce, _EigVecsM, _EigValsM);
+        for (int j=0; j < FullSize; j++){
+            _EigValsM[j]=EigValsM[j];
+            if (EigValsM[j] < 0){
+                std::cout << "Neg eigenvalue in PC" << std::endl;
+            }
+        }
+         for (int j=0; j < FullSize*FullSize; j++){
+            _EigVecsM[j]=EigVecsM[j];
+        }    
         // Overwrite K ->  K-impcoeff*dt*MW*D4BC*K;
         vec D4BCK(FullSize*_nAlphas);
         vec MtimesD4BCK(FullSize*_nAlphas);
         BlasMatrixProduct(FullSize,FullSize,_nAlphas,1.0,0.0,_D4BCForce,false,_K,D4BCK);
         ApplyMatrixPowerFromEigDecomp(FullSize, 1.0, _EigVecsM, _EigValsM, D4BCK, MtimesD4BCK); 
         for (int i = 0; i < FullSize*_nAlphas; i++){
-            _KWithImpPart[i] = _K[i]-impco*dt*MtimesD4BCK[i];
+            _KWithImpPart[i] = _K[i]-impcodt*MtimesD4BCK[i];
         }
         // Overwrite KWithImp-> M^(-1)*KWithImp
         vec MinvKWithImp(3*_nXPerFib*_nAlphas);
@@ -139,7 +145,8 @@ class SingleFiberSaddlePointSolver {
         // M and Schur complement block B
         int sysDim = 3*_nXPerFib;
         vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
-        MobEval.MobilityForceMatrix(LocalPoints, includeFP, -1,MWsym, EigVecs, EigVals);
+        std::cout << "Rigid fiber displacements not really tested -- check" << std::endl;
+        MobEval.MobilityForceMatrix(LocalPoints, includeFP, MWsym, EigVecs, EigVals);
         
         vec MinvK(sysDim*6);
         vec SchurComplement(6*6);
@@ -210,7 +217,7 @@ class SingleFiberSaddlePointSolver {
     int _nXPerFib, _nTauPerFib, _nAlphas, _maxSVDModes;
     double _SaddlePointTol, _svdRigidTol;
     vec _D4BCForce ,_XFromTauMat,  _TauFromXMat, _MidpointSamp, _Identity;
-    vec _K, _KWithImpPart, _MForce, _EigValsM, _EigVecsM, _SchurComplement, _SchurComplementPInv;
+    vec _K, _KWithImpPart, _EigValsM, _EigVecsM, _SchurComplement, _SchurComplementPInv;
    
     
     void calcK(const vec &TanVecs, vec &K){

@@ -46,7 +46,7 @@ class FibCollocationDiscretization(object):
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
-        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True,\
+        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=True,UseEnergyDisc=True,\
         FPIsLocal=True,penaltyParam=0):
         """
         Constructor. 
@@ -164,8 +164,6 @@ class FibCollocationDiscretization(object):
             The amount of regularization in the formulas above. The default is 0.1 if not provided.
         """
         if (self._RPYSpecialQuad or self._RPYDirectQuad or  self._RPYDirectQuad):
-            if (delta > 0):
-                warn('Your regularization wont do anything - youre using RPY')
             self._sRegularized = self._sX;
             return;
         self._delta = delta;
@@ -370,9 +368,10 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         threshold to zero, since in those two cases we are guaranteed to have an SPD matrix 
         and never need eigenvalue truncation.
         """
-        # We only want to set the eigenvalue threshold when we do special quad
-        self._EigValThres = 0.001;
-        #self._EigValThres = -100;
+        # We only want to set the eigenvalue threshold when we do special quad (it doesn't really matter)
+        self._EigValThres = 0.001 # Could cause convergence issues
+        if (self._RPYDirectQuad or self._RPYOversample):
+            self._EigValThres = 0;
         return
         if ((not self._RPYDirectQuad) and (not self._RPYOversample)):
             NToUpsamp = int(1/self._epsilon);

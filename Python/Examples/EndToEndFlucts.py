@@ -20,71 +20,64 @@ The goal of this is to measure the equilibrium distribution of fiber lengths and
 obtained from MCMC. 
 """
 
-def makeStraightFibs(nFib,Lf,N,fibDisc,Ld=0):
-    """
-    Initialize a list of straight fibers that we will simulate 
-    """
-    # Falling fibers
-    Xs = (np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T);
-    Xs = np.reshape(Xs,3*N);
-    XMP = np.array([0,Ld/nFib,0]);
-    fibList = [None]*nFib
-    for iFib in range(nFib):
-        fibList[iFib] = DiscretizedFiber(fibDisc,Xs,XMP);
-    return fibList;
-
 # Inputs 
-nFib=100         # number of fibers
-N=12          # number of points per fiber
-Lf=2            # length of each fiber
-nonLocal=1   # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro on each fiber.
+nFib = 100         # number of fibers
+N = 12          # number of points per fiber
+Lf = 2            # length of each fiber
+nonLocal = True
 nThr = 8;   # Number of OpenMP threads
 # Mobility options (can do SBT if all are set to false, otherwise some variant of RPY as described below)
-MobStr='NLOS64';
-RPYQuad = False;        # Special quadrature
-RPYDirect = False;       # Direct Clenshaw-Curtis quadrature
-RPYOversample = True;  # Oversampled quad
-NupsampleForDirect = 64; # Number of pts for oversampled quad
-Ld=4;        # length of the periodic domain
+RPYQuad = True;        # Special quadrature
+NupsampleForDirect = 100; # Number of pts for oversampled quad
+Ld=3;        # length of the periodic domain
 mu=1            # fluid viscosity
-logeps = 2;
+logeps = 3;
 eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3). The factor 4/exp(1.5) converts to actual fiber slenderness. 
-lpstar = 10;    
+lpstar = 1;    
 kbT = 4.1e-3;
 Eb=lpstar*kbT*Lf;         # fiber bending stiffness
 tfund = 0.003*4*np.pi*mu*Lf**4/(np.log(10**logeps)*Eb) 
 tf = 10*tfund;
-dtfund = 0.005;
+dtfund = 0.00025;
 dt = tfund*dtfund;
 penaltyParam = 0;
 seed = 1;
 saveEvery = max(np.floor(0.01/dtfund),1);#int(tf/(nSaves*dt)+1e-6);
 
+MobStr = 'OS'+str(NupsampleForDirect);
+if (RPYQuad):
+    MobStr = 'SQStar'
+
 if not os.path.exists('SemiflexFlucts'):
     os.makedirs('SemiflexFlucts')
 
-saveStr='NLTol2Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
+saveStr='Eps'+str(logeps)+MobStr+'_N'+str(N)+'_Ld'+str(Ld)+'_Lp'+str(lpstar)+'_dtf'+str(dtfund)+'_'+str(seed)+'.txt'
 FileString = 'SemiflexFlucts/Locs'+saveStr;
     
 # Initialize the domain
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
-# Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
-    RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,NupsampleForDirect=NupsampleForDirect);
+# Define discretization and fiber collection
+fibDisc = ChebyshevDiscretization(Lf, eps,Eb,mu,N,NupsampleForDirect=NupsampleForDirect,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
+Ewald = None;
+if (RPYQuad and nonLocal):
+    eps_Star = 1e-2*4/np.exp(1.5);
+    fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,NupsampleForDirect=NupsampleForDirect,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
+    allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,nThreads=nThr,fibDiscFat=fibDiscFat);
+    if (nonLocal):
+        totnumDir = fibDiscFat._nptsDirect*nFib;
+        xi = 3*totnumDir**(1/3)/Ld; # Ewald param
+        Ewald = GPUEwaldSplitter(fibDiscFat._a,mu,xi,Dom,fibDiscFat._nptsDirect*nFib);
+else:
+    allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,nThreads=nThr);
+    if (nonLocal):
+        totnumDir = fibDisc._nptsDirect*nFib;
+        xi = 3*totnumDir**(1/3)/Ld; # Ewald param
+        Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib);
     
-# Initialize the master list of fibers
-allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,nThreads=nThr);
-#fibList = makeStraightFibs(nFib,Lf,N,fibDisc,Ld);
 np.random.seed(seed);
 fibList = [None]*nFib;
 allFibers.initFibList(fibList,Dom);
-
-Ewald=None;
-if (nonLocal==1):
-    totnumDir = fibDisc._nptsDirect*nFib;
-    xi = 3*totnumDir**(1/3)/Ld; # Ewald param
-    Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,totnumDir);
 
 # Initialize the temporal integrator
 TIntegrator = MidpointDriftIntegrator(allFibers);
@@ -102,6 +95,7 @@ for iT in range(stopcount):
         wr=1;
         print('Fraction done %f' %((iT+1)/stopcount))
     maxX, its, _, _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=wr,outfile=FileString);
+    print(its)
     itsNeeded[iT]=its;
 np.savetxt('SemiflexFlucts/ItsNeeded'+saveStr,itsNeeded)
         

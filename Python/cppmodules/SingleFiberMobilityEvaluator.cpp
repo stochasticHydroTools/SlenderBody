@@ -34,6 +34,13 @@ class SingleFiberMobilityEvaluator {
     SingleFiberMobilityEvaluator(int Nx,double a, double L, double mu, bool RPYQuad, bool DirectRPY, bool OversampledRPY)
         :_RPYEvaluator(a,mu,Nx,{0,0,0}){
         _nXPerFib = Nx;
+        SetQuadType(RPYQuad, DirectRPY, OversampledRPY);
+        _a = a;
+        _L = L;
+        _mu = mu;
+    }
+    
+    void SetQuadType( bool RPYQuad, bool DirectRPY, bool OversampledRPY){
         _exactRPY = RPYQuad;
         _directRPY = DirectRPY;
         _oversampledRPY = OversampledRPY;
@@ -57,10 +64,7 @@ class SingleFiberMobilityEvaluator {
         if (!goodInput){
             throw std::runtime_error("Mobility definition is ambiguous - can only specify one of exact RPY, oversampled RPY, or direct RPY");
         }
-        _a = a;
-        _L = L;
-        _mu = mu;
-    }
+    }    
     
     void initMobilitySubmatrices(npDoub pyXNodes,npDoub pyRegXNodes,npDoub pyFPMatrix, npDoub pyDoubFPMatrix, 
         npDoub pyRL2aResampMatrix, npDoub pyRLess2aWts,npDoub pyXDiffMatrix, npDoub pyWTildeXInverse,
@@ -111,13 +115,18 @@ class SingleFiberMobilityEvaluator {
         _eigValThres = Thres;
     }
     
-    void MobilityForceMatrix(const vec &LocalPoints, bool nonLocalParts, int NBands, vec &MForce, vec &EigVecs, vec &EigVals){
+    double getEigThreshold(){
+        return _eigValThres;
+    }
+    
+    void MobilityForceMatrix(const vec &LocalPoints, bool nonLocalParts, vec &MForce, vec &EigVecs, vec &EigVals){
         /*
         Main method to compute the mobility M[X]
         This is the matrix that acts on FORCES to give velocities
         */
+        int NBands = -1;
         if (_directRPY || _oversampledRPY){
-            RPYDirectMobility(LocalPoints,MForce,NBands);
+            RPYDirectMobility(LocalPoints,MForce,NBands, _oversampledRPY);
             SymmetrizeAndDecomposePositive(3*_nXPerFib, MForce, 0, EigVecs, EigVals);
         } else { // Doing SBT or quadrature 
             vec M(9*_nXPerFib*_nXPerFib);
@@ -125,6 +134,32 @@ class SingleFiberMobilityEvaluator {
             BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,3*_nXPerFib,1.0,0.0,M,false,_WTildeXInv,MForce);
             SymmetrizeAndDecomposePositive(3*_nXPerFib, MForce, _eigValThres, EigVecs, EigVals);
         }
+    }
+    
+    void MobilityForceMatrix(const vec &LocalPoints, bool nonLocalParts, vec &MForce){
+        /*
+        Main method to compute the mobility M[X]
+        This is the matrix that acts on FORCES to give velocities
+        Same as the previous method, but it doesn't symmetrize the matrix (just gives you the raw one)
+        */
+        int NBands = -1;
+        if (_directRPY || _oversampledRPY){
+            RPYDirectMobility(LocalPoints,MForce,NBands,_oversampledRPY);
+        } else { // Doing SBT or quadrature 
+            vec M(9*_nXPerFib*_nXPerFib);
+            MobilityMatrix(LocalPoints, true, nonLocalParts, M);  
+            BlasMatrixProduct(3*_nXPerFib,3*_nXPerFib,3*_nXPerFib,1.0,0.0,M,false,_WTildeXInv,MForce);
+        }
+    }
+    
+    void OversampleMobilityForceMatrix(const vec &LocalPoints, vec &MForce){
+        /*
+        Main method to compute the mobility M[X]
+        This is the matrix that acts on FORCES to give velocities
+        Same as the previous method, but it doesn't symmetrize the matrix (just gives you the raw one)
+        */
+        int NBands = -1;
+        RPYDirectMobility(LocalPoints,MForce,NBands,true);
     }
     
     
@@ -507,14 +542,14 @@ class SingleFiberMobilityEvaluator {
         }
     }
     
-    void RPYDirectMobility(const vec &LocalPoints, vec &MForce, int NBands){
+    void RPYDirectMobility(const vec &LocalPoints, vec &MForce, int NBands, bool oversample){
         /*
         This forms the matrix M when we use direct RPY. The flow of the method is the same, 
         but extra matrices have to be added when we do oversampling
         */
         int Npts = _nXPerFib;
         vec XForRPY(LocalPoints.begin(),LocalPoints.end());
-        if (_oversampledRPY){ 
+        if (oversample){ 
             Npts = _Nupsample;
             XForRPY.resize(3*Npts);
             BlasMatrixProduct(Npts, _nXPerFib, 3,1.0,0.0,_UpsamplingMatrix,false,LocalPoints,XForRPY); 
@@ -543,7 +578,7 @@ class SingleFiberMobilityEvaluator {
                 }
             }
         }
-        if (_oversampledRPY){ // pre and post multiply by W_up * E_up * WtildeInverse
+        if (oversample){ // pre and post multiply by W_up * E_up * WtildeInverse
             vec Mover(9*Npts*_nXPerFib);
             BlasMatrixProduct(3*Npts, 3*Npts, 3*_nXPerFib,1.0,0.0,MRPYDirect,false,_OverSamplingWtsMatrix,Mover); 
             BlasMatrixProduct(3*_nXPerFib,3*Npts,3*_nXPerFib,1.0,0.0,_OverSamplingWtsMatrix,true,Mover,MForce); 

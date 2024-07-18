@@ -34,6 +34,99 @@ class RPYKernelEvaluator {
         outFront = 1.0/(6.0*M_PI*mu*a);
     }
     
+    npDoub RPYVelocityFreeSpace(npDoub pyPoints, npDoub pyForces, int nThreads){
+        /**
+        RPY velocity based on free space points and forces
+        **/
+        // Copy  py -> cpp
+        // allocate std::vector (to pass to the C++ function)
+        vec Points(pyPoints.size());
+        vec Forces(pyForces.size());
+
+        // copy py::array -> std::vector
+        int nPts = Points.size()/3;
+        std::memcpy(Points.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
+        std::memcpy(Forces.data(),pyForces.data(),pyForces.size()*sizeof(double));
+        
+        vec TotalVelocity = vec(nPts*3); 
+        #pragma omp parallel for num_threads(nThreads)
+        for (int iPt=0; iPt < nPts; iPt++){
+            for (int jPt=0; jPt < nPts; jPt++){
+                vec3 rvec, force, uthis;
+                for (int d=0; d < 3; d++){
+                    rvec[d]=Points[3*iPt+d]-Points[3*jPt+d];
+                    force[d]=Forces[3*jPt+d];
+                }
+                RPYTot(rvec, force, uthis);
+                for (int d=0; d < 3; d++){
+                    # pragma omp atomic update
+                    TotalVelocity[3*iPt+d]+= uthis[d];
+                }
+            } // end jPt loop
+        } // end iPt loop
+        // Return 2D numpy array
+        ssize_t              ndim    = 2;
+        std::vector<ssize_t> shape   = { pyPoints.shape()[0] , 3 };
+        std::vector<ssize_t> strides = { sizeof(double)*3 , sizeof(double) };
+
+        // return 2-D NumPy array
+        return py::array(py::buffer_info(
+        TotalVelocity.data(),                           /* data as contiguous array  */
+        sizeof(double),                          /* size of one scalar        */
+        py::format_descriptor<double>::format(), /* data type                 */
+        ndim,                                    /* number of dimensions      */
+        shape,                                   /* shape of the matrix       */
+        strides                                  /* strides for each axis     */
+        ));
+    }
+    
+    npDoub RPYMatrixFreeSpace(npDoub pyPoints, int nThreads){
+        /**
+        Python wrapper for the RPY kernel evaluations
+        **/
+        // Copy  py -> cpp
+        // allocate std::vector (to pass to the C++ function)
+        vec Points(pyPoints.size());
+
+        // copy py::array -> std::vector
+        int nPts = Points.size()/3;
+        std::memcpy(Points.data(),pyPoints.data(),pyPoints.size()*sizeof(double));
+        
+        vec MRPYDirect = vec(nPts*3*3*nPts); 
+        #pragma omp parallel for num_threads(nThreads)
+        for (int iPt = 0; iPt < nPts; iPt++){
+            for (int jPt = 0; jPt < nPts; jPt++){
+                vec MPair(9);
+                vec3 rvec;
+                for (int iD=0; iD < 3; iD++){
+                    rvec[iD]=Points[3*iPt+iD]-Points[3*jPt+iD];
+                }
+                PairRPYMatrix(rvec,MPair);
+                // Copy the pairwise matrix into the big matrix
+                for (int iD=0; iD < 3; iD++){
+                    for (int jD=0; jD < 3; jD++){
+                        MRPYDirect[3*nPts*(3*iPt+iD)+3*jPt+jD]=MPair[3*iD+jD];
+                        MRPYDirect[3*nPts*(3*jPt+jD)+3*iPt+iD]=MPair[3*iD+jD];
+                    }
+                }
+            }
+        }
+        // Return 2D numpy array
+        ssize_t              ndim    = 2;
+        std::vector<ssize_t> shape   = { Points.size() ,Points.size()};
+        std::vector<ssize_t> strides = { sizeof(double)*Points.size() , sizeof(double) };
+
+        // return 2-D NumPy array
+        return py::array(py::buffer_info(
+        MRPYDirect.data(),                           /* data as contiguous array  */
+        sizeof(double),                          /* size of one scalar        */
+        py::format_descriptor<double>::format(), /* data type                 */
+        ndim,                                    /* number of dimensions      */
+        shape,                                   /* shape of the matrix       */
+        strides                                  /* strides for each axis     */
+        ));
+    }
+    
     npDoub RPYNKerPairs(npInt PyPairPts, npDoub pyPoints, npDoub pyForces, double xi, 
                           double g, double rcut, int nThreads){
         /**
@@ -324,6 +417,8 @@ PYBIND11_MODULE(RPYKernelEvaluator, m) {
     py::class_<RPYKernelEvaluator>(m, "RPYKernelEvaluator")
         .def(py::init<double,double, int,vec3>())
         .def("EvaluateRPYNearPairs", &RPYKernelEvaluator::RPYNKerPairs)
-        .def("RPYNearKernel", &RPYKernelEvaluator::py_RPYNearKernel);
+        .def("RPYNearKernel", &RPYKernelEvaluator::py_RPYNearKernel)
+        .def("RPYVelocityFreeSpace", &RPYKernelEvaluator::RPYVelocityFreeSpace)
+        .def("RPYMatrixFreeSpace", &RPYKernelEvaluator::RPYMatrixFreeSpace);
 }
 

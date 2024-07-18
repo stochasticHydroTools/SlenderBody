@@ -44,7 +44,6 @@ else
 end
 SampleInds = [0 1/4 1/2 3/4 1]*(length(xUni)-1)+1;
 ResampFromNp1 = stackMatrix(barymat(xUni,sNp1,bNp1));
-nBins = 1000;
 
 % The energy matrix and expected covariance
 EMatParams = XonNp1Mat'*EMat_Np1*XonNp1Mat;
@@ -64,9 +63,6 @@ AllMeanCoeffs = zeros(nTrial,3*N);
 AllMeanSecCoeffs = zeros(nTrial,3*length(xUni));
 AllMeanDevs = zeros(nTrial,1);
 AllEndToEndDists = zeros(nTrial,nBins);
-AllMiddleHalfDists = zeros(nTrial,nBins);
-AllEndToMiddleDists = zeros(nTrial,nBins);
-AllEndToQuarterDists = zeros(nTrial,nBins);
 Deltas = zeros(N);
 for iPt=1:N
     for jPt=iPt:N
@@ -76,6 +72,7 @@ end
 Deltas = unique(Deltas(:));
 AllTanVecDots = zeros(nTrial,length(Deltas));
 AllCovMats = zeros(3*length(xUni),3*length(xUni),nTrial);
+AllEndToEndDists = zeros(nSaveSamples,nTrial);
 
 for iTrial=1:nTrial
 disp(strcat('New trial = ',num2str(iTrial)))
@@ -84,6 +81,7 @@ MeanSqCoeffs = zeros(3*N,1);
 TanVecDots = zeros(length(Deltas),1);
 nSamplesDs = zeros(length(Deltas),1);
 MeanSqSecCoeffs = zeros(3*length(xUni),1);
+EndToEndDists = zeros(nSaveSamples,1);
 MeanDev = 0;
 CovMat = zeros(3*length(xUni));
 for iSamp=1:nSamp
@@ -93,15 +91,8 @@ for iSamp=1:nSamp
     % Eval energy
     %dX = XProp-X0;
     % Upsample and integrate, then upsample again
-    if (OversampCheb)
-        dParams = [reshape((XsProp-Xs0)',[],1); XMP+DeltaMP-XMP0];
-        Energy = 1/2*dParams'*EMatParams*dParams;
-    else
-        XProp = reshape((IntMat*XsProp)',[],1);
-        XProp = XProp+repmat(XMP+DeltaMP-BM*XProp,N,1);
-        dX = XProp-X0;
-        Energy=1/2*dX'*EMat*dX;
-    end
+    dParams = [reshape((XsProp-Xs0)',[],1); XMP+DeltaMP-XMP0];
+    Energy = 1/2*dParams'*EMatParams*dParams;
     p_acc = exp(-Energy/kbT)/exp(-EPrev/kbT);
     r=rand;
     if (r < p_acc)
@@ -109,17 +100,10 @@ for iSamp=1:nSamp
         X_s = XsProp;
         XMP = XMP+DeltaMP;
         nAcc = nAcc+1;
-        if (OversampCheb)
-            dX = XonNp1Mat*dParams;
-            deltaX=ResampFromNp1*dX;
-        else 
-            deltaX = dX;
-            if (~SecondOrderEnergy)
-                deltaX = ResampForC*dX;
-            end
-        end
+        dX = XonNp1Mat*dParams;
     end
-    if (mod(iSamp,saveEvery)==0)
+    if (iSamp > (nSamp-nSaveSamples))
+        deltaX=ResampFromNp1*dX;
         if (penaltyCoeff > 0)
             SecOrderCoeffs = Vtrue2nd'*Wts*deltaX;
             MeanSqSecCoeffs = MeanSqSecCoeffs+SecOrderCoeffs.*SecOrderCoeffs;
@@ -128,24 +112,9 @@ for iSamp=1:nSamp
             ChainDev = deltaX'*Wts*deltaX;
             MeanDev = MeanDev+ChainDev;
         else
-%             X3 = reshape(deltaX,3,[]);
-%             KeyPoints = X3(:,SampleInds);
-%             EndBinNum = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,end))/L*nBins),nBins); % [0,1000]
-%             AllEndToEndDists(iTrial,EndBinNum)=AllEndToEndDists(iTrial,EndBinNum)+1;
-%             MidBinNum = min(ceil(norm(KeyPoints(:,2)-KeyPoints(:,4))/(0.5*L)*nBins),nBins);
-%             AllMiddleHalfDists(iTrial,MidBinNum) = AllMiddleHalfDists(iTrial,MidBinNum)+1;
-%             EMidBinNum1 = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,3))/(0.5*L)*nBins),nBins); 
-%             EMidBinNum2 = min(ceil(norm(KeyPoints(:,5)-KeyPoints(:,3))/(0.5*L)*nBins),nBins); 
-%             AllEndToMiddleDists(iTrial,EMidBinNum1) = ...
-%                 AllEndToMiddleDists(iTrial,EMidBinNum1)+1; 
-%             AllEndToMiddleDists(iTrial,EMidBinNum2) = ...
-%                 AllEndToMiddleDists(iTrial,EMidBinNum2)+1;
-%             EQtrBinNum1 = min(ceil(norm(KeyPoints(:,1)-KeyPoints(:,2))/(0.25*L)*nBins),nBins); 
-%             EQtrBinNum2 = min(ceil(norm(KeyPoints(:,5)-KeyPoints(:,4))/(0.25*L)*nBins),nBins);
-%             AllEndToQuarterDists(iTrial,EQtrBinNum1) = ...
-%                 AllEndToQuarterDists(iTrial,EQtrBinNum1)+1; 
-%             AllEndToQuarterDists(iTrial,EQtrBinNum2) = ...
-%                 AllEndToQuarterDists(iTrial,EQtrBinNum2)+1;
+            X3 = reshape(deltaX,3,[]);
+            KeyPoints = X3(:,SampleInds);
+            EndToEndDists(iSamp-(nSamp-nSaveSamples))=norm(X3(1,:)-X3(end,:));
 %             % Tangent vector dot products
 %             for iPt=1:N
 %                 for jPt=iPt:N
@@ -155,8 +124,6 @@ for iSamp=1:nSamp
 %                     TanVecDots(index)=TanVecDots(index)+dot(X_s(iPt,:),X_s(jPt,:));
 %                 end
 %             end
-            ind = floor(iSamp/saveEvery+1e-5)+1;
-            AllXPos(:,ind,iTrial)=dX;
         end
     end
 end
@@ -167,6 +134,7 @@ AllMeanSecCoeffs(iTrial,:)=MeanSqSecCoeffs/nSaveSamples;
 AllMeanDevs(iTrial) = MeanDev/nSaveSamples;
 AllCovMats(:,:,iTrial)=CovMat/nSaveSamples;
 AllPositions(:,iTrial)=dX;
+AllEndToEndDists(:,iTrial)=EndToEndDists;
 toc
 %save(strcat('SpecMCMCFreeConstKbT_N',num2str(N),'_Lp',num2str(lpstar),'.mat'))
 end
