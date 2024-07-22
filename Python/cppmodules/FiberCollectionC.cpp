@@ -299,7 +299,7 @@ class FiberCollectionC {
         return makePyDoubleArray(AllDownVels);
     }
        
-    py::array evalLocalVelocities(npDoub pyChebPoints, npDoub pyForces, bool includeFP, bool Fat){
+    py::array evalLocalVelocities(npDoub pyChebPoints, npDoub pyForces, bool includeFP, bool CorrectFat){
         /*
         Evaluate the local velocities M_local*f on the fiber.
         */
@@ -310,6 +310,7 @@ class FiberCollectionC {
         std::memcpy(ChebPoints.data(),pyChebPoints.data(),pyChebPoints.size()*sizeof(double));
         std::memcpy(Forces.data(),pyForces.data(),pyForces.size()*sizeof(double));
         
+        int sysDim=3*_nXPerFib;
         vec AllLocalVelocities(ChebPoints.size(),0.0);
         int NFibIn = ChebPoints.size()/(3*_nXPerFib); // determine how many fibers we are working with
         #pragma omp parallel for num_threads(_nOMPThr) firstprivate(_MobilityEvaluator, _FatMobilityEvaluator)
@@ -321,12 +322,18 @@ class FiberCollectionC {
                 LocalPts[iPt]=ChebPoints[start+iPt];
                 LocalForces[iPt]=Forces[start+iPt];
             }
-            vec MLoc(9*_nXPerFib*_nXPerFib), EigVecs(9*_nXPerFib*_nXPerFib), EigVals(3*_nXPerFib);
-            if (Fat){
-                _FatMobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MLoc,EigVecs,EigVals);
-            } else {
-                _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MLoc,EigVecs,EigVals);
+            vec MWsym(sysDim*sysDim), EigVecs(sysDim*sysDim), EigVals(sysDim);
+            _MobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MWsym);
+            if (CorrectFat){
+                vec MWsymFat(sysDim*sysDim);
+                _FatMobilityEvaluator.MobilityForceMatrix(LocalPts, includeFP, MWsymFat);
+                // Compute the difference 
+                for (uint i=0; i < sysDim*sysDim; i++){
+                    MWsym[i]-=MWsymFat[i];
+                }
             }
+            // Do the eigenvalue decomp
+            SymmetrizeAndDecomposePositive(sysDim, MWsym,  _MobilityEvaluator.getEigThreshold(), EigVecs, EigVals); 
             vec LocalVel(3*_nXPerFib);
             ApplyMatrixPowerFromEigDecomp(3*_nXPerFib, 1.0, EigVecs, EigVals, LocalForces, LocalVel);  
             for (int iPt=0; iPt < 3*_nXPerFib; iPt++){

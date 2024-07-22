@@ -3,7 +3,6 @@ from DiscretizedFiber import DiscretizedFiber
 from SpatialDatabase import SpatialDatabase, ckDSpatial, CellLinkedList
 from FiberCollectionC import FiberCollectionC
 import copy
-import numba as nb
 import scipy.sparse as sp
 import time
 from math import sqrt, exp, pi
@@ -344,8 +343,8 @@ class fiberCollection(object):
         if (not self._nonLocal):
             return self.LocalVelocity(X,TotalForce);
         if (not SameSelf):
-            Local = self.LocalVelocity(X,TotalForce);
-            nonLocal = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval);
+            Local = self.LocalVelocity(X,TotalForce,CorrectFat=True);
+            nonLocal = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval,subSelf=False);
             return Local+nonLocal;
         else:
             return self.nonLocalVelocity(X,TotalForce,Dom,RPYEval,subSelf=False);
@@ -601,19 +600,14 @@ class fiberCollection(object):
         if (verbose>=0):
             print('Upsampled Ewald time %f' %(time.time()-thist));
             thist=time.time();
-        SelfTermsDownGrid = 0;
-        if (subSelf):
-            if (self._FatCorrection):
-                SelfTermsDownGrid = self.LocalVelocity(X,forces,Fat=True);
-            else:         
-                SelfTerms = self.SubtractSelfTerms(self._Ndirect,Xupsampled,Fupsampled,RPYEval._a,RPYEval.NeedsGPU());
-                RPYVelocityUp -= SelfTerms;
-                SelfTermsDownGrid = 0;
+        if (subSelf):      
+            SelfTerms = self.SubtractSelfTerms(self._Ndirect,Xupsampled,Fupsampled,RPYEval._a,RPYEval.NeedsGPU());
+            RPYVelocityUp -= SelfTerms;
         if (verbose>=0):
             print('Self time %f' %(time.time()-thist));
             thist=time.time();
         RPYVelocity = self.getDownsampledVelocity(RPYVelocityUp);
-        RPYVelocity =  np.reshape(RPYVelocity,self._Nfib*self._NXpf*3)-SelfTermsDownGrid;
+        RPYVelocity =  np.reshape(RPYVelocity,self._Nfib*self._NXpf*3);
         if (verbose>=0):
             print('Downsampling time %f' %(time.time()-thist));
         if (np.any(np.isnan(RPYVelocity))):
@@ -1116,7 +1110,7 @@ class fiberCollection(object):
         	raise ValueError('You are getting zero velocity with finite force, your UAMMD precision is wrong!') 
         return np.reshape(MF,(self._Nfib*Ndir,3));
         
-    def LocalVelocity(self,X,Forces,Fat=False):
+    def LocalVelocity(self,X,Forces,CorrectFat=False):
         """
         Compute the local velocity on each fiber. Given a vector of points
         and forces, this method computes $$U = M_L[X]F.$$ The nature of $M_L$
@@ -1134,7 +1128,7 @@ class fiberCollection(object):
         array
             The local velocity $M_L[X]F$ on all fibers as a 1D array
         """
-        return self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc, Fat);
+        return self._FibColCpp.evalLocalVelocities(X,Forces,self._FPLoc, CorrectFat);
     
     def evalU0(self,Xin,t):
         """
