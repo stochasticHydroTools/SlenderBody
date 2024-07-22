@@ -343,7 +343,7 @@ class fiberCollection(object):
         if (not self._nonLocal):
             return self.LocalVelocity(X,TotalForce);
         if (not SameSelf):
-            Local = self.LocalVelocity(X,TotalForce,CorrectFat=True);
+            Local = self.LocalVelocity(X,TotalForce,CorrectFat=self._FatCorrection);
             nonLocal = self.nonLocalVelocity(X,TotalForce,Dom,RPYEval,subSelf=False);
             return Local+nonLocal;
         else:
