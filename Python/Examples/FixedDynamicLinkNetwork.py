@@ -43,10 +43,9 @@ copyInput = open(InputCopyName,'w')
 Input = open('SemiflexBundleInputFile.txt','r')
 for iLine in Input:
 	copyInput.write(iLine);
-#copyInput.write('COMMAND LINE ARGS \n')
-#copyInput.write('CLseed = '+str(seed)+'\n')
-#copyInput.write('dt = '+str(dt)+'\n')
-#copyInput.write('lp = '+str(lp)+'\n')
+copyInput.write('COMMAND LINE ARGS \n')
+copyInput.write('CLseed = '+str(seed)+'\n')
+copyInput.write('dt = '+str(dt)+'\n')
 copyInput.close();
 Input.close();
     
@@ -54,22 +53,31 @@ Input.close();
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,\
-    NupsampleForDirect=NupsampleForDirect,RPYSpecialQuad=RPYQuad,RPYDirectQuad=RPYDirect,RPYOversample=RPYOversample,
-    nptsUniform=Nuniformsites);
+fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
+    RPYOversample=(not RPYQuad),NupsampleForDirect=NupsampleForDirect,nptsUniform=Nuniformsites);
     
+fibDiscFat=None;
+RPYRadius = fibDisc._a;   
+if (nonLocal and FluctuatingFibs): # Fat discretization
+    eps_Star = 1e-2*4/np.exp(1.5);
+    fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,\
+        NupsampleForDirect=NupsampleForDirect,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
+    RPYRadius = fibDiscFat._a; 
+        
 # Initialize the master list of fibers
 if (FluctuatingFibs):
-    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs);
+    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,\
+        gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs,fibDiscFat=fibDiscFat);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs);
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,\
+        kbT,nThreads=nThr,rigidFibs=rigidFibs,fibDiscFat=fibDiscFat);
     
 Ewald = None;
 if (nonLocal==1):
     totnumDir = fibDisc._nptsDirect*nFib;
     xi = 3*totnumDir**(1/3)/Ld; # Ewald param
     xiHalf = xi;
-    Ewald = GPUEwaldSplitter(fibDisc._a,mu,xi,Dom,fibDisc._nptsDirect*nFib,xiHalf);   
+    Ewald = GPUEwaldSplitter(RPYRadius,mu,xi,Dom,fibDisc._nptsDirect*nFib,xiHalf);   
 
 # Initialize the fiber list (straight fibers)
 nStericPts = int(1/eps);

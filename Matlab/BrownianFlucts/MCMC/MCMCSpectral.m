@@ -2,21 +2,19 @@ addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
 % Generate initial chain
 L = 1;
 kbT = 4.1e-3; % pN * um
-lp = L;
+lp = 10*L;
 K_b = lp*kbT;
-a = 1e-2;
-eps=a/L;
 nSamp = 1e7;
-saveEvery = 2e4;
 nSaveSamples = 0.8*nSamp;
-nTrial = 3;
-OversampCheb = 1;
-N = 4; % number tangent vectors
+nTrial = 10;
+N = 24; % number tangent vectors
 UConst = 7.5e-3*L;
 TauConst=0.04*sqrt(L/lp)*12/N;
 lpstar = (K_b)/kbT*1/L;
 PenaltyForceInsteadOfFlow = 0;
 penaltyCoeff = 1.6e4/L^3*kbT*PenaltyForceInsteadOfFlow;
+a = 1e-2;
+eps=a/L;
 
 %%% Base state
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
@@ -62,7 +60,6 @@ end
 AllMeanCoeffs = zeros(nTrial,3*N);
 AllMeanSecCoeffs = zeros(nTrial,3*length(xUni));
 AllMeanDevs = zeros(nTrial,1);
-AllEndToEndDists = zeros(nTrial,nBins);
 Deltas = zeros(N);
 for iPt=1:N
     for jPt=iPt:N
@@ -72,7 +69,8 @@ end
 Deltas = unique(Deltas(:));
 AllTanVecDots = zeros(nTrial,length(Deltas));
 AllCovMats = zeros(3*length(xUni),3*length(xUni),nTrial);
-AllEndToEndDists = zeros(nSaveSamples,nTrial);
+nBins=1000;
+AllEndToEndDists = zeros(nTrial,nBins);
 
 for iTrial=1:nTrial
 disp(strcat('New trial = ',num2str(iTrial)))
@@ -81,7 +79,6 @@ MeanSqCoeffs = zeros(3*N,1);
 TanVecDots = zeros(length(Deltas),1);
 nSamplesDs = zeros(length(Deltas),1);
 MeanSqSecCoeffs = zeros(3*length(xUni),1);
-EndToEndDists = zeros(nSaveSamples,1);
 MeanDev = 0;
 CovMat = zeros(3*length(xUni));
 for iSamp=1:nSamp
@@ -112,9 +109,10 @@ for iSamp=1:nSamp
             ChainDev = deltaX'*Wts*deltaX;
             MeanDev = MeanDev+ChainDev;
         else
-            X3 = reshape(deltaX,3,[]);
-            KeyPoints = X3(:,SampleInds);
-            EndToEndDists(iSamp-(nSamp-nSaveSamples))=norm(X3(1,:)-X3(end,:));
+            X3 = reshape(deltaX,3,[])';
+            EEDist=norm(X3(1,:)-X3(end,:));
+            EndBinNum = min(ceil(EEDist/L*nBins),nBins); % [0,1000]
+            AllEndToEndDists(iTrial,EndBinNum)=AllEndToEndDists(iTrial,EndBinNum)+1;
 %             % Tangent vector dot products
 %             for iPt=1:N
 %                 for jPt=iPt:N
@@ -133,10 +131,9 @@ AllMeanCoeffs(iTrial,:) = MeanSqCoeffs/nSaveSamples;
 AllMeanSecCoeffs(iTrial,:)=MeanSqSecCoeffs/nSaveSamples;
 AllMeanDevs(iTrial) = MeanDev/nSaveSamples;
 AllCovMats(:,:,iTrial)=CovMat/nSaveSamples;
-AllPositions(:,iTrial)=dX;
-AllEndToEndDists(:,iTrial)=EndToEndDists;
+%AllPositions(:,iTrial)=dX;
 toc
-%save(strcat('SpecMCMCFreeConstKbT_N',num2str(N),'_Lp',num2str(lpstar),'.mat'))
+save(strcat('SpecMCMCFreeL',num2str(L),'_ConstKbT_N',num2str(N),'_Lp',num2str(lpstar),'.mat'))
 end
 %exit;
 

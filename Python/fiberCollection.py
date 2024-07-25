@@ -101,16 +101,16 @@ class fiberCollection(object):
         else:
             svdRigidTol = svdTolerance;
             
-        aFat = fibDisc._a;
+        self._aFat = fibDisc._a;
         if (fibDiscFat is not None):
             if (fibDiscFat._a <= fibDisc._a):
                 raise ValueError('You cannot have the fatter discretization be skinnier')    
             if (not fibDisc._RPYSpecialQuad):
                 raise ValueError('You cannot use the fat discretization unless you have special quad')  
-            aFat = fibDiscFat._a;     
+            self._aFat = fibDiscFat._a;     
             
         self._FibColCpp = FiberCollectionC(nFibs,self._NXpf,self._NTaupf,nThreads,self._rigid,\
-            fibDisc._a,aFat,fibDisc._L,self._mu,self._kbT,svdTolerance,svdRigidTol,fibDisc._RPYSpecialQuad,\
+            fibDisc._a,self._aFat,fibDisc._L,self._mu,self._kbT,svdTolerance,svdRigidTol,fibDisc._RPYSpecialQuad,\
             fibDisc._RPYDirectQuad,fibDisc._RPYOversample);
         self._FibColCpp.initMatricesForPreconditioner(fibDisc._D4BCForce,  \
             fibDisc._D4BCForceHalf,fibDisc._XonNp1MatNoMP,fibDisc._XsFromX,\
@@ -338,6 +338,9 @@ class fiberCollection(object):
     
     def TotalVelocity(self,X,TotalForce,Dom,RPYEval):
         SameSelf = self._fiberDisc._RPYDirectQuad or self._fiberDisc._RPYOversample;
+        # Double check that the Ewald radius is the fattened radius
+        if (abs(RPYEval._a-self._aFat) > 1e-12):
+            raise ValueError('Mismatch in RPY radius and fiber discretization radius')
         if (self._fiberDisc._RPYDirectQuad):
             print('Not sure direct quad really makes sense')
         if (not self._nonLocal):
@@ -1267,8 +1270,8 @@ class SemiflexiblefiberCollection(fiberCollection):
         super().__init__(nFibs,turnovertime, fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,fibDiscFat,nThreads,rigidFibs,dt);
         self._iT = 0;
         SPDMatrix = self._fiberDisc._RPYDirectQuad or self._fiberDisc._RPYOversample;
-        #if (self._nonLocal==1 and not SPDMatrix and fibDiscFat is None):
-        #    raise TypeError('If doing nonlocal hydro with fluctuations, can only do direct quadrature or oversampled or fat discretization')
+        if (self._nonLocal==1 and not SPDMatrix and fibDiscFat is None):
+            raise TypeError('If doing nonlocal hydro with fluctuations, can only do direct quadrature or oversampled or fat discretization')
         
     ## ====================================================
     ##      PUBLIC METHODS NEEDED EXTERNALLY

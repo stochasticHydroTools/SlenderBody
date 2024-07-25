@@ -329,7 +329,7 @@ class TemporalIntegrator(object):
                 print('WARNING: GMRES did not actually converge. The error at the last residual was %f' %resno[len(resno)-1])
             lamalph=np.reshape(lamalphT,len(lamalphT))+BlockDiagAnswer;
             #print('RHS max %f' %np.amax(np.abs(RHS)))
-            res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
+            #res=self._allFibers.CheckResiduals(lamalph,self._impco*dt,XforNL,XsforNL,Dom,Ewald,tvalSolve,ExForces=ExForce);
             #print(np.amax(np.abs(res)))
             #resno = Solution.resnorms
             #print(resno)

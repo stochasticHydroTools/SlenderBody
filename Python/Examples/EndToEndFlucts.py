@@ -21,15 +21,15 @@ obtained from MCMC.
 """
 
 # Inputs 
-nFib = 100         # number of fibers
+nFib = 200         # number of fibers
 N = 12          # number of points per fiber
-Lf = 2            # length of each fiber
+Lf = 1            # length of each fiber
 nonLocal = True
-nThr = 8;   # Number of OpenMP threads
+nThr = 16;   # Number of OpenMP threads
 # Mobility options (can do SBT if all are set to false, otherwise some variant of RPY as described below)
-RPYQuad = True;        # Special quadrature
-NupsampleForDirect = 100; # Number of pts for oversampled quad
-Ld=3;        # length of the periodic domain
+RPYQuad = False;        # Special quadrature
+NupsampleForDirect = 500; # Number of pts for oversampled quad
+Ld=2;        # length of the periodic domain
 mu=1            # fluid viscosity
 logeps = 3;
 eps=10**(-logeps)*4/exp(1.5);       # slenderness ratio (aRPY/L=1e-3). The factor 4/exp(1.5) converts to actual fiber slenderness. 
@@ -38,10 +38,11 @@ kbT = 4.1e-3;
 Eb=lpstar*kbT*Lf;         # fiber bending stiffness
 tfund = 0.003*4*np.pi*mu*Lf**4/(np.log(10**logeps)*Eb) 
 tf = 10*tfund;
-dtfund = 0.00025;
+dtfund = 0.001;
 dt = tfund*dtfund;
+print(dt)
 penaltyParam = 0;
-seed = 1;
+seed = int(sys.argv[1]);
 saveEvery = max(np.floor(0.01/dtfund),1);#int(tf/(nSaves*dt)+1e-6);
 
 MobStr = 'OS'+str(NupsampleForDirect);
