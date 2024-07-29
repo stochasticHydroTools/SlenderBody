@@ -191,6 +191,7 @@ class fiberCollection(object):
         self._fibList = fibListIn;
         self._DomLens = Dom.getLens();
         for iFib in range(self._Nfib):
+            print(iFib)
             # Initialize memory
             self._fibList[iFib] = DiscretizedFiber(self._fiberDisc);
             Intersect = True;

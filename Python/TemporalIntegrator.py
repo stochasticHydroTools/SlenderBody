@@ -458,12 +458,8 @@ class TemporalIntegrator(object):
                 print('Time to calc CL force %f' %(time.time()-thist))
                 thist = time.time()
         
-        nContacts = 0;
         if (StericEval is not None):
-            Touching, _ = StericEval.CheckContacts(XforNL,Dom, excludeSelf=True);
-            nContacts, _ = Touching.shape;
             forceExt +=StericEval.StericForces(XforNL,Dom);
-            #print('Number of contacts %d' %nContacts)
             if (verbose > 0):
                 print('Time to calc steric force %f' %(time.time()-thist))
                 thist = time.time()
@@ -503,9 +499,11 @@ class TemporalIntegrator(object):
                 print('Stress time %f' %(time.time()-thist))
                 thist = time.time()
                 
-                   
+        nContacts=-1;          
         if (write):
             self._allFibers.writeFiberLocations(outfile);
+            Touching, _ = StericEval.CheckContacts(self._allFibers._ptsCheb,Dom, excludeSelf=True);
+            nContacts, _ = Touching.shape;
         return maxX, itsneeded, stressArray, nContacts;    
      
     

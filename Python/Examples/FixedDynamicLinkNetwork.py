@@ -58,7 +58,7 @@ fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
     
 fibDiscFat=None;
 RPYRadius = fibDisc._a;   
-if (nonLocal and FluctuatingFibs): # Fat discretization
+if (nonLocal and FluctuatingFibs and RPYQuad): # Fat discretization
     eps_Star = 1e-2*4/np.exp(1.5);
     fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,\
         NupsampleForDirect=NupsampleForDirect,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
@@ -80,14 +80,13 @@ if (nonLocal==1):
     Ewald = GPUEwaldSplitter(RPYRadius,mu,xi,Dom,fibDisc._nptsDirect*nFib,xiHalf);   
 
 # Initialize the fiber list (straight fibers)
-nStericPts = int(1/eps);
+nStericPts = int(1/eps); # Used for contact checking / pre-computations only
 if (NsegForSterics > 0):
     StericEval = SegmentBasedStericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,NsegForSterics,nThreads=nThr);
 else: 
     StericEval = StericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,nThr);
 if (not Sterics):
     StericEval._DontEvalForce = True;
-    StericEval._DontEvalContact = True;
     
 np.random.seed(seed);
 fibList = [None]*nFib;

@@ -1,7 +1,7 @@
 import numpy as np
 from CrossLinkForceEvaluator import CrossLinkForceEvaluator as CForceEvalCpp
 from warnings import warn 
-from SpatialDatabase import CellLinkedList
+from SpatialDatabase import CellLinkedList, ckDSpatial
 from StericForceEvaluatorC import StericForceEvaluatorC
 import time
 verbose = -1;
@@ -57,11 +57,10 @@ class StericForceEvaluator(object):
                 self._DLens[iD] = 1e99;
         self._CppEvaluator = StericForceEvaluatorC(nFib, Nx, Nunisites,self._su,self._Rupsamp, self._DLens,nThreads)
         Xuniform = self._CppEvaluator.getUniformPoints(X,'u');
-        self._NeighborSearcher = CellLinkedList(Xuniform,Dom,nThreads);
-        self._TwoFibNeighborSearcher = CellLinkedList(Xuniform[:2*self._NUni,:],Dom,nThreads);
+        self._NeighborSearcher = ckDSpatial(Xuniform,Dom,nThreads);
+        self._TwoFibNeighborSearcher = ckDSpatial(Xuniform[:2*self._NUni,:],Dom,nThreads);
         self.SetForceParameters(kbT);
         self._DontEvalForce = False;
-        self._DontEvalContact = False;
     
     def SetForceParameters(self,kbT):
         """
@@ -150,8 +149,6 @@ class StericForceEvaluator(object):
             the indices of neighboring uniform points (points within the cutoff distance).
             The second is the uniform points. 
         """
-        if (self._DontEvalContact):
-            return np.zeros((0,2)), 0;
         if (verbose > 0):
             thist = time.time();
         if (Cutoff is None):
