@@ -151,7 +151,8 @@ AllLocalAlignment[0,:] = LocalAlignment;
 saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
 
 ItsNeed = np.zeros(stopcount);
-nContacts = np.zeros(stopcount);
+nContacts[0]=0;
+nContacts = np.zeros(numSaves);
         
 # Simulate 
 for iT in range(stopcount): 
@@ -159,7 +160,7 @@ for iT in range(stopcount):
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
         mythist = time.time()
-    maxX, ItsNeed[iT], _, nContacts[iT] = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+    maxX, ItsNeed[iT], _, nContactsThis = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
         updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover,StericEval=StericEval);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
@@ -170,6 +171,7 @@ for iT in range(stopcount):
         saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
+        nContacts[saveIndex]=nContactsThis;
         #if (seed==1):
         #    ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
         #    CLNet.writeLinks(ofCL)
