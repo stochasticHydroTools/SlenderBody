@@ -86,7 +86,7 @@ class StericForceEvaluator(object):
         self._delta = nRadiusPerStd*self._radius;
         nStdsToCutoff = 4;
         self._CutoffDistance = nStdsToCutoff*self._delta;
-        F0 = 400*kbT/(self._delta)*np.sqrt(2/np.pi);
+        F0 = 4*kbT/(self._radius**2*self._delta)*np.sqrt(2/np.pi);
         self._CppEvaluator.SetForceFcnParameters(self._delta,F0,self._CutoffDistance)
         
         
