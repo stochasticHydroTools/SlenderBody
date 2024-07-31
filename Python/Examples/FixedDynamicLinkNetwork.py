@@ -151,8 +151,8 @@ AllLocalAlignment[0,:] = LocalAlignment;
 saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
 
 ItsNeed = np.zeros(stopcount);
-nContacts[0]=0;
 nContacts = np.zeros(numSaves);
+nContacts[0]=0;
         
 # Simulate 
 for iT in range(stopcount): 
