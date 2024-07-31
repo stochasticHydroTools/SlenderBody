@@ -153,7 +153,6 @@ saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
 ItsNeed = np.zeros(stopcount);
 nContacts = np.zeros(numSaves);
 nContacts[0] = 0;
-
 # Simulate 
 for iT in range(stopcount): 
     wr=0;
