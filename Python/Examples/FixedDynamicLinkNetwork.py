@@ -89,8 +89,12 @@ if (not Sterics):
     StericEval._DontEvalForce = True;
     
 np.random.seed(seed);
-fibList = [None]*nFib;
-allFibers.RSAFibers(fibList,Dom,StericEval,nDiameters=2);
+if (InFileString is None):
+    fibList = [None]*nFib;
+    allFibers.RSAFibers(fibList,Dom,StericEval,nDiameters=2);
+else:
+    XFile = 'BundlingBehavior/FinalLocs'+InFileString;
+    allFibers.initFibList(fibList,Dom,XFile);
 # allFibers.initFibList(fibList,Dom);
 
 # Initialize the network of cross linkers
@@ -101,7 +105,10 @@ print('Number uniform sites %d' %fibDisc._nptsUniform)
 CLNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring,\
     rl,konCL,koffCL,konSecond,koffSecond,seed,Dom,fibDisc,nThreads=nThr,\
     bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce);
-CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSecond)) # just to load up CLs
+if (InFileString is None):
+    CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSecond)) # just to load up CLs
+else:
+    CLNet.setLinksFromFile('BundlingBehavior/FinalLinks'+InFileString,'BundlingBehavior/FinalFreeLinkBound'+InFileString);
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
 
 # Initialize the temporal integrator
