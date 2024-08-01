@@ -498,13 +498,10 @@ class TemporalIntegrator(object):
             if (verbose > 0):
                 print('Stress time %f' %(time.time()-thist))
                 thist = time.time()
-                
-        nContacts=-1;          
+     
         if (write):
             self._allFibers.writeFiberLocations(outfile);
-            Touching, _ = StericEval.CheckContacts(self._allFibers._ptsCheb,Dom, excludeSelf=True);
-            nContacts, _ = Touching.shape;
-        return maxX, itsneeded, stressArray, nContacts;    
+        return maxX, itsneeded, stressArray;    
      
     
     @staticmethod

@@ -80,7 +80,7 @@ if (nonLocal==1):
     Ewald = GPUEwaldSplitter(RPYRadius,mu,xi,Dom,fibDisc._nptsDirect*nFib,xiHalf);   
 
 # Initialize the fiber list (straight fibers)
-nStericPts = int(1/eps); # Used for contact checking / pre-computations only
+nStericPts = 1000;#int(1/eps); # Used for contact checking / pre-computations only
 if (NsegForSterics > 0):
     StericEval = SegmentBasedStericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,NsegForSterics,nThreads=nThr);
 else: 
@@ -89,8 +89,8 @@ if (not Sterics):
     StericEval._DontEvalForce = True;
     
 np.random.seed(seed);
+fibList = [None]*nFib;
 if (InFileString is None):
-    fibList = [None]*nFib;
     allFibers.RSAFibers(fibList,Dom,StericEval,nDiameters=2);
 else:
     XFile = 'BundlingBehavior/FinalLocs'+InFileString;
@@ -160,13 +160,19 @@ saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
 ItsNeed = np.zeros(stopcount);
 nContacts = np.zeros(numSaves);
 nContacts[0] = 0;
+
+print('Number of initial contacts')
+_, _, FibContacts=StericEval.CheckContacts(allFibers._ptsCheb,Dom, excludeSelf=True);
+nCont, _ = FibContacts.shape;
+print(nCont)
+
 # Simulate 
 for iT in range(stopcount): 
     wr=0;
     if ((iT % saveEvery) == (saveEvery-1)):
         wr=1;
         mythist = time.time()
-    maxX, ItsNeed[iT], _, nContactsThis = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
+    maxX, ItsNeed[iT], _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
         updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover,StericEval=StericEval);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
@@ -177,7 +183,10 @@ for iT in range(stopcount):
         saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
-        nContacts[saveIndex]=nContactsThis;
+        _, _, FibContacts=StericEval.CheckContacts(allFibers._ptsCheb,Dom, excludeSelf=True);
+        nCont, _ = FibContacts.shape;
+        print('Number of contacts %d' %nCont)
+        nContacts[saveIndex]=nCont;
         #if (seed==1):
         #    ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
         #    CLNet.writeLinks(ofCL)

@@ -86,7 +86,7 @@ class StericForceEvaluator(object):
         self._delta = nRadiusPerStd*self._radius;
         nStdsToCutoff = 4;
         self._CutoffDistance = nStdsToCutoff*self._delta;
-        F0 = 4*kbT/(self._radius**2*self._delta)*np.sqrt(2/np.pi);
+        F0 = 1000*kbT/(self._radius*self._delta)*np.sqrt(2/np.pi);
         self._CppEvaluator.SetForceFcnParameters(self._delta,F0,self._CutoffDistance)
         
         
@@ -115,7 +115,7 @@ class StericForceEvaluator(object):
             tiii = time.time();
         if (self._DontEvalForce):
             return 0
-        ClosePts, UniformPts = self.CheckContacts(X,Dom,Cutoff=self._CutoffDistance);
+        ClosePts, UniformPts, _ = self.CheckContacts(X,Dom,Cutoff=self._CutoffDistance);
         if (verbose > 0):
             print('Time for neighbor search %f ' %(time.time()-tiii))
             tiii = time.time();
@@ -162,11 +162,13 @@ class StericForceEvaluator(object):
             Fibs = self.mapUniPtToFiber(uniNeighbs);
             delInds = np.arange(len(Fibs[:,0]));
             ClosePts = np.delete(uniNeighbs,delInds[Fibs[:,0]==Fibs[:,1]],axis=0);
-            return ClosePts, Xuniform;
+            Fibs = np.delete(Fibs,delInds[Fibs[:,0]==Fibs[:,1]],axis=0);
+            CloseFibs = np.unique(Fibs,axis=0);
+            return ClosePts, Xuniform, CloseFibs;
         if (verbose > 0):
             print('Neighbor search and organize time %f ' %(time.time()-thist))  
             thist = time.time();
-        return uniNeighbs, Xuniform
+        return uniNeighbs, Xuniform, None;
     
     def CheckIntersectWithPrev(self,fibList,iFib,Dom,nDiameters):
         """
