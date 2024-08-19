@@ -79,3 +79,4 @@ for iT in range(stopcount):
     maxX,_,_,_ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,Ewald,write=True,outfile=FileString);
     print(maxX)
 
+
