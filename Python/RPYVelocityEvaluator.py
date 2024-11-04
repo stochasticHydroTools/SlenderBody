@@ -81,8 +81,12 @@ class RPYVelocityEvaluator(object):
         
     def calcMOneHalfW(self,ptsxyz,Dom,nThr=1):
         """
-        This method is used to call the GPU code to compute 
-        $M[X]^{1/2} W$ when doing Brownian dynamics simulations.         
+        This method is used to compute
+        $M[X]^{1/2} W$ when doing Brownian dynamics simulations.     
+        In free space (which is this abstract class), this method
+        will actually compute the full dense RPY matrix $M$, then 
+        do $M^{1/2}$ densely using built-in python code, and multiply
+        this result by a random Gaussian vector.      
 
         Parameters
         ----------
@@ -90,6 +94,8 @@ class RPYVelocityEvaluator(object):
             $N \\times 3$ array of point locations
         Dom: Domain object
             The domain where the computation is done 
+        nThr: integer
+            Number of parallel threads
 
         Returns
         --------
@@ -101,10 +107,8 @@ class RPYVelocityEvaluator(object):
         # First check if Ewald parameter is ok
         M = self._RPYcpp.RPYMatrixFreeSpace(ptsxyz,nThr);
         W = np.random.randn(3*self._Npts,1);
-        np.savetxt('RandVecRPY.txt',W);
         Mhalf = sqrtm(M);
         MhalfW = np.dot(Mhalf,W);
-        np.savetxt('MhalfWR.txt',MhalfW);
         return MhalfW;
 
 ## Some parameters specific to Ewald

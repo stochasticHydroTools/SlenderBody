@@ -46,7 +46,7 @@ class FibCollocationDiscretization(object):
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
-        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=True,UseEnergyDisc=True,\
+        RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=True,UseEnergyDisc=True,\
         FPIsLocal=True,penaltyParam=0):
         """
         Constructor. 
@@ -81,8 +81,6 @@ class FibCollocationDiscretization(object):
         nptsUniform: int 
             Number of uniform points we use for resampling in external (typically cross linking)
             calculations
-        rigid: bool
-            If the fibers are rigid
         RPYSpecialQuad: bool
             Whether to use special quadrature for the mobility
         RPYDirectQuad: bool
@@ -254,7 +252,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
     ##           METHODS FOR INITIALIZATION
     ## ===========================================
     def __init__(self, L, epsilon,Eb=1,mu=1,N=16,deltaLocal=1,NupsampleForDirect=64,nptsUniform=16,\
-        rigid=False,RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True,penaltyParam=0):
+        RPYSpecialQuad=False,RPYDirectQuad=False,RPYOversample=False,UseEnergyDisc=True, FPIsLocal=True,penaltyParam=0):
         """
         Initialize Chebyshev grids for $X$ and $\\tau$.
         
@@ -268,7 +266,7 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         for explanation. 
         Otherwise, we use a grid of type 2 (endpoints included). 
         """
-        super().__init__(L,epsilon,Eb,mu,N,deltaLocal,NupsampleForDirect,nptsUniform,rigid,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc,FPIsLocal);
+        super().__init__(L,epsilon,Eb,mu,N,deltaLocal,NupsampleForDirect,nptsUniform,RPYSpecialQuad,RPYDirectQuad,RPYOversample,UseEnergyDisc,FPIsLocal);
 		# Chebyshev grid and weights
         self._sTau = cf.chebPts(self._Ntau,[0,self._L],chebGridType);
         self._wTau = cf.chebWts(self._Ntau,[0,self._L],chebGridType);
@@ -357,13 +355,9 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         """
         This method computes a threshold eigenvalue for the matrix $M_{SQ}$, describing
         the hydrodynamics on a single fiber computed via special quadrature on the RPY
-        integral. The procedure is to oversample to $1/\\epsilon$ points, then form the
-        mobility matrix 
-        $$M_{ref} = \\widetilde{W}^{-1} E_{up} W_{up} M_{RPY, up} W_{up} E_{up} \\widetilde{W}^{-1}$$
-        using $N_{up}=1/\\epsilon$ oversampled points on a straight fiber (the calculaton is 
-        relatively insensitive to the fiber shape). We then return the smallest eigenvalue
-        of this matrix, and use that as a threshold to modify any negative eigenvalues that 
-        come about as a result of special quadrature.
+        integral. The most recent study found that a small threshold is sufficient (1e-3),
+        without going through formal calculations for oversampling (older versions of code).
+        
         Note that if the mobility is RPYDirectQuad or RPYOversample, we set the eigenvalue 
         threshold to zero, since in those two cases we are guaranteed to have an SPD matrix 
         and never need eigenvalue truncation.

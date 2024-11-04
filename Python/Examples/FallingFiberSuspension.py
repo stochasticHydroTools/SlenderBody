@@ -41,11 +41,11 @@ Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 # Initialize fiber discretization
 RPYQuad=True
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
-    RPYOversample=(not RPYQuad),NupsampleForDirect=100);
+    RPYOversample=(not RPYQuad),NupsampleForDirect=100,rigid=True);
 FatCor=False;
 eps_Star = 1e-2*4/np.exp(1.5);
 fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,\
-    NupsampleForDirect=100,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
+    NupsampleForDirect=100,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad,rigid=True);
 if (not FatCor):
     fibDiscFat=None;
 

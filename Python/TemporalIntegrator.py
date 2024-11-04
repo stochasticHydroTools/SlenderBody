@@ -401,15 +401,12 @@ class TemporalIntegrator(object):
         
         Returns
         --------
-        (double, int, array, int)
+        (double, int, array)
             The first returned argument is the maximum absolute position of the fibers at the end
             of the time step (this is used to check stability). The second is the number of iterations
             needed to solve the GMRES system at that time step. The third is the $3 \\times 3$ array of
             the stress (due to the fibers only, not counting the background fluid stress) in the 
-            suspension, if it is computed (otherwise it returns all zeros). The last output is the 
-            number of contacts between the fibers, as measured by resampling to uniform points. This 
-            last output is zero unless StericEval is provided to compute steric forces and evaluate 
-            contacts.
+            suspension, if it is computed (otherwise it returns all zeros).
         """   
         # Birth / death fibers
         thist = time.time() 

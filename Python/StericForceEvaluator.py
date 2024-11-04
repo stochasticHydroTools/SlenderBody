@@ -66,15 +66,16 @@ class StericForceEvaluator(object):
         """
         Throughout this class, we use an energy density (between two 
         spheres) given by
-        $$\\hat{\\mathcal{E}}(r) = \\frac{\\mathcal{E}_0}{a^2}\\textrm{erf}\\left(r/(\\delta \\sqrt{2})\\right),$$
+        $$\\hat{\\mathcal{E}}(r) = \\frac{\\mathcal{E}_0}{a \delta}\\textrm{erf}\\left(r/(\\delta \\sqrt{2})\\right),$$
         where $a$ is the fiber radius (set in the constructor). The force between blobs 
         is the derivative of energy 
-        $$\\frac{d \\mathcal{E}}{d r} = \\frac{\\mathcal{E}_0}{a^2 \\delta} \\sqrt{\\frac{2}{\\pi}} \\exp{(-r^2/(2\\delta^2))}$$
+        $$\\frac{d \\mathcal{E}}{d r} = \\frac{\\mathcal{E}_0}{a \\delta} \\sqrt{\\frac{2}{\\pi}} \\exp{(-r^2/(2\\delta^2))}$$
         times the displacement vector between points. 
         
         The purpose of this function is to set the parameters of the force and 
         energy functions. We set $\\delta = a$ (although that can be changed here), 
-        $\\mathcal{E}_0=4 k_B T$, and set the the cutoff for the Gaussian at four 
+        $\\mathcal{E}_0=1000 k_B T$ (it has units of energy/length=force),
+        and set the the cutoff for the Gaussian at four 
         standard deviations.
         
         Parameters
