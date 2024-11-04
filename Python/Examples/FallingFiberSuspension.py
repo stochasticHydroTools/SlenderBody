@@ -14,17 +14,6 @@ Three sheared fibers example. See Section 7.4.2 in Maxian's PhD thesis
 for more information on the set-up. 
 """
 
-def makeThreeSheared(Lf,N,fibDisc):
-    """
-    Initialize the three fibers for the shear simulation for a given N and fiber length Lf. 
-    fibDisc = the collocation discretization of the fiber
-    """
-    Xs13 = np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T;
-    fibList = [None]*2;
-    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,0.5]));
-    fibList[1] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,0]));
-    return fibList;
-
 # Inputs 
 nFib=400          # number of fibers
 N=16;           # number of tangent vectors per fiber
@@ -44,8 +33,8 @@ dt = 5e-6*tscale/gDen;
 giters = 1;   # Number of GMRES iterations. The number of iterations on the residual hydrodynamic system is giters-1. 
               # So if this number is set to 1 it will do hydrodynamic interactions explicitly by time lagging.
 seed=1;
-nThr=16;
-FluctuatingFibs=True;
+nThr=12;
+FluctuatingFibs=False;
 
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
@@ -53,7 +42,7 @@ Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 RPYQuad=True
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
     RPYOversample=(not RPYQuad),NupsampleForDirect=100);
-FatCor=True;
+FatCor=False;
 eps_Star = 1e-2*4/np.exp(1.5);
 fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,\
     NupsampleForDirect=100,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
@@ -101,7 +90,7 @@ else:
 TIntegrator.setMaxIters(giters);
 
 # Prepare the output file and write initial locations
-FileString='D05400FallingBRNNLHydro_G'+str(gDen)+'_N'+str(N)+'SQFat100_'+str(seed)+'.txt'
+FileString='D05400FallingDETNLHydro_G'+str(gDen)+'_N'+str(N)+'SQFat100_'+str(seed)+'.txt'
 allFibers.writeFiberLocations(FileString,'w');
 saveEvery = 10;
 
@@ -127,3 +116,4 @@ for iT in range(stopcount):
         print('Number of iterations %d' %ItsNeed[iT])
     
 np.savetxt('ItsNeeded_'+FileString,ItsNeed);
+np.savetxt('nContacts_'+FileString,nContacts);

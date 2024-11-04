@@ -1,11 +1,11 @@
 N = 13;
 F = 200;
 step = F*N;
-FileName = 'UnifStericsBundlingLp2.0Dt_1e-05';
-LoadFileName = strcat(FileName,'_1.txt'); % ALWAYS LOOK @ MOVIE!
+FileName = 'Eps2StVisualize';
+LoadFileName = strcat(FileName,'.txt'); % ALWAYS LOOK @ MOVIE!
 Locs=load(strcat('Locs',LoadFileName));
 Labels=load(strcat('FinalLabels_Sep',LoadFileName));
-cd '../../Python/plots/Sterics'
+cd '/home/ondrejmaxian/Documents/SLENDER_FIBERS/SlenderBody/Python/plots/HydroStericsPaper'
 NBundlesPerstep_Sep = load(strcat('NumberOfBundles_Sep',LoadFileName));
 
 

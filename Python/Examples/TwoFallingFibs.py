@@ -21,7 +21,7 @@ def makeThreeSheared(Lf,N,fibDisc):
     """
     Xs13 = np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T;
     fibList = [None]*2;
-    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,0.5]));
+    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,3]));
     fibList[1] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,0]));
     return fibList;
 
@@ -29,7 +29,7 @@ def makeThreeSheared(Lf,N,fibDisc):
 nFib=2          # number of fibers
 N=int(sys.argv[1]);           # number of tangent vectors per fiber
 Lf=1            # length of each fiber
-nonLocal=False     # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
+nonLocal=True     # doing nonlocal solves? 0 = local drag, 1 = nonlocal hydro. See fiberCollection.py for full list of values. 
 Ld=10          # length of the periodic domain
 mu=1            # fluid viscosity
 eps=1e-3        # slenderness ratio
@@ -61,10 +61,10 @@ FluctuatingFibs=True;
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-RPYQuad=True
+RPYQuad=False
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
-    RPYOversample=(not RPYQuad),NupsampleForDirect=100);
-FatCor=True;
+    RPYOversample=(not RPYQuad),NupsampleForDirect=30);
+FatCor=False;
 eps_Star = 1e-2*4/np.exp(1.5);
 fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,\
     NupsampleForDirect=100,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
@@ -106,9 +106,9 @@ else:
 TIntegrator.setMaxIters(giters);
 
 # Prepare the output file and write initial locations
-FileString='D05TwoFallingBRNLocHydro_G'+str(gDen)+'_N'+str(N)+'SQFat100_'+str(seed)+'.txt'
+FileString='D05TwoFallingBRNLocHydro_G'+str(gDen)+'_N'+str(N)+'OS2000_Per.txt'
 allFibers.writeFiberLocations(FileString,'w');
-saveEvery = 10;
+saveEvery = 1;
 
 # Time loop
 stopcount = int(tf/dt+1e-10);

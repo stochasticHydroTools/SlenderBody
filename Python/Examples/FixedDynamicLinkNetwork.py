@@ -80,7 +80,7 @@ if (nonLocal==1):
     Ewald = GPUEwaldSplitter(RPYRadius,mu,xi,Dom,fibDisc._nptsDirect*nFib,xiHalf);   
 
 # Initialize the fiber list (straight fibers)
-nStericPts = 1000;#int(1/eps); # Used for contact checking / pre-computations only
+nStericPts = int(1/eps); # Used for contact checking / pre-computations only
 if (NsegForSterics > 0):
     StericEval = SegmentBasedStericForceEvaluator(nFib,fibDisc._Nx,nStericPts,fibDisc,allFibers._ptsCheb, Dom, eps*Lf,kbT,NsegForSterics,nThreads=nThr);
 else: 
@@ -130,10 +130,10 @@ np.random.seed(seed);
 # Barymat for the quarter points
 LocsFileName = 'BundlingBehavior/Locs'+FileString;
 allFibers.writeFiberLocations(LocsFileName,'w');
-#if (seed==1):
-#    ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
-#    CLNet.writeLinks(ofCL)
-#   ofCL.close()
+if (seed==1):
+    ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
+    CLNet.writeLinks(ofCL)
+    ofCL.close()
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -159,12 +159,9 @@ saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
 
 ItsNeed = np.zeros(stopcount);
 nContacts = np.zeros(numSaves);
-nContacts[0] = 0;
-
-print('Number of initial contacts')
 _, _, FibContacts=StericEval.CheckContacts(allFibers._ptsCheb,Dom, excludeSelf=True);
 nCont, _ = FibContacts.shape;
-print(nCont)
+nContacts[0] = nCont;
 
 # Simulate 
 for iT in range(stopcount): 
@@ -187,10 +184,10 @@ for iT in range(stopcount):
         nCont, _ = FibContacts.shape;
         print('Number of contacts %d' %nCont)
         nContacts[saveIndex]=nCont;
-        #if (seed==1):
-        #    ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
-        #    CLNet.writeLinks(ofCL)
-        #   ofCL.close()
+        if (seed==1):
+            ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
+            CLNet.writeLinks(ofCL)
+            ofCL.close()
                
         # Bundles where connections are 2 links
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);

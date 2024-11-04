@@ -2,12 +2,12 @@ addpath(genpath('/home/om759/Documents/SLENDER_FIBERS'));
 % Generate initial chain
 L = 1;
 kbT = 4.1e-3; % pN * um
-lp = 10*L;
+lp = 2*L;
 K_b = lp*kbT;
 nSamp = 1e7;
 nSaveSamples = 0.8*nSamp;
 nTrial = 10;
-N = 24; % number tangent vectors
+N = 12; % number tangent vectors
 UConst = 7.5e-3*L;
 TauConst=0.04*sqrt(L/lp)*12/N;
 lpstar = (K_b)/kbT*1/L;

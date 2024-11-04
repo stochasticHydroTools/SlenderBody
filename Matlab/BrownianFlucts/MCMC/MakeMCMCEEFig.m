@@ -1,6 +1,4 @@
-names = ["SpecMCMCFreeConstKbT_N12_Lp1.mat" ...
-    "SpecMCMCFreeConstKbT_N24_Lp1.mat" "SpecMCMCFreeConstKbT_N36_Lp1.mat" ...
-    "SpecMCMCFreeConstKbT_N48_Lp1.mat" "FreeUnifMCMCkbT_Lp1.mat"];
+names = ["SpecMCMCFreeL1_ConstKbT_N12_Lp2.mat" ];
 for iName = 1:length(names)
 load(names(iName))
 plotIndex=iName;
@@ -28,7 +26,7 @@ set(gca,'ColorOrderIndex',plotIndex)
 h(plotIndex)=plot(histmps/L,mean(L*ChebHistCounts));
 end
 hold on
-errorBarEvery=5;
+errorBarEvery=2;
 if (plotIndex==length(names))
 errorbar(histmps(plotIndex:errorBarEvery:end)/L,...
     mean(L*ChebHistCounts(:,plotIndex:errorBarEvery:end)),...
