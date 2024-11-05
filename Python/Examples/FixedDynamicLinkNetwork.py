@@ -56,6 +56,7 @@ Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
     RPYOversample=(not RPYQuad),NupsampleForDirect=NupsampleForDirect,nptsUniform=Nuniformsites);
     
+# Automatically initialize the fat mobility
 fibDiscFat=None;
 RPYRadius = fibDisc._a;   
 if (nonLocal and FluctuatingFibs and RPYQuad): # Fat discretization

@@ -14,7 +14,7 @@ See Sections 4 and 5 in
 "Semiflexible bending fluctuations in inextensible slender filaments in Stokes flow: towards a spectral discretization"
 by O. Maxian, B. Sprinkle, and A. Donev. 
 
-This can also be found in Section 8.4 of Maxian's PhD thesis.
+This can also be found in Section 6.1 of Maxian & Donev (2024). 
 
 The goal of this is to measure the equilibrium distribution of fiber lengths and make sure that it matches that
 obtained from MCMC. 
@@ -61,7 +61,7 @@ Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 # Define discretization and fiber collection
 fibDisc = ChebyshevDiscretization(Lf, eps,Eb,mu,N,NupsampleForDirect=NupsampleForDirect,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
 Ewald = None;
-if (RPYQuad and nonLocal):
+if (RPYQuad and nonLocal): # initialize fat mobility
     eps_Star = 1e-2*4/np.exp(1.5);
     fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,NupsampleForDirect=NupsampleForDirect,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
     allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,0,0,Dom,kbT,nThreads=nThr,fibDiscFat=fibDiscFat);

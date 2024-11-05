@@ -10,18 +10,18 @@ import numpy as np
 import sys
 
 """
-Three sheared fibers example. See Section 7.4.2 in Maxian's PhD thesis 
-for more information on the set-up. 
+Two falling fibers example; see Section 6.2 of Maxian & Donev (2024)
 """
 
-def makeThreeSheared(Lf,N,fibDisc):
+def makeTwoFalling(Lf,N,fibDisc):
     """
-    Initialize the three fibers for the shear simulation for a given N and fiber length Lf. 
+    Initialize the two fibers for the simulation for a given N and fiber length Lf. 
     fibDisc = the collocation discretization of the fiber
     """
+    d=0.5; # initial separation
     Xs13 = np.concatenate(([np.ones(N)],[np.zeros(N)],[np.zeros(N)]),axis=0).T;
     fibList = [None]*2;
-    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,3]));
+    fibList[0] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,d]));
     fibList[1] = DiscretizedFiber(fibDisc,np.reshape(Xs13,3*N),np.array([0,0,0]));
     return fibList;
 
@@ -61,22 +61,22 @@ FluctuatingFibs=True;
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
-RPYQuad=False
+RPYQuad=True
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
-    RPYOversample=(not RPYQuad),NupsampleForDirect=30);
-FatCor=False;
+    RPYOversample=(not RPYQuad),NupsampleForDirect=100);
+FatCor=True;
 eps_Star = 1e-2*4/np.exp(1.5);
 fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,\
     NupsampleForDirect=100,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
 if (not FatCor):
     fibDiscFat=None;
-
+    
 # Initialize the master list of fibers
 if (FluctuatingFibs):
     allFibers = SemiflexiblefiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,kbT,fibDiscFat=fibDiscFat,nThreads=2);
 else:
     allFibers = fiberCollection(nFib,10,fibDisc,nonLocal,mu,omega,gam0,Dom,0,fibDiscFat=fibDiscFat);
-fibList = makeThreeSheared(Lf,N,fibDisc);
+fibList = makeTwoFalling(Lf,N,fibDisc);
 allFibers.initFibList(fibList,Dom);
 allFibers.fillPointArrays();
 

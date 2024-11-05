@@ -66,7 +66,7 @@ class fiberCollection(object):
         kbT: double 
             The thermal energy
         fibDiscFat: FibCollocationDiscretization object
-            A discretization object for a "fatter" fiber
+            A discretization object for a "fatter" fiber, necessary to preserve SPD behavior in Brownian sims
         nThreads: int (default is 1)
             The number of OMP threads for parallel calculations 
         rigidFibs: bool (default is False)
@@ -337,6 +337,27 @@ class fiberCollection(object):
         return np.concatenate((nonLocalVel,np.zeros(Block2Dim)));
     
     def TotalVelocity(self,X,TotalForce,Dom,RPYEval):
+        """ 
+        The total velocity $U=M F$. If we are only doing local drag (self._nonLocal=0), 
+        gives the local velocity. Otherwise, gives the full nonlocal velocity (including
+        the self term), checking if it needs to go through the fat discretization or not. 
+        
+        Parameters
+        ----------
+        X: array
+            The Chebyshev points of the fibers
+        TotalForce: array
+            The forces on all fibers
+        Dom: Domain object
+            The domain where the calculation happens
+        RPYEval: RPYVelocityEvaluator object
+            Object that evaluates the RPY velocity 
+            
+        Returns
+        --------
+        array
+            The velocity $U$
+        """
         SameSelf = self._fiberDisc._RPYDirectQuad or self._fiberDisc._RPYOversample;
         # Double check that the Ewald radius is the fattened radius
         if (abs(RPYEval._a-self._aFat) > 1e-12):

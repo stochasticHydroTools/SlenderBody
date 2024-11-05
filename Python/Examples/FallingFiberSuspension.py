@@ -10,8 +10,7 @@ import numpy as np
 import sys
 
 """
-Three sheared fibers example. See Section 7.4.2 in Maxian's PhD thesis 
-for more information on the set-up. 
+Falling fiber suspension, which appears in Section 6.2.4 of Maxian & Donev (2024). 
 """
 
 # Inputs 
@@ -34,18 +33,18 @@ giters = 1;   # Number of GMRES iterations. The number of iterations on the resi
               # So if this number is set to 1 it will do hydrodynamic interactions explicitly by time lagging.
 seed=1;
 nThr=12;
-FluctuatingFibs=False;
+FluctuatingFibs=True;
 
 Dom = PeriodicShearedDomain(Ld,Ld,Ld);
 
 # Initialize fiber discretization
 RPYQuad=True
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
-    RPYOversample=(not RPYQuad),NupsampleForDirect=100,rigid=True);
-FatCor=False;
+    RPYOversample=(not RPYQuad),NupsampleForDirect=100);
+FatCor=True; # whether to do a correction for the fat mobility
 eps_Star = 1e-2*4/np.exp(1.5);
 fibDiscFat = ChebyshevDiscretization(Lf, eps_Star,Eb,mu,N,\
-    NupsampleForDirect=100,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad,rigid=True);
+    NupsampleForDirect=100,RPYOversample=(not RPYQuad),RPYSpecialQuad=RPYQuad);
 if (not FatCor):
     fibDiscFat=None;
 
