@@ -286,6 +286,10 @@ class ChebyshevDiscretization(FibCollocationDiscretization):
         self._MatfromNtoUniform = np.zeros((3*self._nptsUniform,3*self._Nx));
         for iD in range(3):
             self._MatfromNtoUniform[iD::3,iD::3]=MatfromNtoUniform;
+        MatfromNtautoUniform = cf.ResamplingMatrix(self._nptsUniform,self._Ntau,'u',chebGridType);
+        self._MatfromNtautoUniform = np.zeros((3*self._nptsUniform,3*self._Ntau));
+        for iD in range(3):
+            self._MatfromNtautoUniform[iD::3,iD::3]=MatfromNtautoUniform;
     
     def calcXFromXsMap(self):
         """

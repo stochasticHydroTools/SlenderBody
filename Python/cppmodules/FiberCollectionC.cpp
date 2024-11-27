@@ -86,10 +86,12 @@ class FiberCollectionC {
         _FatMobilityEvaluator.SetEigValThreshold(Thresh);
     }
     
-    void initResamplingMatrices(int Nuniform, npDoub pyMatfromNtoUniform){    
+    void initResamplingMatrices(int Nuniform, npDoub pyMatfromNtoUniform, npDoub pyMatfromNtauToUniform){    
         _nUni = Nuniform;
         _UnifRSMat = vec(pyMatfromNtoUniform.size());
         std::memcpy(_UnifRSMat.data(),pyMatfromNtoUniform.data(),pyMatfromNtoUniform.size()*sizeof(double));
+        _UnifFromTauMat = vec(pyMatfromNtauToUniform.size());
+        std::memcpy(_UnifFromTauMat.data(),pyMatfromNtauToUniform.data(),pyMatfromNtauToUniform.size()*sizeof(double));
     }
     
     void initMatricesForPreconditioner(npDoub pyD4BCForce, npDoub pyD4BCForceHalf,
@@ -214,6 +216,25 @@ class FiberCollectionC {
             BlasMatrixProduct(3*_nUni,3*_nXPerFib,1,1.0,0.0,_UnifRSMat,false,FiberPoints,LocalUniPts);
             for (int i=0; i < 3*_nUni; i++){
                 AllUniPoints[3*_nUni*iFib+i] = LocalUniPts[i];
+            }
+        }
+        return makePyDoubleArray(AllUniPoints);
+    }
+    
+    py::array getUniformTanVecs(npDoub pyTanVecs){
+        vec tanVecs(pyTanVecs.size());
+        std::memcpy(tanVecs.data(),pyTanVecs.data(),pyTanVecs.size()*sizeof(double));
+        vec AllUniPoints(3*_NFib*_nUni);
+        #pragma omp parallel for num_threads(_nOMPThr)
+        for (int iFib = 0; iFib < _NFib; iFib++){
+            vec FiberTau(3*_nTauPerFib);
+            vec LocalUniTau(3*_nUni);
+            for (int i=0; i < 3*_nTauPerFib; i++){
+                FiberTau[i] = tanVecs[3*_nTauPerFib*iFib+i];
+            }
+            BlasMatrixProduct(3*_nUni,3*_nTauPerFib,1,1.0,0.0,_UnifFromTauMat,false,FiberTau,LocalUniTau);
+            for (int i=0; i < 3*_nUni; i++){
+                AllUniPoints[3*_nUni*iFib+i] = LocalUniTau[i];
             }
         }
         return makePyDoubleArray(AllUniPoints);
@@ -886,7 +907,7 @@ class FiberCollectionC {
     // Basic force
     int _nOMPThr, _NFib, _nXPerFib, _nTauPerFib;
     int _nUni, _nUpsample;
-    vec _UnifRSMat, _BendMatX0;
+    vec _UnifRSMat, _UnifFromTauMat, _BendMatX0;
     double _svdtol, _svdRigid, _kbT;
     bool _rigid;
     SingleFiberMobilityEvaluator _MobilityEvaluator, _FatMobilityEvaluator;
@@ -982,6 +1003,7 @@ PYBIND11_MODULE(FiberCollectionC, m) {
         .def("evalStressFromForce",&FiberCollectionC::evalStressFromForce)
         .def("evalDriftPartofStress",&FiberCollectionC::evalDriftPartofStress)
         .def("getUniformPoints", &FiberCollectionC::getUniformPoints)
+        .def("getUniformTanVecs", &FiberCollectionC::getUniformTanVecs)
         .def("getUpsampledPoints", &FiberCollectionC::getUpsampledPoints)
         .def("getUpsampledForces", &FiberCollectionC::getUpsampledForces)
         .def("getDownsampledVelocities", &FiberCollectionC::getDownsampledVelocities)

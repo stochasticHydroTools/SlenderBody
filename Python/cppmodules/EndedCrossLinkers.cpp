@@ -14,13 +14,11 @@ C++ class for a cross-linked network where we track each end separately
 This class is bound to python using pybind11
 See the end of this file for bindings.
 
-There are 6 reactions
+There are 4 reactions
 1) Binding of a floating link to one site (rate _kon)
 2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
 3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)
 4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
-5) Binding of both ends of a CL (rate _kDoubleOn)
-6) Unbinding of both ends of a CL (rate _kDoubleOff)
 **/
 
 extern "C"{ // functions from fortran MinHeapModule.f90 for the heap that manages the events
@@ -52,8 +50,6 @@ class EndedCrossLinkedNetwork {
         _konSecond = rates[1];
         _koff = rates[2];
         _koffSecond = rates[3];
-        _kDoubleOn = rates[4];
-        _kDoubleOff = rates[5];
         _FreeLinkBound = intvec(TotSites,0);
         _TotalNumberBound = intvec(TotSites,0);
         _MaxNumberPerSite = maxLinksPerSite;
@@ -61,6 +57,7 @@ class EndedCrossLinkedNetwork {
         //std::cout << "Array size " << _maxLinks << std::endl;
         _LinkHeads = intvec(_maxLinks,-1);
         _LinkTails = intvec(_maxLinks,-1);
+        _UnbindingRates = vec(_maxLinks,0);
         _LinkShiftsPrime = vec(3*_maxLinks,0); // these are in the primed coordinate space
         initializeHeap(_maxLinks+_TotSites+4);
         rng.seed(CLseed);
@@ -72,6 +69,12 @@ class EndedCrossLinkedNetwork {
         _restlen = restlen;
         _KStiffness = KStiffness;
 
+     }
+     
+     void SetMotorParams(double UnloadedRate, double StallForce, int SitesPerFib){
+        _UnloadedRate=UnloadedRate;
+        _FStall = StallForce;
+        _NSitesPerFib = SitesPerFib;
      }
 
      ~EndedCrossLinkedNetwork(){
@@ -86,11 +89,7 @@ class EndedCrossLinkedNetwork {
         column is the bound end and the second column is the unbound end, of possible
         link binding site pairs.
         pyuniPts = 2D numpy array of uniform points. g = strain in coordinate system
-        
-        // TODO: Add motion of the links (motors). New event where links move down one site
-        // with some rate. Rejected if one of the sites is full. Each link should have a 
-        // velocity that gets passed in. The rate of motion is then vel/(site length). Then 
-        // add that to the heap.
+       
         */
         // Convert numpy to C++ vector and reset heap for the beginning of the step
         intvec MaybeBindingPairs(pyMaybeBindingPairs.size());
@@ -158,25 +157,17 @@ class EndedCrossLinkedNetwork {
         }
 
         // One end of CL unbinding
-        double RateSecondUnbind = 2*_koffSecond*_nDoubleBoundLinks;
         int indexSecondUnbind = indexFreeUnbinding+_TotSites;
-        TimeAwareHeapInsert(indexSecondUnbind,RateSecondUnbind,0,tstep);
-
-        // Events for double binding and unbinding
-        double RateDoubleBind = _kDoubleOn*nTruePairs;
-        int indexDoubleBind = indexSecondUnbind+1;
-        TimeAwareHeapInsert(indexDoubleBind,RateDoubleBind,0,tstep);
-
-        double RateDoubleUnbind = _kDoubleOff*_nDoubleBoundLinks;
-        int indexDoubleUnbind = indexSecondUnbind+2;
-        TimeAwareHeapInsert(indexDoubleUnbind,RateDoubleUnbind,0,tstep);
+        for (int iLink=0; iLink < _nDoubleBoundLinks; iLink++){
+            _UnbindingRates[iLink]=2*_koffSecond;
+            TimeAwareHeapInsert(indexSecondUnbind+iLink,_UnbindingRates[iLink],0,tstep);
+        }
 
         double systime;
         int eventindex, BoundEnd, UnboundEnd;
         topOfHeap(eventindex,systime);
         //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
         while (eventindex > 0) {
-            bool linkChange = false;
             if (eventindex==indexFreeBinding){ // end binding, choose random site and bind an end
                 //std::cout << "Index " << eventindex << ", single binding at time " << systime << std::endl;
                 BoundEnd = int(unif(rng)*_TotSites);
@@ -191,61 +182,49 @@ class EndedCrossLinkedNetwork {
                 //std::cout << "Index " << eventindex << ", single unbinding at time " << systime << std::endl;
                 _FreeLinkBound[BoundEnd]--;
                 _TotalNumberBound[BoundEnd]--;  // that end loses a link
-            } else if (eventindex == indexSecondUnbind || eventindex==indexDoubleUnbind){ // CL unbinding
-                int linkNum = int(unif(rng)*_nDoubleBoundLinks);
+            } else if (eventindex >= indexSecondUnbind){ // CL unbinding
+                int linkNum = eventindex - indexSecondUnbind;
                 BoundEnd = _LinkHeads[linkNum];
                 UnboundEnd = _LinkTails[linkNum];
                 if (unif(rng) < 0.5){
                     BoundEnd = _LinkTails[linkNum];
                     UnboundEnd = _LinkHeads[linkNum];
                 }
-                deleteLink(linkNum);
+                deleteLink(linkNum); // this will replace the link by the last one in the list
+                TimeAwareHeapInsert(eventindex,_UnbindingRates[linkNum],systime,tstep);
+                TimeAwareHeapInsert(indexSecondUnbind+_nDoubleBoundLinks,0,systime,tstep); // remove last one
                 _TotalNumberBound[UnboundEnd]--; // Only the unbound end loses a link
-                linkChange = true;
-                if (eventindex == indexSecondUnbind){
-                    // Add a free end at the other site. Always assume the remaining bound end is at the left
-                    //std::cout << "Index " << eventindex << ", CL end unbind at time " << systime << std::endl;
-                    _FreeLinkBound[BoundEnd]++;
-                } else{ // both ends unbind at once
-                    //std::cout << "Index " << eventindex << ", CL both ends unbind at time " << systime << std::endl;
-                    _TotalNumberBound[BoundEnd]--;
-                }
+                // Add a free end at the other site. Always assume the remaining bound end is at the left
+                //std::cout << "Index " << eventindex << "link num " << linkNum << " sites " << BoundEnd << " , " << UnboundEnd <<
+                //    ", CL end unbind at time " << systime << std::endl;
+                _FreeLinkBound[BoundEnd]++;
             } else { // CL binding
                 // The index now determines which pair of sites the CL is binding to
                 // In addition, we always assume the bound end is the one at the left
-                int pairToBind;
-                if (eventindex == indexDoubleBind){
-                    //std::cout << "Index " << eventindex << ", CL both ends bind at time " << systime << std::endl;
-                    pairToBind = int(unif(rng)*nTruePairs);
-                    TimeAwareHeapInsert(indexDoubleBind,RateDoubleBind,systime,tstep);
-                } else{
-                    pairToBind = eventindex-1;
-                    //std::cout << "Index " << eventindex << ", CL link " << linkIndex << " both ends bind at time " << systime << std::endl;
-                }
+                int pairToBind = eventindex-1;
+                //std::cout << "Index " << eventindex << ", CL link " << pairToBind << " both ends bind at time " << systime << std::endl;
                 BoundEnd = SortedLinks[2*pairToBind];
                 UnboundEnd = SortedLinks[2*pairToBind+1];
                 // Link can only bind if the unbound end is available
                 if (_TotalNumberBound[UnboundEnd] < _MaxNumberPerSite){
                     _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
                     _LinkTails[_nDoubleBoundLinks] = UnboundEnd;
-                    if (eventindex == indexDoubleBind){
-                        _TotalNumberBound[UnboundEnd]++;
-                        _TotalNumberBound[BoundEnd]++;;
-                    } else { // unbound end picks up a link, bound end loses a free link
-                        _TotalNumberBound[UnboundEnd]++;
-                        _FreeLinkBound[BoundEnd]--; // one less free link bound
-                    }
+                    _UnbindingRates[_nDoubleBoundLinks] = 2*_koffSecond;
+                    TimeAwareHeapInsert(indexSecondUnbind+_nDoubleBoundLinks,_UnbindingRates[_nDoubleBoundLinks],systime,tstep);
+                     // unbound end picks up a link, bound end loses a free link
+                    _TotalNumberBound[UnboundEnd]++;
+                    _FreeLinkBound[BoundEnd]--; // one less free link bound
                     for (int d=0; d < 3; d++){
                         _LinkShiftsPrime[3*_nDoubleBoundLinks+d] = SortedShifts[3*pairToBind+d];
                     }
-                    _nDoubleBoundLinks+=1;
-                    linkChange = true;
+                    _nDoubleBoundLinks++;
                 } // otherwise nothing happens
             }
             if (_nDoubleBoundLinks == _maxLinks){ // double size of link arrays if necessary
                 _maxLinks*=2;
                 _LinkHeads.resize(_maxLinks);
                 _LinkTails.resize(_maxLinks);
+                _UnbindingRates.resize(_maxLinks);
                 _LinkShiftsPrime.resize(3*_maxLinks);
                 std::cout << "Expanding array size to " << _maxLinks << std::endl;
             }
@@ -257,17 +236,10 @@ class EndedCrossLinkedNetwork {
             //std::cout << "About to insert unbinding single end in heap with index " << BoundEnd+indexFreeUnbinding <<  std::endl;
             TimeAwareHeapInsert(BoundEnd+indexFreeUnbinding,RatesFreeUnbind[BoundEnd],systime,tstep);
 
-            // Update unbinding events (links)
-            if (linkChange){
-                RateSecondUnbind = 2*_koffSecond*_nDoubleBoundLinks;
-                TimeAwareHeapInsert(indexSecondUnbind,RateSecondUnbind,systime,tstep);
-                RateDoubleUnbind = _kDoubleOff*_nDoubleBoundLinks;
-                TimeAwareHeapInsert(indexDoubleUnbind,RateDoubleUnbind,systime,tstep);
-            }
             topOfHeap(eventindex,systime);
             //std::cout << "[" << eventindex << " , " << systime << "]" << std::endl;
             // Debugging check
-            /*intvec TotNum2(_TotSites, 0);
+            intvec TotNum2(_TotSites, 0);
             for (int iSite = 0; iSite < _TotSites; iSite++){
                 TotNum2[iSite] = _FreeLinkBound[iSite];
             }
@@ -280,13 +252,141 @@ class EndedCrossLinkedNetwork {
                     std::cout << "COUNTING ER!" << std::endl;
                     std::cout << "Tot number bound at site " << iSite << " = " << _TotalNumberBound[iSite] << std::endl;
                     std::cout << "Compared to " << iSite << " = " << TotNum2[iSite] << std::endl;
+                    return;
                 }
                 if (_TotalNumberBound[iSite] > _MaxNumberPerSite){
                     std::cout << "EXCEED MAX!" << std::endl;
                 }
-            }*/
+            }
         }
     }
+    
+    void WalkLinks(double tstep, npDoub pyuniPts, npDoub pyuniTanVecs, npDoub pyShifts){       
+        // TODO: Compile and test this simple method
+        // Not yet figured out: what happens when a link is sitting on the end. It 
+        // can't move, but could it unbind? Need to figure that out (shouldn't be too 
+        // big a deal to take it off)
+        // Convert numpy to C++ vector and reset heap for the beginning of the step
+        vec uniPts(pyuniPts.size());
+        std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
+        vec uniTanVecs(pyuniTanVecs.size());
+        std::memcpy(uniTanVecs.data(),pyuniTanVecs.data(),pyuniTanVecs.size()*sizeof(double));
+        vec Shifts(pyShifts.size());
+        std::memcpy(Shifts.data(),pyShifts.data(),pyShifts.size()*sizeof(double));
+        resetHeap();
+
+        // Walking of doubly-bound links (finite force)
+        vec RateMove(2*_nDoubleBoundLinks); // might not be needed
+        for (int iLink=0; iLink < _nDoubleBoundLinks; iLink++){
+            // Compute the force
+            int iPt = _LinkHeads[iLink];
+            int jPt = _LinkTails[iLink];
+            vec ParallelForces = ComputeParForce(iLink,iPt,jPt,uniPts,uniTanVecs,Shifts);
+            double RateMove_i = std::max(_UnloadedRate*(1+ParallelForces[0]/_FStall),0.0); // moving velocity
+            double RateMove_j = std::max(_UnloadedRate*(1+ParallelForces[1]/_FStall),0.0); // moving velocity
+            RateMove[2*iLink]=RateMove_i;
+            RateMove[2*iLink+1]=RateMove_j;
+            std::cout << "Rates of movement link " << iLink << " = " << RateMove[2*iLink] << " , " << RateMove[2*iLink+1] << std::endl;
+            // Add to heap
+            TimeAwareHeapInsert(2*iLink+1, RateMove_i,0,tstep);
+            TimeAwareHeapInsert(2*iLink+2, RateMove_j,0,tstep);
+        }
+        
+        // Walking of singly-bound link
+        int UnloadedStart = 2*_nDoubleBoundLinks+1;
+        vec RatesFreeMove(_TotSites);
+        for (int iSite = 0; iSite < _TotSites; iSite++){
+            RatesFreeMove[iSite] = _UnloadedRate*_FreeLinkBound[iSite];
+            TimeAwareHeapInsert(UnloadedStart+iSite, RatesFreeMove[iSite],0,tstep);
+        }
+
+        double systime;
+        int eventindex;
+        std::cout << "Try to find top of heap " << std::endl;
+        topOfHeap(eventindex,systime);
+        //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
+        while (eventindex > 0) {
+            std::cout << "System time " << systime << std::endl;
+            std::cout << "Event index " << eventindex << std::endl;
+            if (eventindex < UnloadedStart){ // Moving loaded links
+                int iLink = (eventindex-1)/2; 
+                bool IsTail = (eventindex % 2)==0;
+                std::cout << "Index (starts from 1!) " << eventindex << std::endl;
+                int PtToMove = _LinkHeads[iLink];
+                if (IsTail){
+                    PtToMove = _LinkTails[iLink];
+                }
+                std::cout << "PtToMove " << PtToMove << std::endl;
+                // Check that it can move to the next site
+                bool IsEnd = ((PtToMove+1) % _NSitesPerFib)==0;
+                bool IsFull = _TotalNumberBound[PtToMove+1]==_MaxNumberPerSite;
+                if (IsEnd || IsFull){
+                    std::cout << "Cannot move link because " << IsEnd << " , " << IsFull << std::endl;
+                    TimeAwareHeapInsert(eventindex, RateMove[eventindex-1],systime,tstep); // TEMP
+                } else{ // Move the link
+                    std::cout << "Link moving! " << std::endl;
+                    std::cout << "Old head and tail " << _LinkHeads[iLink] << " , " <<  _LinkTails[iLink] << std::endl;
+                    if (IsTail){
+                        _LinkTails[iLink]++;
+                    } else {
+                        _LinkHeads[iLink]++;
+                    }
+                    _TotalNumberBound[PtToMove]--;
+                    _TotalNumberBound[PtToMove+1]++;
+                    // Recompute force
+                    vec ParallelForces = ComputeParForce(iLink,_LinkHeads[iLink],_LinkTails[iLink],uniPts,uniTanVecs,Shifts);
+                    double RateMove_i = std::max(_UnloadedRate*(1+ParallelForces[0]/_FStall),0.0); // moving velocity
+                    double RateMove_j = std::max(_UnloadedRate*(1+ParallelForces[1]/_FStall),0.0); // moving velocity
+                    RateMove[2*iLink]=RateMove_i;
+                    RateMove[2*iLink+1]=RateMove_j;
+                    // Add to heap
+                    TimeAwareHeapInsert(2*iLink+1, RateMove_i,systime,tstep);
+                    TimeAwareHeapInsert(2*iLink+2, RateMove_j,systime,tstep);
+                    std::cout << "New head and tail " << _LinkHeads[iLink] << " , " <<  _LinkTails[iLink] << std::endl;
+                }
+            } else { // Moving unloaded links
+                int SiteToMove = eventindex - UnloadedStart;
+                bool IsEnd = ((SiteToMove+1) % _NSitesPerFib)==0;
+                bool IsFull = _TotalNumberBound[SiteToMove+1]==_MaxNumberPerSite;
+                if (IsEnd || IsFull){
+                    std::cout << "Cannot move link because " << IsEnd << " , " << IsFull << std::endl;
+                    TimeAwareHeapInsert(eventindex, RatesFreeMove[SiteToMove],systime,tstep); // TEMP
+                } else{ // Move the link
+                    _TotalNumberBound[SiteToMove]--;
+                    _FreeLinkBound[SiteToMove]--;
+                    _TotalNumberBound[SiteToMove+1]++;   
+                    _FreeLinkBound[SiteToMove+1]++;
+                    // Update the movement rate at these sites
+                    RatesFreeMove[SiteToMove] = _UnloadedRate*_FreeLinkBound[SiteToMove];
+                    RatesFreeMove[SiteToMove+1] = _UnloadedRate*_FreeLinkBound[SiteToMove+1];
+                    TimeAwareHeapInsert(UnloadedStart+SiteToMove, RatesFreeMove[SiteToMove],systime,tstep);
+                    TimeAwareHeapInsert(UnloadedStart+SiteToMove+1, RatesFreeMove[SiteToMove+1],systime,tstep);
+                }
+            }
+            topOfHeap(eventindex,systime);
+            intvec TotNum2(_TotSites, 0);
+            for (int iSite = 0; iSite < _TotSites; iSite++){
+                TotNum2[iSite] = _FreeLinkBound[iSite];
+            }
+            for (int iLink = 0; iLink < _nDoubleBoundLinks; iLink++){
+                TotNum2[_LinkHeads[iLink]]++;
+                TotNum2[_LinkTails[iLink]]++;
+            }
+            for (int iSite = 0; iSite < _TotSites; iSite++){
+                if (TotNum2[iSite] != _TotalNumberBound[iSite]){
+                    std::cout << "COUNTING ER!" << std::endl;
+                    eventindex=-1;
+                    std::cout << "Tot number bound at site " << iSite << " = " << _TotalNumberBound[iSite] << std::endl;
+                    std::cout << "Compared to " << iSite << " = " << TotNum2[iSite] << std::endl;
+                }
+                if (_TotalNumberBound[iSite] > _MaxNumberPerSite){
+                    std::cout << "EXCEED MAX!" << std::endl;
+                }
+            }
+        }
+        std::cout << "END" << std::endl;
+    }
+        
 
     void deleteLinksFromSites(npInt pySiteNumbers){
         // Traverse the lists in reverse order
@@ -374,16 +474,24 @@ class EndedCrossLinkedNetwork {
         std::memcpy(_LinkTails.data(),pyTails.data(),pyTails.size()*sizeof(int));
         std::memcpy(_LinkShiftsPrime.data(),pyShifts.data(),pyShifts.size()*sizeof(double));
         std::memcpy(_FreeLinkBound.data(),pyFreelyBoundPerSite.data(),pyFreelyBoundPerSite.size()*sizeof(int));
+        for (int iSite = 0; iSite < _TotSites; iSite++){
+            _TotalNumberBound[iSite] = _FreeLinkBound[iSite];
+        }
+        for (int iLink = 0; iLink < _nDoubleBoundLinks; iLink++){
+            _TotalNumberBound[_LinkHeads[iLink]]++;
+            _TotalNumberBound[_LinkTails[iLink]]++;
+        }
     }
 
     private:
-        int _TotSites, _nDoubleBoundLinks, _maxLinks, _MaxNumberPerSite;
-        double _kon, _konSecond, _koff, _koffSecond, _kDoubleOn, _kDoubleOff;// rates
+        int _TotSites, _nDoubleBoundLinks, _maxLinks, _MaxNumberPerSite, _NSitesPerFib;
+        double _kon, _konSecond, _koff, _koffSecond;// rates
         double _kT, _restlen, _KStiffness; // for distance-dependent binding
         double _upperCLBound, _lowerCLBound; // absolute distances
+        double _UnloadedRate, _FStall; // motors
         intvec _FreeLinkBound, _LinkHeads, _LinkTails, _TotalNumberBound;
         DomainC _Dom;
-        vec _LinkShiftsPrime;
+        vec _LinkShiftsPrime, _UnbindingRates;
         std::uniform_real_distribution<double> unif;
         std::mt19937_64 rng;
 
@@ -419,6 +527,32 @@ class EndedCrossLinkedNetwork {
             } else {
                 deleteFromHeap(index);
             }
+        }
+        
+        vec ComputeParForce(const int &iLink, const int &iPt,const int &jPt,const vec &uniPoints,
+            const vec &uniTanVecs, const vec &Shifts){
+            vec ParForces(2);
+            // Displacement vector
+            vec3 ds, tau_i, tau_j;
+            for (int d =0; d < 3; d++){
+                ds[d] = uniPoints[3*iPt+d] -  uniPoints[3*jPt+d] - Shifts[3*iLink+d];
+                tau_i[d] = uniTanVecs[3*iPt+d];
+                tau_j[d] = uniTanVecs[3*jPt+d];
+            }
+            std::cout << "The tangent vector 1 is " << tau_i[0] << " , " << tau_i[1] << " , " << tau_i[2] << std::endl;
+            std::cout << "The tangent vector 2 is " << tau_j[0] << " , " << tau_j[1] << " , " << tau_j[2] << std::endl;
+            std::cout << "ds is " << ds[0] << " , " << ds[1] << " , " << ds[2] << std::endl;
+            double nds = normalize(ds);
+            normalize(tau_i);
+            normalize(tau_j);
+            double dsDottau_i = dot(ds,tau_i);
+            double dsDottau_j = dot(ds,tau_j);
+            ParForces[0] = -_KStiffness*(nds-_restlen)*dsDottau_i;
+            ParForces[1] = _KStiffness*(nds-_restlen)*dsDottau_j;
+            std::cout << "Force mag = " << _KStiffness*(nds-_restlen) << std::endl;
+            std::cout << "Force mag i = " << ParForces[0] << std::endl;
+            std::cout << "Force mag j = " << ParForces[1] << std::endl;
+            return ParForces;
         }
 
         int EliminateLinksOutsideRange(const intvec &newLinkSites, const vec &uniPts, double g, vec &PrimedShifts, intvec &ActualPossibleLinks, vec &distances){
@@ -473,6 +607,7 @@ class EndedCrossLinkedNetwork {
             // Unbind it (remove from lists)
             _LinkHeads[linkNum] = _LinkHeads[_nDoubleBoundLinks-1];
             _LinkTails[linkNum] = _LinkTails[_nDoubleBoundLinks-1];
+            _UnbindingRates[linkNum] = _UnbindingRates[_nDoubleBoundLinks-1];
             for (int d=0; d < 3; d++){
                 _LinkShiftsPrime[3*linkNum+d] = _LinkShiftsPrime[3*(_nDoubleBoundLinks-1)+d];
             }
@@ -487,6 +622,8 @@ PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
     py::class_<EndedCrossLinkedNetwork>(m, "EndedCrossLinkedNetwork")
         .def(py::init<int, int, vec, vec3, vec, double, double, double, double>())
         .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
+        .def("WalkLinks",&EndedCrossLinkedNetwork::WalkLinks)
+        .def("SetMotorParams",&EndedCrossLinkedNetwork::SetMotorParams)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
         .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails)
         .def("getLinkShifts", &EndedCrossLinkedNetwork::getLinkShifts)

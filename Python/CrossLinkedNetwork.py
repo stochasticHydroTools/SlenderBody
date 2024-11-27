@@ -599,7 +599,17 @@ class CrossLinkedNetwork(object):
             of.write('%d \t %d \t %f \t %f \t %f \n' \
                 %(self._HeadsOfLinks[iL], self._TailsOfLinks[iL],self._PrimedShifts[iL,0],\
                     self._PrimedShifts[iL,1],self._PrimedShifts[iL,2]));
-       
+    
+    def writeLinkLocations(self,uniPoints,Dom,FileName):
+        """
+        Write the locations of the link heads and tails
+        """
+        shifts = Dom.unprimecoords(self._PrimedShifts);
+        with open(FileName,"ab") as f:
+            for iLink in range(self._nDoubleBoundLinks):
+                x=np.concatenate((uniPoints[self._HeadsOfLinks[iLink],:], uniPoints[self._TailsOfLinks[iLink],:]+shifts[iLink,:]));
+                np.savetxt(f, np.reshape(np.array([x]),(1,6)));
+            
     ## ==============================================
     ##     PRIVATE METHODS ONLY ACCESSED IN CLASS
     ## ==============================================

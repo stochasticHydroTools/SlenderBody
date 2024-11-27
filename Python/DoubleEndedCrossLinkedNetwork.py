@@ -37,7 +37,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     ##    METHODS FOR INITIALIZATION
     ## =============================== ##
-    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,kT=0,nThreads=1,bindingSiteWidth=0,smoothForce=True):
+    def __init__(self,nFib,N,Nunisites,Lfib,kCL,rl,kon,koff,konsecond,koffsecond,CLseed,Dom,fibDisc,\
+        UnloadedVel=0,StallForce=0,kT=0,nThreads=1,bindingSiteWidth=0,smoothForce=False):
         """
         Parameters
         ----------
@@ -72,6 +73,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             Periodic domain on which the calculation is being carried out
         fibDisc: FibCollocationDiscretization object
             The discretization of each fiber's centerline
+        UnloadedVel: double
+            If these objects are motors, this is the unloaded gliding speed
+        StallForce: double
+            If these objects are motors, this is the stall force
         kT: double
             Thermal energy. If zero, the binding of a second end occurs with rate konsecond (no 
             Arrhenius factor). If nonzero, then the rate is modified (see updateNetwork method for 
@@ -94,15 +99,14 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._konSecond = konsecond*self._ds;
         self._koff = koff;
         self._koffSecond = koffsecond;
-        self._kDoubleOn = 0; # half the real value because we schedule link binding as separate events
-        self._kDoubleOff = 0;
-        MaxLinks = max(2*int(konsecond/koffsecond*kon/koff*self._TotNumSites),100)
-        if (koffsecond < 1e-5):
+        if (koffsecond > 1e-3 and koff > 1e-3):
+            MaxLinks = max(2*int(konsecond/koffsecond*kon/koff*self._TotNumSites),100)
+        else:
             MaxLinks = 10;
         self._HeadsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._TailsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._PrimedShifts = np.zeros((MaxLinks,3));
-        allRates = [self._kon,self._konSecond,self._koff,self._koffSecond,self._kDoubleOn,self._kDoubleOff];
+        allRates = [self._kon,self._konSecond,self._koff,self._koffSecond];
         if (kT > 0):
             self._deltaL = 2*np.sqrt(kT/self._kCL); # Strain-dependent rate, modify self._deltaL to be 2 or 1/2 rest length
         CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
@@ -117,6 +121,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             maxPerSite = int(np.ceil(self._ds/bindingSiteWidth)); # 20 nm binding site
         print('Max per site %d' %maxPerSite)
         self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, maxPerSite,allRates, self._DLens,CLBounds,kT,self._rl, self._kCL,CLseed);
+        self._isMotor = False;
+        if (UnloadedVel>0): # set up motors
+            self._isMotor = True;
+            self._cppNet.SetMotorParams(UnloadedVel/self._ds, StallForce, self._NsitesPerf) 
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -207,6 +215,15 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         
         # Keep C++ and Python up to date (for force calculations)
         self.syncPythonAndCpp()
+        
+        # Walk the motors
+        if (not self._isMotor):
+            return;
+        tauPts = fiberCol.getXs();
+        uniTau = fiberCol.getUniformTau(tauPts);
+        shifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
+        self._cppNet.WalkLinks(tstep,uniPts,uniTau,shifts)
+        self.syncPythonAndCpp()
     
     def setLinks(self,iPts,jPts,Shifts,FreelyBound=None):
         """
@@ -227,9 +244,13 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         super().setLinks(iPts,jPts,Shifts);
         # Update C++ class
         if (FreelyBound is None):
-            FreelyBound = int(self._kon/self._koff)*np.ones(self._TotNumSites);
             warn('You did not set the number of free bound links - will all be set to')
-            print((int(self._kon/self._koff)))
+            if (self._koff>1e-3):
+                FreelyBound = int(self._kon/self._koff)*np.ones(self._TotNumSites);
+                print((int(self._kon/self._koff)))
+            else: 
+                FreelyBound = np.zeros(self._TotNumSites);
+                print(' zero')
         self._FreeLinkBound = FreelyBound;
         self._cppNet.setLinks(self._HeadsOfLinks, self._TailsOfLinks, self._PrimedShifts, self._FreeLinkBound) 
         self.syncPythonAndCpp();    

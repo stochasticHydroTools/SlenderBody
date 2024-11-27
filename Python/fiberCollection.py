@@ -115,7 +115,7 @@ class fiberCollection(object):
         self._FibColCpp.initMatricesForPreconditioner(fibDisc._D4BCForce,  \
             fibDisc._D4BCForceHalf,fibDisc._XonNp1MatNoMP,fibDisc._XsFromX,\
             fibDisc._MidpointMat,fibDisc._BendMatX0);
-        self._FibColCpp.initResamplingMatrices(fibDisc._nptsUniform,fibDisc._MatfromNtoUniform);
+        self._FibColCpp.initResamplingMatrices(fibDisc._nptsUniform,fibDisc._MatfromNtoUniform,fibDisc._MatfromNtautoUniform);
         self._FibColCpp.initMobilityMatrices(fibDisc._sX, fibDisc._sRegularized,\
             fibDisc._FPMatrix.T,fibDisc._DoubletFPMatrix.T,\
             fibDisc._RLess2aResamplingMat,fibDisc._RLess2aWts,\
@@ -772,6 +772,25 @@ class fiberCollection(object):
             is set in the constructor of this class. 
         """
         return self._FibColCpp.getUniformPoints(chebpts);
+        
+    def getUniformTau(self,tanvecs):
+        """
+        Obtain uniform tangent vectors from a set of Chebyshev tangent vectors. 
+        
+        Parameters
+        -----------
+        tanvecs: 2D array
+            The tangent vectors of the fibers, organized 
+            into a  (tot# x 3) array
+            
+        Returns
+        ---------
+        2D array
+            All fiber tangent vectors sampled at the uniform points. The number of
+            uniform points is given by self._fiberDisc._nptsUniform, and 
+            is set in the constructor of this class. 
+        """
+        return self._FibColCpp.getUniformTanVecs(tanvecs);
         
     def getPointsForUpsampledQuad(self,chebpts):
         """
