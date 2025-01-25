@@ -53,7 +53,7 @@ class SpatialDatabase(object):
         self._ptsPrime = Dom.primecoords(pts);
         self._Dom = Dom;
         
-    def TrimListEuclideanDist(self,rcut,neighbors):
+    def TrimListEuclideanDist(self,rcut,neighbors,rcutLow=-1.0):
         """
         This method will trim the list of neighbors to eliminate any superfluous ones.
         In particular, because the neighbor search happens on the periodic sheared domain,
@@ -77,10 +77,10 @@ class SpatialDatabase(object):
             List of pairs $(i,j)$ of points that are actually within $r_c$ of each other in
             the Euclidean metric, with periodicity in the sheared directions.
         """
-        return self._Dom.EliminatePairsOfPointsOutsideRange(neighbors,self._pts,rcut);
+        return self._Dom.EliminatePairsOfPointsOutsideRange(neighbors,self._pts,rcut,rcutLow);
                 
         
-    def selfNeighborList(self,rcut,numperfiber=1):
+    def selfNeighborList(self,rcut,rcutLow=-1.0,numperfiber=1):
         """
         This is the main method that computes the list of pairs of points $(i,j)$ 
         that are within $r_c$ of each other. This search will compute all pairs of 
@@ -102,6 +102,10 @@ class SpatialDatabase(object):
             List of pairs $(i,j)$ of points that are within $r_c$ of each other in
             the Euclidean metric, with periodicity in the sheared directions.  
         """
+        if (rcutLow>=1):
+            print('Probably a bug with arguments to self neighbor list')
+            import sys
+            sys.exit()
         rwsafety=rcut*self._Dom.safetyfactor(); # add the safety factor
         # Quadratic loop
         neighbors = [];
@@ -112,7 +116,7 @@ class SpatialDatabase(object):
                 rvecprime = self._Dom.MinPrimeShiftInPrimeCoords(rvecprime);
                 if (np.linalg.norm(rvecprime) < rwsafety):
                     neighbors.append([iPt,jPt]);
-        TrimNeighbors = self.TrimListEuclideanDist(rcut,np.array(neighbors)) ; 
+        TrimNeighbors = self.TrimListEuclideanDist(rcut,np.array(neighbors),rcutLow) ; 
         return TrimNeighbors;
             
     def otherNeighborsList(self,other,rcut):
@@ -195,7 +199,7 @@ class ckDSpatial(SpatialDatabase):
         self._Dom = Dom;
         self._myKDTree = cKDTree(ptsprime,boxsize=Dom.getPeriodicLens());
 
-    def selfNeighborList(self,rcut,numperfiber=1):
+    def selfNeighborList(self,rcut,rcutLow=-1.0,numperfiber=1):
         """
         This is the main method that computes the list of pairs of points $(i,j)$ 
         that are within $r_c$ of each other. This search will compute all pairs of 
@@ -216,9 +220,13 @@ class ckDSpatial(SpatialDatabase):
             List of pairs $(i,j)$ of points that are within $r_c$ of each other in
             the Euclidean metric, with periodicity in the sheared directions.  
         """
+        if (rcutLow>=1):
+            print('Probably a bug with arguments to self neighbor list')
+            import sys
+            sys.exit()
         rwsafety=rcut*self._Dom.safetyfactor(); # add the safety factor
         neighbors = self._myKDTree.query_pairs(rwsafety,output_type='ndarray');
-        TrimNeighbors = self.TrimListEuclideanDist(rcut,neighbors)
+        TrimNeighbors = self.TrimListEuclideanDist(rcut,neighbors,rcutLow)
         return neighbors;
 
     def otherNeighborsList(self,other,rcut):
@@ -305,7 +313,7 @@ class CellLinkedList(SpatialDatabase):
         self._ptsPrime = ptsprime;
         self._pts = pts;
 
-    def selfNeighborList(self,rcut,numperfiber=1):
+    def selfNeighborList(self,rcut,rcutLow=-1.0,numperfiber=1):
         """
         This is the main method that computes the list of pairs of points $(i,j)$ 
         that are within $r_c$ of each other. This search will compute all pairs of 
@@ -329,13 +337,17 @@ class CellLinkedList(SpatialDatabase):
             List of pairs $(i,j)$ of points that are within $r_c$ of each other in
             the Euclidean metric, with periodicity in the sheared directions.  
         """
+        if (rcutLow>=1):
+            print('Probably a bug with arguments to self neighbor list')
+            import sys
+            sys.exit()
         rwsafety=rcut*self._Dom.safetyfactor(); # add the safety factor
         self._Nlist.updateList(pos=self._ptsPrime.copy(), Lx=self._Dom._Lx, Ly=self._Dom._Ly, Lz=self._Dom._Lz,\
                  numberParticles=self._Npts,rcut=rwsafety,useGPU=self._useGPU,NperFiber=numperfiber)
         # Post process list to return 2D array
         neighbors = self._Nlist.pairList;
         AllNeighbors = np.reshape(neighbors,(len(neighbors)//2,2))
-        TrimNeighbors = self.TrimListEuclideanDist(rcut,AllNeighbors)
+        TrimNeighbors = self.TrimListEuclideanDist(rcut,AllNeighbors,rcutLow)
         return TrimNeighbors;
 
     def otherNeighborsList(self,other,rcut):

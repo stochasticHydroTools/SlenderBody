@@ -608,51 +608,7 @@ class CrossLinkedNetwork(object):
         with open(FileName,"ab") as f:
             for iLink in range(self._nDoubleBoundLinks):
                 x=np.concatenate((uniPoints[self._HeadsOfLinks[iLink],:], uniPoints[self._TailsOfLinks[iLink],:]+shifts[iLink,:]));
-                np.savetxt(f, np.reshape(np.array([x]),(1,6)));
-            
-    ## ==============================================
-    ##     PRIVATE METHODS ONLY ACCESSED IN CLASS
-    ## ==============================================
-    def getPairsThatCanBind(self,fiberCol,Dom):
-        """
-        Generate list of events for binding of a doubly-bound link to both sites. 
-        SpatialDatabase = database of uniform points (sites). This is a 
-        method for debugging (not called in the final production code)
-        """
-        if (verbose > 0):
-            thist = time.time();
-        chebPts = fiberCol.getX();
-        uniPts = fiberCol.getUniformPoints(chebPts);
-        SpatialDatabase = fiberCol.getUniformSpatialData();
-        SpatialDatabase.updateSpatialStructures(uniPts,Dom);
-        uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL,self._NsitesPerf);
-        if (verbose > 0):
-            print('ckD neighbor search time %f' %(time.time()-thist));
-        uniNeighbs = uniNeighbs.astype(np.int64);
-        thist = time.time();
-        # Filter the list of neighbors to exclude those on the same fiber
-        Fibs = uniNeighbs // self._NsitesPerf;
-        delInds = np.arange(len(Fibs[:,0]));
-        newLinks = np.delete(uniNeighbs,delInds[Fibs[:,0]==Fibs[:,1]],axis=0);
-        nPotentialLinks = len(newLinks[:,0]);
-        PrimedShifts = np.zeros((nPotentialLinks,3));
-        GoodInds = [];
-        distances = np.zeros(nPotentialLinks)
-        # Post process list to exclude pairs that are too close (or too far b/c of sheared transformation)
-        for iMaybeLink in range(nPotentialLinks):
-            iPt = newLinks[iMaybeLink,0];
-            jPt = newLinks[iMaybeLink,1];
-            rvec = Dom.calcShifted(uniPts[iPt,:]-uniPts[jPt,:]);
-            r = np.linalg.norm(rvec);
-            distances[iMaybeLink]=r;
-            if (r < self._rl+self._deltaL and r > self._rl-self._deltaL):
-                GoodInds.append(iMaybeLink);
-                PrimedShifts[iMaybeLink,:] = Dom.primecoords(uniPts[iPt,:]-uniPts[jPt,:] - rvec);    
-        newLinks = newLinks[GoodInds,:];
-        PrimedShifts = PrimedShifts[GoodInds,:];
-        #PrimedShifts = np.concatenate((PrimedShifts,-PrimedShifts));
-        #newLinks = np.concatenate((newLinks,np.fliplr(newLinks)));
-        return newLinks, PrimedShifts, distances[GoodInds];                        
+                np.savetxt(f, np.reshape(np.array([x]),(1,6)));                    
 
 class CrossLinkedSpeciesNetwork(CrossLinkedNetwork):
 

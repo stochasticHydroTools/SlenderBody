@@ -58,6 +58,10 @@ class Domain(object):
 
     def ZeroLShiftInPrimeCoords(self,rprime):
         return rprime;
+        
+    def ComputePrimeShifts(self,LinkedPoints,uniPoints):
+        nPairs,_=LinkedPoints.shape;
+        return np.zeros((nPairs,3));
 
     def primecoords(self,ptsxyz):
         return ptsxyz;
@@ -195,7 +199,7 @@ class PeriodicShearedDomain(Domain):
             dvec[0]-=shift[0]*self._Lx;
         return np.array(newvec);
         
-    def EliminatePairsOfPointsOutsideRange(self,pairs,pts,rcut):
+    def EliminatePairsOfPointsOutsideRange(self,pairs,pts,rcut,rcutLow=-1.0):
         """
         This method takes a list of pairs of points that are potentially less than 
         rcut apart. It then removes any erroneous pairs that come from using a safety
@@ -218,8 +222,11 @@ class PeriodicShearedDomain(Domain):
             that are indeed a distance less than rcut in Euclidean distance (with 
             periodicity measured using sheared coordinates)
         """
-        return self._cppDom.EliminatePairsOfPointsOutsideRange(pairs,pts,rcut,self._g);
+        return self._cppDom.EliminatePairsOfPointsOutsideRange(pairs,pts,rcut,rcutLow,self._g);
 
+    def ComputePrimeShifts(self,LinkedPoints,uniPoints):
+        return self._cppDom.ComputePrimeShifts(LinkedPoints,uniPoints,self._g);
+    
     def MinPrimeShiftInPrimeCoords(self,rprime):
         """
         Method to shift input deformed coordinates into

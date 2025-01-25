@@ -12,14 +12,12 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     This class is a child of CrossLinkedNetwork which implements a network 
     with cross links where each end matters separately. 
        
-    There are 6 reactions (the even ones are the reverse of the odds):
+    There are 4 reactions (the even ones are the reverse of the odds):
     
     1) Binding of a floating link to one site (rate _kon)
     2) Unbinding of a link that is bound to one site to become free (reverse of 1, rate _koff)
     3) Binding of a singly-bound link to another site to make a doubly-bound CL (rate _konSecond)
     4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
-    5) Binding of both ends of a CL (rate _kDoubleOn. This rate is set to zero at present.)
-    6) Unbinding of both ends of a CL (rate _kDoubleOff. This rate is also set to zero.)
     
     For more information on the reactions and their rates, see Section 9.1.1 of Maxian's PhD
     thesis. We implement reaction 3, which is the most important because it controls the forces
@@ -162,8 +160,6 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
            stiffness (two standard deviations of the Gaussian above). If $k_B T =0$ and the binding
            probability is uniform, we stick to one standard deviation.
         4) Unbinding of a double bound link in one site to make a single-bound CL (rate _koffSecond)
-        5) Binding of both ends of a CL (rate _kDoubleOn. This rate is set to zero at present.)
-        6) Unbinding of both ends of a CL (rate _kDoubleOff. This rate is also set to zero.)
         
         Once the rates are computed, the time at which an event occurs is taken from an exponential
         distribution via sampling a time $t=-\\ln(1-u)/k$, where $k$ is the event rate and $u$ is 
@@ -197,19 +193,22 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         SpatialDatabase = fiberCol.getUniformSpatialData();
         SpatialDatabase.updateSpatialStructures(uniPts,Dom);
         # This will return a different order every time -> lose reproducibility
-        try:
-            uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL,self._NsitesPerf);
-        except: # If N sites per f is not defined, it will just do 1 site per fiber and then the code below will process
-            uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL,1);
+        uniNeighbs = SpatialDatabase.selfNeighborList(self._rl+self._deltaL,rcutLow=self._rl-self._deltaL,numperfiber=self._NsitesPerf);
         uniNeighbs = uniNeighbs.astype(np.int64);
         # Filter the list of neighbors to exclude those on the same fiber
         Fibs = self.mapSiteToFiber(uniNeighbs);
         delInds = np.arange(len(Fibs[:,0]));
         newLinks = np.delete(uniNeighbs,delInds[Fibs[:,0]==Fibs[:,1]],axis=0);
+        # Compute the prime shifts between the links
+        PrimedShiftsProp = Dom.ComputePrimeShifts(newLinks,uniPts);
+        # Compute real proposed and old shifts
+        RealShiftsProp = Dom.unprimecoords(PrimedShiftsProp);
+        RealShifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
         if (verbose > 0):
             print('Neighbor search and organize time %f ' %(time.time()-thist))  
             thist = time.time();
-        self._cppNet.updateNetwork(tstep,newLinks,uniPts,Dom.getg());
+            
+        self._cppNet.updateNetwork(tstep,newLinks,uniPts,PrimedShiftsProp,RealShiftsProp,RealShifts);
         if (verbose > 0):
             print('Update network time %f ' %(time.time()-thist))
         
@@ -221,8 +220,8 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             return;
         tauPts = fiberCol.getXs();
         uniTau = fiberCol.getUniformTau(tauPts);
-        shifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
-        self._cppNet.WalkLinks(tstep,uniPts,uniTau,shifts)
+        RealShifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
+        self._cppNet.WalkLinks(tstep,uniPts,uniTau,RealShifts)
         self.syncPythonAndCpp()
     
     def setLinks(self,iPts,jPts,Shifts,FreelyBound=None):

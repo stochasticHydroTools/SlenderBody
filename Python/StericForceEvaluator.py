@@ -157,7 +157,7 @@ class StericForceEvaluator(object):
         # Eval uniform points
         Xuniform = self._CppEvaluator.getUniformPoints(X,'u');
         self._NeighborSearcher.updateSpatialStructures(Xuniform,Dom);
-        uniNeighbs = self._NeighborSearcher.selfNeighborList(Cutoff,1);
+        uniNeighbs = self._NeighborSearcher.selfNeighborList(Cutoff);
         uniNeighbs = uniNeighbs.astype(np.int64);
         if (excludeSelf):
             Fibs = self.mapUniPtToFiber(uniNeighbs);
@@ -207,7 +207,7 @@ class StericForceEvaluator(object):
             Xconcat = np.concatenate((Xi_uni,Xj_uni));
             self._TwoFibNeighborSearcher.updateSpatialStructures(Xconcat,Dom);
             Cutoff = nDiameters*2*self._radius;
-            uniNeighbs = self._TwoFibNeighborSearcher.selfNeighborList(Cutoff,self._NUni);
+            uniNeighbs = self._TwoFibNeighborSearcher.selfNeighborList(Cutoff,numperfiber=self._NUni);
             uniNeighbs = uniNeighbs.astype(np.int64);
             # Filter the list of neighbors to exclude those on the same fiber
             Fibs = self.mapUniPtToFiber(uniNeighbs);
@@ -372,7 +372,7 @@ class SegmentBasedStericForceEvaluator(StericForceEvaluator):
             tiii = time.time();
         SegMidpoints = self._CppEvaluator.getUniformPoints(X,'m');
         self._MidpointNeighborSearcher.updateSpatialStructures(SegMidpoints,Dom);
-        SegmentNeighbs = self._MidpointNeighborSearcher.selfNeighborList(self._CutoffSegmentSearch,1);
+        SegmentNeighbs = self._MidpointNeighborSearcher.selfNeighborList(self._CutoffSegmentSearch);
         SegmentNeighbs = SegmentNeighbs.astype(np.int64);
         if (verbose > 0):
             print('Time for midpoint neighbor search %f ' %(time.time()-tiii))

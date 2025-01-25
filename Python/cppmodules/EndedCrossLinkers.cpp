@@ -57,6 +57,7 @@ class EndedCrossLinkedNetwork {
         //std::cout << "Array size " << _maxLinks << std::endl;
         _LinkHeads = intvec(_maxLinks,-1);
         _LinkTails = intvec(_maxLinks,-1);
+        _RealDistances = vec(_maxLinks,-1);
         _UnbindingRates = vec(_maxLinks,0);
         _LinkShiftsPrime = vec(3*_maxLinks,0); // these are in the primed coordinate space
         initializeHeap(_maxLinks+_TotSites+4);
@@ -82,7 +83,8 @@ class EndedCrossLinkedNetwork {
      }
 
 
-     void updateNetwork(double tstep, npInt pyMaybeBindingPairs, npDoub pyuniPts, double g){
+     void updateNetwork(double tstep, npInt pyMaybeBindingPairs, npDoub pyuniPts, 
+        npDoub pyPrimeShiftProposed, npDoub pyRealShiftProposed,npDoub pyRealShift){
         /*
         Update the network using Kinetic MC.
         Inputs: tstep = time step. pyMaybeBindingPairs = 2D numpy array, where the first
@@ -96,71 +98,55 @@ class EndedCrossLinkedNetwork {
         std::memcpy(MaybeBindingPairs.data(),pyMaybeBindingPairs.data(),pyMaybeBindingPairs.size()*sizeof(int));
         vec uniPts(pyuniPts.size());
         std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
-
-        // Determine pairs that can actually bind
-        int nPotentialLinks = MaybeBindingPairs.size()/2;
-        vec PrimedShifts(6*nPotentialLinks,0);
-        intvec BindingPairs(4*nPotentialLinks,-1);
-        vec distances(2*nPotentialLinks,0.0);
-        int nTruePairs = EliminateLinksOutsideRange(MaybeBindingPairs, uniPts, g, PrimedShifts, BindingPairs,distances);
-        //std::cout << "Number of true possible pairs " << nTruePairs/2 << std::endl;
+        vec PrimeShiftProposed(pyPrimeShiftProposed.size());
+        std::memcpy(PrimeShiftProposed.data(),pyPrimeShiftProposed.data(),pyPrimeShiftProposed.size()*sizeof(double));
+        vec RealShiftProposed(pyRealShiftProposed.size());
+        std::memcpy(RealShiftProposed.data(),pyRealShiftProposed.data(),pyRealShiftProposed.size()*sizeof(double));
+        vec RealShift(pyRealShift.size());
+        std::memcpy(RealShift.data(),pyRealShift.data(),pyRealShift.size()*sizeof(double));
         resetHeap();
 
-        // Compute the binding rates of those pairs and sort list of pairs
-        intvec numLinksPerSite(_TotSites,0);
-        for (int iPair=0; iPair < nTruePairs; iPair++){
-            int BoundEnd = BindingPairs[2*iPair]; // they are stacked so the bound end comes last
-            numLinksPerSite[BoundEnd]++;
-            //std::cout << "CL pair " << BindingPairs[2*iPair] << " , " << BindingPairs[2*iPair+1] << std::endl;
-        }
-        // Sort the possible links
-        intvec startPair(_TotSites,0);
-        for (int iSite=1; iSite < _TotSites; iSite++){ // cumulative sum
-            startPair[iSite]=startPair[iSite-1]+numLinksPerSite[iSite-1];
-        }
-        intvec SortedLinks(2*nTruePairs,-1);
-        vec BaseSortedRates(nTruePairs,0), SortedShifts(3*nTruePairs,0);
-        for (int iPair=0; iPair < nTruePairs; iPair++){
-            int BoundEnd = BindingPairs[2*iPair];
-            int index = startPair[BoundEnd];
-            int isOccupied = SortedLinks[2*index];
-            while (isOccupied > -1){
-                index++;
-                isOccupied = SortedLinks[2*index];
-            } // is occupied is -1 at end of loop; can insert there
-            SortedLinks[2*index] = BoundEnd;
-            SortedLinks[2*index+1] = BindingPairs[2*iPair+1]; // unbound end
-            for (int d=0; d < 3; d++){
-                SortedShifts[3*index+d] = PrimedShifts[3*iPair+d];
+        // Determine pairs that can actually bind
+        int nPropUnique = MaybeBindingPairs.size()/2;
+        vec PropDistances(nPropUnique,-1);
+        intvec FirstLinkBySite(_TotSites,-1);
+        intvec NextLinkByLink(2*nPropUnique,-1);
+        for (int iPair=0; iPair < nPropUnique; iPair++){
+            PropDistances[iPair] = LinkDistance(MaybeBindingPairs[2*iPair],MaybeBindingPairs[2*iPair+1],uniPts,iPair,RealShiftProposed);
+            double BaseRate = BindingRate(PropDistances[iPair]);
+            for (int End=0; End < 2; End++){
+                int BoundEnd = MaybeBindingPairs[2*iPair+End];
+                TimeAwareHeapInsert(2*iPair+End+1, BaseRate*_FreeLinkBound[BoundEnd],0,tstep);// notice we start indexing from 1, this is how fortran is written
+                // Create linked list of pairs by site so that the rates can be updated rapidly when there are new bound ends 
+                if (FirstLinkBySite[BoundEnd]==-1){
+                    FirstLinkBySite[BoundEnd]=2*iPair+End;  
+                } else {
+                    int CurLink = FirstLinkBySite[BoundEnd];
+                    while (NextLinkByLink[CurLink] !=-1){
+                        CurLink = NextLinkByLink[CurLink];
+                    } 
+                    NextLinkByLink[CurLink]=2*iPair+End;
+                }
             }
-            if (_kT == 0.0){
-                BaseSortedRates[index] = _konSecond*1.0; // add distance dependent factor
-            } else {
-                //std::cout << "Distance dependent binding!" << std::endl;
-                double Energy = 0.5*_KStiffness*(distances[iPair]-_restlen)*(distances[iPair]-_restlen);
-                BaseSortedRates[index] = _konSecond*exp(-Energy/_kT);
-            }
-            TimeAwareHeapInsert(index+1, BaseSortedRates[index]*_FreeLinkBound[BoundEnd],0,tstep);// notice we start indexing from 1, this is how fortran is written
         }
-
         // Single binding to a site
         double RateFreeBind = _kon*_TotSites;
-        int indexFreeBinding = nTruePairs+1;
+        int indexFreeBinding = 2*nPropUnique+1;
         TimeAwareHeapInsert(indexFreeBinding, RateFreeBind,0,tstep);
 
         // Single unbinding from a site
-        vec RatesFreeUnbind(_TotSites);
         int indexFreeUnbinding = indexFreeBinding+1;
         for (int iSite = 0; iSite < _TotSites; iSite++){
-            RatesFreeUnbind[iSite] = _koff*_FreeLinkBound[iSite];
-            TimeAwareHeapInsert(indexFreeUnbinding+iSite, RatesFreeUnbind[iSite],0,tstep);
+            double UnbindRate = _koff*_FreeLinkBound[iSite];
+            TimeAwareHeapInsert(indexFreeUnbinding+iSite, UnbindRate,0,tstep);
         }
 
         // One end of CL unbinding
         int indexSecondUnbind = indexFreeUnbinding+_TotSites;
         for (int iLink=0; iLink < _nDoubleBoundLinks; iLink++){
-            _UnbindingRates[iLink]=2*_koffSecond;
-            TimeAwareHeapInsert(indexSecondUnbind+iLink,_UnbindingRates[iLink],0,tstep);
+            _RealDistances[iLink] = LinkDistance(_LinkHeads[iLink],_LinkTails[iLink],uniPts,iLink,RealShift);
+            double UnbindRate=2*UnbindingRate(_RealDistances[iLink]);
+            TimeAwareHeapInsert(indexSecondUnbind+iLink,UnbindRate,0,tstep);
         }
 
         double systime;
@@ -191,7 +177,8 @@ class EndedCrossLinkedNetwork {
                     UnboundEnd = _LinkHeads[linkNum];
                 }
                 deleteLink(linkNum); // this will replace the link by the last one in the list
-                TimeAwareHeapInsert(eventindex,_UnbindingRates[linkNum],systime,tstep);
+                double UnbindRateNewLink = 2*UnbindingRate(_RealDistances[linkNum]);
+                TimeAwareHeapInsert(eventindex,UnbindRateNewLink,systime,tstep); // compute new 
                 TimeAwareHeapInsert(indexSecondUnbind+_nDoubleBoundLinks,0,systime,tstep); // remove last one
                 _TotalNumberBound[UnboundEnd]--; // Only the unbound end loses a link
                 // Add a free end at the other site. Always assume the remaining bound end is at the left
@@ -201,21 +188,30 @@ class EndedCrossLinkedNetwork {
             } else { // CL binding
                 // The index now determines which pair of sites the CL is binding to
                 // In addition, we always assume the bound end is the one at the left
-                int pairToBind = eventindex-1;
-                //std::cout << "Index " << eventindex << ", CL link " << pairToBind << " both ends bind at time " << systime << std::endl;
-                BoundEnd = SortedLinks[2*pairToBind];
-                UnboundEnd = SortedLinks[2*pairToBind+1];
+                int iPair = (eventindex-1)/2;
+                double ShiftSign=1.0;
+                BoundEnd = MaybeBindingPairs[2*iPair]; // eventindex-1=2*iPair+End
+                UnboundEnd = MaybeBindingPairs[2*iPair+1];
+                if (((eventindex-1) % 2)==1){
+                    BoundEnd = MaybeBindingPairs[2*iPair+1]; // eventindex-1=2*iPair+End
+                    UnboundEnd = MaybeBindingPairs[2*iPair];
+                    ShiftSign=-1.0;
+                }    
+                //std::cout << "Index " << eventindex << ", CL link " << iPair << " both ends bind at time " << systime << std::endl;
                 // Link can only bind if the unbound end is available
                 if (_TotalNumberBound[UnboundEnd] < _MaxNumberPerSite){
                     _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
                     _LinkTails[_nDoubleBoundLinks] = UnboundEnd;
-                    _UnbindingRates[_nDoubleBoundLinks] = 2*_koffSecond;
-                    TimeAwareHeapInsert(indexSecondUnbind+_nDoubleBoundLinks,_UnbindingRates[_nDoubleBoundLinks],systime,tstep);
+                    // Add the unbinding event
+                    double UnbindRateNewLink = 2*UnbindingRate(PropDistances[iPair]);
+                    TimeAwareHeapInsert(indexSecondUnbind+_nDoubleBoundLinks,UnbindRateNewLink,systime,tstep);
                      // unbound end picks up a link, bound end loses a free link
                     _TotalNumberBound[UnboundEnd]++;
                     _FreeLinkBound[BoundEnd]--; // one less free link bound
+                    vec3 dvec;
                     for (int d=0; d < 3; d++){
-                        _LinkShiftsPrime[3*_nDoubleBoundLinks+d] = SortedShifts[3*pairToBind+d];
+                        _LinkShiftsPrime[3*_nDoubleBoundLinks+d] = ShiftSign*PrimeShiftProposed[3*iPair+d];
+                        dvec[d] = uniPts[3*BoundEnd+d]-uniPts[3*UnboundEnd+d]- _LinkShiftsPrime[3*_nDoubleBoundLinks+d];
                     }
                     _nDoubleBoundLinks++;
                 } // otherwise nothing happens
@@ -226,15 +222,15 @@ class EndedCrossLinkedNetwork {
                 _LinkTails.resize(_maxLinks);
                 _UnbindingRates.resize(_maxLinks);
                 _LinkShiftsPrime.resize(3*_maxLinks);
+                _RealDistances.resize(_maxLinks);
                 std::cout << "Expanding array size to " << _maxLinks << std::endl;
             }
             // Rates of CL binding change based on number of bound ends
-            updateSecondBindingRate(BoundEnd, BaseSortedRates, startPair[BoundEnd], numLinksPerSite[BoundEnd], systime, tstep);
+            updateSecondBindingRate(BoundEnd, FirstLinkBySite, NextLinkByLink, PropDistances, systime, tstep);
 
             // Update unbinding event at BoundEnd (the end whose state has changed)
-            RatesFreeUnbind[BoundEnd] = _koff*_FreeLinkBound[BoundEnd];
             //std::cout << "About to insert unbinding single end in heap with index " << BoundEnd+indexFreeUnbinding <<  std::endl;
-            TimeAwareHeapInsert(BoundEnd+indexFreeUnbinding,RatesFreeUnbind[BoundEnd],systime,tstep);
+            TimeAwareHeapInsert(BoundEnd+indexFreeUnbinding,_koff*_FreeLinkBound[BoundEnd],systime,tstep);
 
             topOfHeap(eventindex,systime);
             //std::cout << "[" << eventindex << " , " << systime << "]" << std::endl;
@@ -491,23 +487,49 @@ class EndedCrossLinkedNetwork {
         double _UnloadedRate, _FStall; // motors
         intvec _FreeLinkBound, _LinkHeads, _LinkTails, _TotalNumberBound;
         DomainC _Dom;
-        vec _LinkShiftsPrime, _UnbindingRates;
+        vec _LinkShiftsPrime, _UnbindingRates, _RealDistances;
         std::uniform_real_distribution<double> unif;
         std::mt19937_64 rng;
 
         double logrand(){
             return -log(1.0-unif(rng));
         }
+        
+        double LinkDistance(int iPt, int jPt, const vec &uniPts, int iPair, const vec &RealShift){
+            vec3 displacement;
+            for (int d=0; d < 3; d++){
+                displacement[d]=uniPts[3*iPt+d]-uniPts[3*jPt+d]-RealShift[3*iPair+d];
+            }
+            return normalize(displacement);
+        }
+            
+        double BindingRate(double r){
+            if (_kT == 0.0){
+                return 1.0*_konSecond;
+            } 
+            double Energy = 0.5*_KStiffness*(r-_restlen)*(r-_restlen);
+            return _konSecond*exp(-Energy/_kT);
+        }
+        
+        double UnbindingRate(double r){
+            return _koffSecond;
+        }
+            
 
-        void updateSecondBindingRate(int BoundEnd, vec &BaseSortedRates, int startPair, int numLinks,double systime, double tstep){
+        void updateSecondBindingRate(int BoundEnd, const intvec &FirstLinkBySite, const intvec &NextLinkByLink, 
+            const vec &ProposedDistances, double systime, double tstep){
             /*
             Update the binding rate of every link with left end = BoundEnd.
             SecondEndRates = new rates for binding the second end, startPair = first index of sorted pairs of links that
             has left end BoundEnd.
             */
-            for (int ThisLink = startPair; ThisLink < startPair+numLinks; ThisLink++){
-                //std::cout << "About to insert CL second bind in heap with index " << ThisLink+1 << std::endl;
-                TimeAwareHeapInsert(ThisLink+1, BaseSortedRates[ThisLink]*_FreeLinkBound[BoundEnd],systime,tstep);
+            int CurLink = FirstLinkBySite[BoundEnd];
+            while (CurLink!=-1){
+                int DistancesIndex = CurLink/2;
+                double BaseRate = BindingRate(ProposedDistances[DistancesIndex]);
+                TimeAwareHeapInsert(CurLink+1, BaseRate*_FreeLinkBound[BoundEnd],systime,tstep);
+                // notice we start indexing from 1, this is how fortran is written
+                CurLink = NextLinkByLink[CurLink];
             }
         }
 
@@ -555,59 +577,12 @@ class EndedCrossLinkedNetwork {
             return ParForces;
         }
 
-        int EliminateLinksOutsideRange(const intvec &newLinkSites, const vec &uniPts, double g, vec &PrimedShifts, intvec &ActualPossibleLinks, vec &distances){
-            /*
-            From the list of potential links (newLinkSites) and the uniform points (uniPts), and the strain in the coordinate system, calculate
-            the actual displacement vector of each link (including the relevant shift from the array PrimedShifits, and add it
-            to the array ActualPossibleLinks
-            */
-            int nPotentialLinks = newLinkSites.size()/2;
-            int nLPoss=0;
-            for (int iMaybeLink=0; iMaybeLink < nPotentialLinks; iMaybeLink++){
-                int iPt = newLinkSites[2*iMaybeLink];
-                int jPt = newLinkSites[2*iMaybeLink+1];
-                vec3 rvec;
-                for (int d=0; d < 3; d++){
-                    rvec[d] = uniPts[3*iPt+d]-uniPts[3*jPt+d];
-                }
-                //std::cout << "i " << uniPts[3*iPt] << " , " << uniPts[3*iPt+1] << " , " << uniPts[3*iPt+2] << std::endl;
-                //std::cout << "j " << uniPts[3*jPt] << " , " << uniPts[3*jPt+1] << " , " << uniPts[3*jPt+2] << std::endl;
-                //std::cout << "rvec " << rvec[0] << " , " << rvec[1] << " , " << rvec[2] << std::endl;
-                _Dom.calcShifted(rvec,g);
-                //std::cout << "shift rvec " << rvec[0] << " , " << rvec[1] << " , " << rvec[2] << std::endl;
-                double r = sqrt(dot(rvec,rvec));
-                //std::cout << "Actual r " << r << std::endl;
-                //std::cout << "Upper and lower bound " << _upperCLBound << " , " << _lowerCLBound << std::endl;
-                if (r < _upperCLBound && r > _lowerCLBound){
-                    distances[nLPoss]=r;
-                    distances[nLPoss+1]=r;
-                    ActualPossibleLinks[2*nLPoss]=iPt;
-                    ActualPossibleLinks[2*nLPoss+1]=jPt;
-                    ActualPossibleLinks[2*nLPoss+2]=jPt;
-                    ActualPossibleLinks[2*nLPoss+3]=iPt;
-                    vec3 PrimeShift;
-                    for (int d =0; d < 3; d++){
-                        PrimeShift[d] = uniPts[3*iPt+d]-uniPts[3*jPt+d]-rvec[d];
-                    }
-                    _Dom.PrimeCoords(PrimeShift,g);
-                    for (int d =0; d < 3; d++){
-                        PrimedShifts[3*nLPoss+d] = PrimeShift[d];
-                        PrimedShifts[3*(nLPoss+1)+d] = -PrimeShift[d];
-                    }
-                    nLPoss+=2;
-                }
-            }
-            PrimedShifts.resize(3*nLPoss);
-            ActualPossibleLinks.resize(2*nLPoss);
-            distances.resize(nLPoss);
-            return nLPoss;
-        }
-
         void deleteLink(int linkNum){
             // Unbind it (remove from lists)
             _LinkHeads[linkNum] = _LinkHeads[_nDoubleBoundLinks-1];
             _LinkTails[linkNum] = _LinkTails[_nDoubleBoundLinks-1];
             _UnbindingRates[linkNum] = _UnbindingRates[_nDoubleBoundLinks-1];
+            _RealDistances[linkNum] = _RealDistances[_nDoubleBoundLinks-1];
             for (int d=0; d < 3; d++){
                 _LinkShiftsPrime[3*linkNum+d] = _LinkShiftsPrime[3*(_nDoubleBoundLinks-1)+d];
             }
