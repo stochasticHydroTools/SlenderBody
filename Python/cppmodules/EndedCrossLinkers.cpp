@@ -58,7 +58,6 @@ class EndedCrossLinkedNetwork {
         _LinkHeads = intvec(_maxLinks,-1);
         _LinkTails = intvec(_maxLinks,-1);
         _RealDistances = vec(_maxLinks,-1);
-        _UnbindingRates = vec(_maxLinks,0);
         _LinkShiftsPrime = vec(3*_maxLinks,0); // these are in the primed coordinate space
         initializeHeap(_maxLinks+_TotSites+4);
         rng.seed(CLseed);
@@ -202,16 +201,15 @@ class EndedCrossLinkedNetwork {
                 if (_TotalNumberBound[UnboundEnd] < _MaxNumberPerSite){
                     _LinkHeads[_nDoubleBoundLinks] = BoundEnd;
                     _LinkTails[_nDoubleBoundLinks] = UnboundEnd;
+                    _RealDistances[_nDoubleBoundLinks] = PropDistances[iPair];
                     // Add the unbinding event
                     double UnbindRateNewLink = 2*UnbindingRate(PropDistances[iPair]);
                     TimeAwareHeapInsert(indexSecondUnbind+_nDoubleBoundLinks,UnbindRateNewLink,systime,tstep);
                      // unbound end picks up a link, bound end loses a free link
                     _TotalNumberBound[UnboundEnd]++;
                     _FreeLinkBound[BoundEnd]--; // one less free link bound
-                    vec3 dvec;
                     for (int d=0; d < 3; d++){
                         _LinkShiftsPrime[3*_nDoubleBoundLinks+d] = ShiftSign*PrimeShiftProposed[3*iPair+d];
-                        dvec[d] = uniPts[3*BoundEnd+d]-uniPts[3*UnboundEnd+d]- _LinkShiftsPrime[3*_nDoubleBoundLinks+d];
                     }
                     _nDoubleBoundLinks++;
                 } // otherwise nothing happens
@@ -220,7 +218,6 @@ class EndedCrossLinkedNetwork {
                 _maxLinks*=2;
                 _LinkHeads.resize(_maxLinks);
                 _LinkTails.resize(_maxLinks);
-                _UnbindingRates.resize(_maxLinks);
                 _LinkShiftsPrime.resize(3*_maxLinks);
                 _RealDistances.resize(_maxLinks);
                 std::cout << "Expanding array size to " << _maxLinks << std::endl;
@@ -487,7 +484,7 @@ class EndedCrossLinkedNetwork {
         double _UnloadedRate, _FStall; // motors
         intvec _FreeLinkBound, _LinkHeads, _LinkTails, _TotalNumberBound;
         DomainC _Dom;
-        vec _LinkShiftsPrime, _UnbindingRates, _RealDistances;
+        vec _LinkShiftsPrime, _RealDistances;
         std::uniform_real_distribution<double> unif;
         std::mt19937_64 rng;
 
@@ -513,6 +510,11 @@ class EndedCrossLinkedNetwork {
         
         double UnbindingRate(double r){
             return _koffSecond;
+            /*if (_kT == 0.0){
+                return 1.0*_koffSecond;
+            } 
+            double Energy = 0.5*_KStiffness*(r-_restlen)*(r-_restlen);
+            return _koffSecond*exp(0.25*Energy/_kT);*/
         }
             
 
@@ -581,7 +583,6 @@ class EndedCrossLinkedNetwork {
             // Unbind it (remove from lists)
             _LinkHeads[linkNum] = _LinkHeads[_nDoubleBoundLinks-1];
             _LinkTails[linkNum] = _LinkTails[_nDoubleBoundLinks-1];
-            _UnbindingRates[linkNum] = _UnbindingRates[_nDoubleBoundLinks-1];
             _RealDistances[linkNum] = _RealDistances[_nDoubleBoundLinks-1];
             for (int d=0; d < 3; d++){
                 _LinkShiftsPrime[3*linkNum+d] = _LinkShiftsPrime[3*(_nDoubleBoundLinks-1)+d];
