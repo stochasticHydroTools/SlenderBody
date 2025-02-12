@@ -118,11 +118,13 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         else:
             maxPerSite = int(np.ceil(self._ds/bindingSiteWidth)); # 20 nm binding site
         print('Max per site %d' %maxPerSite)
-        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, maxPerSite,allRates, self._DLens,CLBounds,kT,self._rl, self._kCL,CLseed);
+        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, maxPerSite,allRates, CLBounds,kT,self._rl, self._kCL,CLseed);
         self._isMotor = False;
         if (UnloadedVel>0): # set up motors
             self._isMotor = True;
             self._cppNet.SetMotorParams(UnloadedVel/self._ds, StallForce, self._NsitesPerf) 
+        elif (UnloadedVel<0):
+            raise ValueError('Motor velocity must be positive (plus end directed)')    
         
     ## =============================== ##
     ##     PUBLIC METHODS
@@ -353,7 +355,7 @@ class DoubleEndedCrossLinkedSpeciesNetwork(CrossLinkedSpeciesNetwork,DoubleEnded
         print(allRates)
         if (CLseed is None):
             CLseed = int(time.time());
-        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, self._DLens,CLBounds,kT,self._rl, self._kCL, CLseed);
+        self._cppNet = EndedCrossLinkedNetwork(self._TotNumSites, allRates, CLBounds,kT,self._rl, self._kCL, CLseed);
         
     def sitesPerFib(self,iFib):
         return np.where(self._SiteToFiberMap==iFib)[0];
