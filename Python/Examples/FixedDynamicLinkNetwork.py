@@ -67,10 +67,10 @@ if (nonLocal and FluctuatingFibs and RPYQuad): # Fat discretization
         
 # Initialize the master list of fibers
 if (FluctuatingFibs):
-    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,\
-        gam0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs,fibDiscFat=fibDiscFat);
+    allFibers = SemiflexiblefiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,0,\
+        0,Dom,kbT,nThreads=nThr,rigidFibs=rigidFibs,fibDiscFat=fibDiscFat);
 else:
-    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,omega,gam0,Dom,\
+    allFibers = fiberCollection(nFib,turnovertime,fibDisc,nonLocal,mu,0,0,Dom,\
         kbT,nThreads=nThr,rigidFibs=rigidFibs,fibDiscFat=fibDiscFat);
     
 Ewald = None;
@@ -111,12 +111,25 @@ if (InFileString is None):
 else:
     CLNet.setLinksFromFile('BundlingBehavior/FinalLinks'+InFileString,'BundlingBehavior/FinalFreeLinkBound'+InFileString);
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
+CLNets=[CLNet];
+
+if (Motors):
+    MotorNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring_M,\
+        rl_M,kon_M,koff_M,konSecond_M,koffSecond_M,seed,Dom,fibDisc,nThreads=nThr,\
+        bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce,UnloadedVel=V0_M,StallForce=Fst_M);
+    if (InFileString is None):
+        MotorNet.updateNetwork(allFibers,Dom,100.0/min(kon_M*Lf,konSecond_M*Lf,koff_M,koffSecond_M)) # just to load up CLs
+    else:
+        MotorNet.setLinksFromFile('BundlingBehavior/FinalMotors'+InFileString,'BundlingBehavior/FinalFreeMotorBound'+InFileString);
+    CLNets.append(MotorNet);
+    print('Number of motors initially %d' %MotorNet._nDoubleBoundLinks)
+        
 
 # Initialize the temporal integrator
 if (FluctuatingFibs):
-    TIntegrator = MidpointDriftIntegrator(allFibers,CLNet);
+    TIntegrator = MidpointDriftIntegrator(allFibers,CLNets);
 else:
-    TIntegrator = BackwardEuler(allFibers,CLNet);
+    TIntegrator = BackwardEuler(allFibers,CLNets);
 # Number of GMRES iterations for nonlocal solves
 # 1 = block diagonal solver
 # N > 1 = N-1 extra iterations of GMRES
@@ -135,6 +148,9 @@ if (seed==1):
     ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
+    ofMot = prepareOutFile('BundlingBehavior/Step'+str(0)+'Motors'+FileString);
+    MotorNet.writeLinks(ofMot)
+    ofMot.close()
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -178,6 +194,8 @@ for iT in range(stopcount):
         print('Max x: %f' %maxX)
         thist = time.time();
         print('Number of links %d' %CLNet._nDoubleBoundLinks)
+        if (Motors):
+            print('Number of motors %d' %MotorNet._nDoubleBoundLinks)    
         saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
@@ -189,6 +207,9 @@ for iT in range(stopcount):
             ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
             CLNet.writeLinks(ofCL)
             ofCL.close()
+            ofMot = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Motors'+FileString);
+            MotorNet.writeLinks(ofMot)
+            ofMot.close()
                
         # Bundles where connections are 2 links
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);
@@ -221,6 +242,10 @@ if (True):
     np.savetxt('BundlingBehavior/AvgTangents'+FileString,AllaverageBundleTangents);
     allFibers.writeFiberLocations('BundlingBehavior/FinalLocs'+FileString,'w');
     np.savetxt('BundlingBehavior/FinalFreeLinkBound'+FileString, CLNet._FreeLinkBound);
+    np.savetxt('BundlingBehavior/FinalFreeMotorBound'+FileString, MotorNet._FreeLinkBound);
     ofCL = prepareOutFile('BundlingBehavior/FinalLinks'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
+    ofMot = prepareOutFile('BundlingBehavior/FinalMotors'+FileString);
+    MotorNet.writeLinks(ofMot)
+    ofMot.close()

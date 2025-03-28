@@ -131,6 +131,9 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
     ## =============================== ##
     def getnBoundEnds(self):
         return self._FreeLinkBound;
+        
+    def ChangeLockContract(self,Lock):
+        self._cppNet.ChangeLockContract(Lock);    
     
     def sitesPerFib(self,iFib):
         """

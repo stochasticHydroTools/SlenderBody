@@ -56,6 +56,9 @@ class TemporalIntegrator(object):
         self._allFibers = fibCol;
         self._allFibersPrev = copy.deepcopy(self._allFibers); # initialize previous fiber network object
         self._CLNetwork = CLNetwork;
+        self._MultipleNetworks = False;
+        if isinstance(self._CLNetwork, list):
+            self._MultipleNetworks = True;  
         self._impco = 0; #coefficient for linear solves
         self._maxGMIters = itercap;
     
@@ -173,8 +176,12 @@ class TemporalIntegrator(object):
         if (fixedg is None):
             Dom.setg(self._allFibers.getg(t));
         else:
-            Dom.setg(fixedg);       
-        self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
+            Dom.setg(fixedg);
+        if (self._MultipleNetworks):
+            for i in range(len(self._CLNetwork)):
+                self._CLNetwork[i].updateNetwork(self._allFibers,Dom,tstep);
+        else: 
+            self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
     
                  
     def SolveForFiberAlphaLambda(self,XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald):
@@ -412,7 +419,11 @@ class TemporalIntegrator(object):
         thist = time.time() 
         if (turnoverFibs):
             bornFibs = self._allFibers.FiberBirthAndDeath(dt);
-            self._CLNetwork.deleteLinksFromFibers(bornFibs)
+            if (self._MultipleNetworks):
+                for i in range(len(self._CLNetwork)):
+                    self._CLNetwork[i].deleteLinksFromFibers(bornFibs);
+            else: 
+                self._CLNetwork.deleteLinksFromFibers(bornFibs);
             if (verbose > 0):
                 print('Time to turnover fibers (first time) %f' %(time.time()-thist))
                 thist = time.time()    
@@ -450,7 +461,11 @@ class TemporalIntegrator(object):
             forceExt = self._allFibers.ForceFromForceDensity(forceExt)
         if (self._CLNetwork is not None):
             uniPoints = self._allFibers.getUniformPoints(XforNL);
-            forceExt += self._CLNetwork.CLForce(uniPoints,XforNL,Dom,self._allFibers);
+            if (self._MultipleNetworks):
+                for i in range(len(self._CLNetwork)):
+                    forceExt += self._CLNetwork[i].CLForce(uniPoints,XforNL,Dom,self._allFibers);
+            else: 
+                forceExt += self._CLNetwork.CLForce(uniPoints,XforNL,Dom,self._allFibers);
             if (verbose > 0):
                 print('Time to calc CL force %f' %(time.time()-thist))
                 thist = time.time()
@@ -490,7 +505,11 @@ class TemporalIntegrator(object):
             Dom.setg(self._gForStress); 
             CLstress = np.zeros((3,3));
             if (self._CLNetwork is not None):
-                CLstress = self._CLNetwork.CLStress(self._allFibers,XforNL,Dom);
+                if (self._MultipleNetworks):
+                    for i in range(len(self._CLNetwork)):
+                        CLstress += self._CLNetwork[i].CLStress(self._allFibers,XforNL,Dom);
+                else: 
+                    CLstress += self._CLNetwork.CLStress(self._allFibers,XforNL,Dom);
             stressArray=np.array([lamStress[0,1],ElasticStress[0,1],DriftStress[0,1],CLstress[0,1]]);
             if (verbose > 0):
                 print('Stress time %f' %(time.time()-thist))

@@ -69,6 +69,7 @@ class EndedCrossLinkedNetwork {
         _restlen = restlen;
         _KStiffness = KStiffness;
         _UnloadedRate = 0;
+        _LockContract = false;
      }
      
      void SetMotorParams(double UnloadedRate, double StallForce, int SitesPerFib){
@@ -76,6 +77,10 @@ class EndedCrossLinkedNetwork {
         _FStall = StallForce;
         _NSitesPerFib = SitesPerFib;
      }
+     
+     void ChangeLockContract(bool which){
+        _LockContract = which;
+    }
 
      ~EndedCrossLinkedNetwork(){
         deleteHeap();
@@ -255,7 +260,6 @@ class EndedCrossLinkedNetwork {
     }
     
     void WalkLinks(double tstep, npDoub pyuniPts, npDoub pyuniTanVecs, npDoub pyRealShifts){       
-        // TODO: Compile and test this simple method
         // Not yet figured out: what happens when a link is sitting on the end. It 
         // can't move, but could it unbind? Need to figure that out (shouldn't be too 
         // big a deal to take it off)
@@ -307,9 +311,11 @@ class EndedCrossLinkedNetwork {
                 }
                 //std::cout << "PtToMove " << PtToMove << std::endl;
                 // Check that it can move to the next site
-                bool IsEnd = ((PtToMove+1) % _NSitesPerFib)==0;
+                int LocalMovedIndex = (PtToMove+1) % _NSitesPerFib;
+                bool IsEnd = LocalMovedIndex==0;
                 bool IsFull = _TotalNumberBound[PtToMove+1]==_MaxNumberPerSite;
-                if (IsEnd || IsFull){
+                bool pastHalf = _LockContract && (LocalMovedIndex > _NSitesPerFib/2); // TEMP to lock in contractile configurations
+                if (IsEnd || IsFull || pastHalf){
                     //std::cout << "Cannot move link because " << IsEnd << " , " << IsFull << std::endl;
                     TimeAwareHeapInsert(eventindex, RateMove[eventindex-1],systime,tstep); // TEMP
                 } else{ // Move the link
@@ -478,6 +484,7 @@ class EndedCrossLinkedNetwork {
         vec _LinkShiftsPrime, _RealDistances;
         std::uniform_real_distribution<double> unif;
         std::mt19937_64 rng;
+        bool _LockContract;
 
         double logrand(){
             return -log(1.0-unif(rng));
@@ -585,6 +592,7 @@ PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
         .def(py::init<int, int, vec, vec, double, double, double, double>())
         .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
         .def("WalkLinks",&EndedCrossLinkedNetwork::WalkLinks)
+        .def("ChangeLockContract",&EndedCrossLinkedNetwork::ChangeLockContract)
         .def("SetMotorParams",&EndedCrossLinkedNetwork::SetMotorParams)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
         .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails)
