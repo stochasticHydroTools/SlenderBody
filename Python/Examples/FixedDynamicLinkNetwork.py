@@ -107,7 +107,10 @@ CLNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,K
     rl,konCL,koffCL,konSecond,koffSecond,seed,Dom,fibDisc,nThreads=nThr,\
     bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce);
 if (InFileString is None):
-    CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSecond)) # just to load up CLs
+    try:
+        CLNet.updateNetwork(allFibers,Dom,100.0/min(konCL*Lf,konSecond*Lf,koffCL,koffSecond)) # just to load up CLs
+    except:
+        pass
 else:
     CLNet.setLinksFromFile('BundlingBehavior/FinalLinks'+InFileString,'BundlingBehavior/FinalFreeLinkBound'+InFileString);
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
@@ -148,9 +151,10 @@ if (seed==1):
     ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
-    ofMot = prepareOutFile('BundlingBehavior/Step'+str(0)+'Motors'+FileString);
-    MotorNet.writeLinks(ofMot)
-    ofMot.close()
+    if (Motors):
+        ofMot = prepareOutFile('BundlingBehavior/Step'+str(0)+'Motors'+FileString);
+        MotorNet.writeLinks(ofMot)
+        ofMot.close()
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -198,9 +202,6 @@ for iT in range(stopcount):
         print('Max x: %f' %maxX)
         thist = time.time();
         print('Number of links %d' %CLNet._nDoubleBoundLinks)
-        if (Motors):
-            print('Number of motors %d' %MotorNet._nDoubleBoundLinks)   
-            numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber(); 
         saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
@@ -208,13 +209,17 @@ for iT in range(stopcount):
         nCont, _ = FibContacts.shape;
         print('Number of contacts %d' %nCont)
         nContacts[saveIndex]=nCont;
+        if (Motors):
+            print('Number of motors %d' %MotorNet._nDoubleBoundLinks)
+            numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber();
         if (seed==1):
             ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
             CLNet.writeLinks(ofCL)
             ofCL.close()
-            ofMot = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Motors'+FileString);
-            MotorNet.writeLinks(ofMot)
-            ofMot.close()
+            if (Motors):
+                ofMot = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Motors'+FileString);
+                MotorNet.writeLinks(ofMot)
+                ofMot.close()
                
         # Bundles where connections are 2 links
         numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);
@@ -247,11 +252,11 @@ if (True):
     np.savetxt('BundlingBehavior/AvgTangents'+FileString,AllaverageBundleTangents);
     allFibers.writeFiberLocations('BundlingBehavior/FinalLocs'+FileString,'w');
     np.savetxt('BundlingBehavior/FinalFreeLinkBound'+FileString, CLNet._FreeLinkBound);
-    np.savetxt('BundlingBehavior/FinalFreeMotorBound'+FileString, MotorNet._FreeLinkBound);
     ofCL = prepareOutFile('BundlingBehavior/FinalLinks'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
     if (Motors):
+        np.savetxt('BundlingBehavior/FinalFreeMotorBound'+FileString, MotorNet._FreeLinkBound);
         np.savetxt('BundlingBehavior/nMotorsPerFib'+FileString,numMotsByFib);  
         ofMot = prepareOutFile('BundlingBehavior/FinalMotors'+FileString);
         MotorNet.writeLinks(ofMot)
