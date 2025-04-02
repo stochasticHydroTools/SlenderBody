@@ -210,8 +210,8 @@ for iT in range(stopcount):
         print('Number of contacts %d' %nCont)
         nContacts[saveIndex]=nCont;
         if (Motors):
-            print('Number of motors %d' %MotorNet._nDoubleBoundLinks)
-            numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber();
+            print('Number of motors %d' %MotorNet._nDoubleBoundLinks)   
+            numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber(); 
         if (seed==1):
             ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
             CLNet.writeLinks(ofCL)
