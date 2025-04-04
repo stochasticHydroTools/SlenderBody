@@ -259,6 +259,31 @@ class EndedCrossLinkedNetwork {
         }
     }
     
+    npDoub MotorSpeeds(npDoub pyuniPts, npDoub pyuniTanVecs, npDoub pyRealShifts){
+    
+        vec uniPts(pyuniPts.size());
+        std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
+        vec uniTanVecs(pyuniTanVecs.size());
+        std::memcpy(uniTanVecs.data(),pyuniTanVecs.data(),pyuniTanVecs.size()*sizeof(double));
+        vec RealShifts(pyRealShifts.size());
+        std::memcpy(RealShifts.data(),pyRealShifts.data(),pyRealShifts.size()*sizeof(double));
+
+        // Walking of doubly-bound links (finite force)
+        vec RateMove(2*_nDoubleBoundLinks); // might not be needed
+        for (int iLink=0; iLink < _nDoubleBoundLinks; iLink++){
+            // Compute the force
+            vec ParallelForces = ComputeParForce(iLink,uniPts,uniTanVecs,RealShifts);
+            double RateMove_i = std::max(_UnloadedRate*(1+ParallelForces[0]/_FStall),0.0); // moving velocity
+            double RateMove_j = std::max(_UnloadedRate*(1+ParallelForces[1]/_FStall),0.0); // moving velocity
+            RateMove[2*iLink]=RateMove_i;
+            RateMove[2*iLink+1]=RateMove_j;
+            //std::cout << "Rates of movement link " << iLink << " = " << RateMove[2*iLink] << " , " << RateMove[2*iLink+1] << std::endl;
+            // Add to heap
+        }
+        return make1DPyArray(RateMove);
+    }
+        
+    
     void WalkLinks(double tstep, npDoub pyuniPts, npDoub pyuniTanVecs, npDoub pyRealShifts){       
         // Not yet figured out: what happens when a link is sitting on the end. It 
         // can't move, but could it unbind? Need to figure that out (shouldn't be too 
@@ -582,6 +607,17 @@ class EndedCrossLinkedNetwork {
             }
             _nDoubleBoundLinks-=1;
         }
+        
+        npDoub make1DPyArray(vec &cppvec){
+            // Return a 1D py array
+            // allocate py::array (to pass the result of the C++ function to Python)
+            auto pyArray = py::array_t<double>(cppvec.size());
+            auto result_buffer = pyArray.request();
+            double *result_ptr    = (double *) result_buffer.ptr;
+            // copy std::vector -> py::array
+            std::memcpy(result_ptr,cppvec.data(),cppvec.size()*sizeof(double));
+            return pyArray;
+        }
 
 
 };
@@ -592,6 +628,7 @@ PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
         .def(py::init<int, int, vec, vec, double, double, double, double>())
         .def("updateNetwork", &EndedCrossLinkedNetwork::updateNetwork)
         .def("WalkLinks",&EndedCrossLinkedNetwork::WalkLinks)
+        .def("MotorSpeeds", &EndedCrossLinkedNetwork::MotorSpeeds)
         .def("ChangeLockContract",&EndedCrossLinkedNetwork::ChangeLockContract)
         .def("SetMotorParams",&EndedCrossLinkedNetwork::SetMotorParams)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)

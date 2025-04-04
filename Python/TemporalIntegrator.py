@@ -486,10 +486,6 @@ class TemporalIntegrator(object):
         self._allFibersPrev = copy.deepcopy(self._allFibers); # copy old info over
         
         lamalph, itsneeded, XWithLam = self.SolveForFiberAlphaLambda(XforNL,XsforNL,iT,dt,tvalSolve,forceExt,lamStar,Dom,Ewald)
-        #np.savetxt('ChebPts.txt',XforNL)
-        #np.savetxt('TanVecs.txt',XsforNL)
-        #np.savetxt('FCL.txt',forceExt)
-        #np.savetxt('LambdaAlpha.txt',lamalph)
 
         # Update alpha and lambda and fiber positions
         self._allFibers.updateLambdaAlpha(lamalph);

@@ -315,6 +315,14 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         #print(np.amax(np.abs(np.sort(self._HeadsOfLinks)-np.sort(pyHeads))))
         #print(np.amax(np.abs(np.sort(self._TailsOfLinks)-np.sort(pyTails))))
         #print(np.amax(np.abs(np.sort(self._PrimedShifts,axis=None)-np.sort(pyShifts,axis=None))))
+    
+    def MotorSpeeds(self,fiberCol, Dom):
+        chebPts = fiberCol.getX();
+        uniPts = fiberCol.getUniformPoints(chebPts);
+        tauPts = fiberCol.getXs();
+        uniTau = fiberCol.getUniformTau(tauPts);
+        RealShifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
+        return self._cppNet.MotorSpeeds(uniPts,uniTau,RealShifts);
 
     ## ======================================== ##
     ##    PRIVATE METHODS (INVOLVED IN UPDATE)

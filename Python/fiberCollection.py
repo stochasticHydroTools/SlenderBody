@@ -1026,7 +1026,7 @@ class fiberCollection(object):
             FEx = ExForces[stackinds];
             FTotal = FBend+FEx;
             U0 = self.evalU0(self._ptsCheb[Xinds,:],t);
-            self._FibColCpp.FactorizePreconditioner(X,Xs,implic_coeff,dt,self._FPLoc,-1);
+            self._FibColCpp.FactorizePreconditioner(X,Xs,implic_coeff*dt,self._FPLoc,False);
             lamalph = self._FibColCpp.applyPreconditioner(FTotal,U0);
             self._lambdas[stackinds] = lamalph[:3*self._NXpf];
             if other is not None:

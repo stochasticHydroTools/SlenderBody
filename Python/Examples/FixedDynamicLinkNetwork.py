@@ -169,6 +169,7 @@ numLinksByFib[0,:] = CLNet.numLinksOnEachFiber();
 if (Motors):
     numMotsByFib = np.zeros((numSaves,nFib),dtype=np.int64);
     numMotsByFib[0,:] = MotorNet.numLinksOnEachFiber();
+    MotorSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
 
 numBundlesSep =  np.zeros(numSaves,dtype=np.int64)
 numBundlesSep[0], AllLabels[0,:] = CLNet.FindBundles(bunddist);
@@ -212,6 +213,8 @@ for iT in range(stopcount):
         if (Motors):
             print('Number of motors %d' %MotorNet._nDoubleBoundLinks)   
             numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber(); 
+            NewSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
+            np.append(MotorSpeeds,NewSpeeds);
         if (seed==1):
             ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
             CLNet.writeLinks(ofCL)
@@ -258,6 +261,7 @@ if (True):
     if (Motors):
         np.savetxt('BundlingBehavior/FinalFreeMotorBound'+FileString, MotorNet._FreeLinkBound);
         np.savetxt('BundlingBehavior/nMotorsPerFib'+FileString,numMotsByFib);  
+        np.savetxt('BundlingBehavior/MotorSpeeds'+FileString,MotorSpeeds);
         ofMot = prepareOutFile('BundlingBehavior/FinalMotors'+FileString);
         MotorNet.writeLinks(ofMot)
         ofMot.close()

@@ -1,11 +1,11 @@
 N = 13;
 F = 200;
 step = F*N;
-FileName = 'Eps2StVisualize';
+FileName = 'BundlingWithMotorsAll_1';
 LoadFileName = strcat(FileName,'.txt'); % ALWAYS LOOK @ MOVIE!
 Locs=load(strcat('Locs',LoadFileName));
 Labels=load(strcat('FinalLabels_Sep',LoadFileName));
-cd '/home/ondrejmaxian/Documents/SLENDER_FIBERS/SlenderBody/Python/plots/HydroStericsPaper'
+cd '/home/ondrejmaxian/Documents/SLENDER_FIBERS/SlenderBody/Python/plots/Motors/'
 NBundlesPerstep_Sep = load(strcat('NumberOfBundles_Sep',LoadFileName));
 
 
