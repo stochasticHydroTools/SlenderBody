@@ -12,7 +12,7 @@ Eb = kbT*lp     # fiber bending stiffness
 
 # Time stepping
 dt = float(sys.argv[2]);      # timestep
-tf= 8          # final time
+tf= 0.04          # final time
 saveEvery = max(1,int(2e-2/dt+1e-10)); # How often do we save? 
 seed = int(sys.argv[1]);
 nThr = 12;                     # Number of threads for OpenMP

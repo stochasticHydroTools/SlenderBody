@@ -147,7 +147,7 @@ np.random.seed(seed);
 # Barymat for the quarter points
 LocsFileName = 'BundlingBehavior/Locs'+FileString;
 allFibers.writeFiberLocations(LocsFileName,'w');
-if (seed==1):
+if (False and seed==1):
     ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
@@ -214,8 +214,9 @@ for iT in range(stopcount):
             print('Number of motors %d' %MotorNet._nDoubleBoundLinks)   
             numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber(); 
             NewSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
-            np.append(MotorSpeeds,NewSpeeds);
-        if (seed==1):
+            print(NewSpeeds.shape)
+            MotorSpeeds=np.append(MotorSpeeds,NewSpeeds);
+        if (False and seed==1):
             ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
             CLNet.writeLinks(ofCL)
             ofCL.close()
