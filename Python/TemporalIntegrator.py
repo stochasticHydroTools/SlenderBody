@@ -179,6 +179,7 @@ class TemporalIntegrator(object):
             Dom.setg(fixedg);
         if (self._MultipleNetworks):
             for i in range(len(self._CLNetwork)):
+                thist = time.time();
                 self._CLNetwork[i].updateNetwork(self._allFibers,Dom,tstep);
         else: 
             self._CLNetwork.updateNetwork(self._allFibers,Dom,tstep);
@@ -350,7 +351,7 @@ class TemporalIntegrator(object):
         return lamalph, itsneeded, XforNL;
 
     def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=False,\
-        updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False,StericEval=None):
+        updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False,StericEval=None,dtFactor=1):
         """
         This is the main update method which updates the fiber collection and cross linked network. 
         The method proceeds in the following order:
@@ -405,6 +406,8 @@ class TemporalIntegrator(object):
         StericEval: StericForceEvaluator object
             the object used to compute the steric forces. Default is None, in which case
             steric forces will not be included in the calculation
+        dtFactor: int
+            The frequency of cross linked network update 
         
         Returns
         --------
@@ -416,9 +419,11 @@ class TemporalIntegrator(object):
             suspension, if it is computed (otherwise it returns all zeros).
         """   
         # Birth / death fibers
+        turnoverFibs = turnoverFibs and (iT%dtFactor==0);
+        updateNet = updateNet and (iT%dtFactor==0);
         thist = time.time() 
         if (turnoverFibs):
-            bornFibs = self._allFibers.FiberBirthAndDeath(dt);
+            bornFibs = self._allFibers.FiberBirthAndDeath(dt*dtFactor);
             if (self._MultipleNetworks):
                 for i in range(len(self._CLNetwork)):
                     self._CLNetwork[i].deleteLinksFromFibers(bornFibs);
@@ -429,7 +434,7 @@ class TemporalIntegrator(object):
                 thist = time.time()    
         # Update the network (first time)
         if (updateNet):
-            self.NetworkUpdate(Dom,iT*dt,dt,fixedg);
+            self.NetworkUpdate(Dom,iT*dt,dt*dtFactor,fixedg);
             if (verbose > 0):
                 print('Time to update network (first time) %f' %(time.time()-thist))
                 thist = time.time()

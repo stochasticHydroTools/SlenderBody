@@ -105,7 +105,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._TailsOfLinks = np.zeros(MaxLinks,dtype=np.int64);
         self._PrimedShifts = np.zeros((MaxLinks,3));
         allRates = [self._kon,self._konSecond,self._koff,self._koffSecond];
-        if (kT > 0):
+        if (kT > 0 and self._kCL>0):
             self._deltaL = 2*np.sqrt(kT/self._kCL); # Strain-dependent rate, modify self._deltaL to be 2 or 1/2 rest length
         CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
         if (self._deltaL > self._rl):
@@ -149,7 +149,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         """
         return np.arange(iFib*self._NsitesPerf,(iFib+1)*self._NsitesPerf,dtype=np.int64);
        
-    def updateNetwork(self,fiberCol,Dom,tstep):
+    def updateNetwork(self,fiberCol,Dom,tstep,DontWalk=False):
         """
         Update the network using Kinetic Monte Carlo. The full procedure we use is documented 
         in Section 9.1.1 of Maxian's PhD thsis. Briefly, we consider six possible reactions, with the 
@@ -216,17 +216,21 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         self._cppNet.updateNetwork(tstep,newLinks,uniPts,PrimedShiftsProp,RealShiftsProp,RealShifts);
         if (verbose > 0):
             print('Update network time %f ' %(time.time()-thist))
+            thist=time.time();
         
         # Keep C++ and Python up to date (for force calculations)
         self.syncPythonAndCpp()
         
         # Walk the motors
-        if (not self._isMotor):
+        if (not self._isMotor or DontWalk):
             return;
         tauPts = fiberCol.getXs();
         uniTau = fiberCol.getUniformTau(tauPts);
         RealShifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
         self._cppNet.WalkLinks(tstep,uniPts,uniTau,RealShifts)
+        if (verbose > 0):
+            print('Walk links time %f ' %(time.time()-thist))
+            thist=time.time();
         self.syncPythonAndCpp()
     
     def setLinks(self,iPts,jPts,Shifts,FreelyBound=None):

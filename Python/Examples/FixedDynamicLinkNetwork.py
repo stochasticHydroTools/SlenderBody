@@ -121,7 +121,7 @@ if (Motors):
         rl_M,kon_M,koff_M,konSecond_M,koffSecond_M,seed,Dom,fibDisc,nThreads=nThr,\
         bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce,UnloadedVel=V0_M,StallForce=Fst_M);
     if (InFileString is None):
-        MotorNet.updateNetwork(allFibers,Dom,100.0/min(kon_M*Lf,konSecond_M*Lf,koff_M,koffSecond_M)) # just to load up CLs
+        MotorNet.updateNetwork(allFibers,Dom,100.0/min(kon_M*Lf,konSecond_M*Lf,koff_M,koffSecond_M),DontWalk=True) # just to load up CLs
     else:
         MotorNet.setLinksFromFile('BundlingBehavior/FinalMotors'+InFileString,'BundlingBehavior/FinalFreeMotorBound'+InFileString);
     CLNets.append(MotorNet);
@@ -158,6 +158,7 @@ if (False and seed==1):
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
+NetworkStepEvery = int(Networkdt/dt);
 
 NumFibsConnected =  np.zeros((numSaves,nFib),dtype=np.int64)
 AllLocalAlignment =  np.zeros((numSaves,nFib))
@@ -196,7 +197,8 @@ for iT in range(stopcount):
         wr=1;
         mythist = time.time()
     maxX, ItsNeed[iT], _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
-        updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,turnoverFibs=turnover,StericEval=StericEval);
+        updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,\
+        turnoverFibs=turnover,StericEval=StericEval,dtFactor=NetworkStepEvery);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
         print('MAIN Time step time %f ' %(time.time()-mythist));

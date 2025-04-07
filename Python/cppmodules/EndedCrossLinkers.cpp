@@ -237,7 +237,7 @@ class EndedCrossLinkedNetwork {
             topOfHeap(eventindex,systime);
             //std::cout << "[" << eventindex << " , " << systime << "]" << std::endl;
             // Debugging check
-            intvec TotNum2(_TotSites, 0);
+            /*intvec TotNum2(_TotSites, 0);
             for (int iSite = 0; iSite < _TotSites; iSite++){
                 TotNum2[iSite] = _FreeLinkBound[iSite];
             }
@@ -255,7 +255,7 @@ class EndedCrossLinkedNetwork {
                 if (_TotalNumberBound[iSite] > _MaxNumberPerSite){
                     std::cout << "EXCEED MAX!" << std::endl;
                 }
-            }
+            }*/
         }
     }
     
@@ -381,25 +381,6 @@ class EndedCrossLinkedNetwork {
                 }
             }
             topOfHeap(eventindex,systime);
-            intvec TotNum2(_TotSites, 0);
-            for (int iSite = 0; iSite < _TotSites; iSite++){
-                TotNum2[iSite] = _FreeLinkBound[iSite];
-            }
-            for (int iLink = 0; iLink < _nDoubleBoundLinks; iLink++){
-                TotNum2[_LinkHeads[iLink]]++;
-                TotNum2[_LinkTails[iLink]]++;
-            }
-            for (int iSite = 0; iSite < _TotSites; iSite++){
-                if (TotNum2[iSite] != _TotalNumberBound[iSite]){
-                    std::cout << "COUNTING ER!" << std::endl;
-                    eventindex=-1;
-                    std::cout << "Tot number bound at site " << iSite << " = " << _TotalNumberBound[iSite] << std::endl;
-                    std::cout << "Compared to " << iSite << " = " << TotNum2[iSite] << std::endl;
-                }
-                if (_TotalNumberBound[iSite] > _MaxNumberPerSite){
-                    std::cout << "EXCEED MAX!" << std::endl;
-                }
-            }
         }
     }
         

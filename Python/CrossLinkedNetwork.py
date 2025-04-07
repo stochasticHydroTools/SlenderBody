@@ -77,7 +77,10 @@ class CrossLinkedNetwork(object):
         self._sigma = self.sigmaFromNL(self._Npf,self._Lfib)
             
         # Cutoff bounds to form the CLs
-        self._deltaL = min(np.sqrt(kbT/self._kCL),0.5*self._rl);
+        try:
+            self._deltaL = min(np.sqrt(kbT/self._kCL),0.5*self._rl);
+        except: 
+            self._deltaL = min(2*np.sqrt(kbT/10),0.5*self._rl);
         # Add fudge factor because of discrete sites
         self._ds = self._Lfib/(self._NsitesPerf-1);
         #if (self._ds > 2*self._deltaL):
