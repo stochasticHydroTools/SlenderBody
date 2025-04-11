@@ -338,7 +338,10 @@ class EndedCrossLinkedNetwork {
                 // Check that it can move to the next site
                 int LocalMovedIndex = (PtToMove+1) % _NSitesPerFib;
                 bool IsEnd = LocalMovedIndex==0;
-                bool IsFull = _TotalNumberBound[PtToMove+1]==_MaxNumberPerSite;
+                bool IsFull = false;
+                if (!IsEnd){
+                    IsFull = _TotalNumberBound[PtToMove+1]==_MaxNumberPerSite;    
+                }
                 bool pastHalf = _LockContract && (LocalMovedIndex > _NSitesPerFib/2); // TEMP to lock in contractile configurations
                 if (IsEnd || IsFull || pastHalf){
                     //std::cout << "Cannot move link because " << IsEnd << " , " << IsFull << std::endl;
