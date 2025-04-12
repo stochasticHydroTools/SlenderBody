@@ -98,7 +98,8 @@ class EndedCrossLinkedNetwork {
        
         */
         // Convert numpy to C++ vector and reset heap for the beginning of the step
-        intvec MaybeBindingPairs(pyMaybeBindingPairs.size());
+	std::cout << "Update network calc" << std::endl;
+	intvec MaybeBindingPairs(pyMaybeBindingPairs.size());
         std::memcpy(MaybeBindingPairs.data(),pyMaybeBindingPairs.data(),pyMaybeBindingPairs.size()*sizeof(int));
         vec uniPts(pyuniPts.size());
         std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
@@ -111,6 +112,7 @@ class EndedCrossLinkedNetwork {
         resetHeap();
 
         // Determine pairs that can actually bind
+	std::cout << "Update network calc: determine bind pairs" << std::endl;
         int nPropUnique = MaybeBindingPairs.size()/2;
         vec PropDistances(nPropUnique,-1);
         intvec FirstLinkBySite(_TotSites,-1);
@@ -133,6 +135,7 @@ class EndedCrossLinkedNetwork {
                 }
             }
         }
+	std::cout << "Update network calc: rest" << std::endl;
         // Single binding to a site
         double RateFreeBind = _kon*_TotSites;
         int indexFreeBinding = 2*nPropUnique+1;
@@ -153,6 +156,7 @@ class EndedCrossLinkedNetwork {
             TimeAwareHeapInsert(indexSecondUnbind+iLink,UnbindRate,0,tstep);
         }
 
+	std::cout << "Update network calc: about to heap" << std::endl;
         double systime;
         int eventindex, BoundEnd, UnboundEnd;
         topOfHeap(eventindex,systime);
@@ -257,6 +261,7 @@ class EndedCrossLinkedNetwork {
                 }
             }*/
         }
+	std::cout << "Update network calc: end" << std::endl;
     }
     
     npDoub MotorSpeeds(npDoub pyuniPts, npDoub pyuniTanVecs, npDoub pyRealShifts){
@@ -267,7 +272,7 @@ class EndedCrossLinkedNetwork {
         std::memcpy(uniTanVecs.data(),pyuniTanVecs.data(),pyuniTanVecs.size()*sizeof(double));
         vec RealShifts(pyRealShifts.size());
         std::memcpy(RealShifts.data(),pyRealShifts.data(),pyRealShifts.size()*sizeof(double));
-
+	std::cout << "Motor speed calc" << std::endl;
         // Walking of doubly-bound links (finite force)
         vec RateMove(2*_nDoubleBoundLinks); // might not be needed
         for (int iLink=0; iLink < _nDoubleBoundLinks; iLink++){
@@ -280,6 +285,7 @@ class EndedCrossLinkedNetwork {
             //std::cout << "Rates of movement link " << iLink << " = " << RateMove[2*iLink] << " , " << RateMove[2*iLink+1] << std::endl;
             // Add to heap
         }
+	std::cout << "Motor speed calc: end" << std::endl;
         return make1DPyArray(RateMove);
     }
         
@@ -289,7 +295,8 @@ class EndedCrossLinkedNetwork {
         // can't move, but could it unbind? Need to figure that out (shouldn't be too 
         // big a deal to take it off)
         // Convert numpy to C++ vector and reset heap for the beginning of the step
-        vec uniPts(pyuniPts.size());
+        std::cout << "Walk links calc" << std::endl;
+	vec uniPts(pyuniPts.size());
         std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
         vec uniTanVecs(pyuniTanVecs.size());
         std::memcpy(uniTanVecs.data(),pyuniTanVecs.data(),pyuniTanVecs.size()*sizeof(double));
@@ -298,6 +305,7 @@ class EndedCrossLinkedNetwork {
         resetHeap();
 
         // Walking of doubly-bound links (finite force)
+	std::cout << "Walk links calc: compute rates" << std::endl;
         vec RateMove(2*_nDoubleBoundLinks); // might not be needed
         for (int iLink=0; iLink < _nDoubleBoundLinks; iLink++){
             // Compute the force
@@ -312,6 +320,7 @@ class EndedCrossLinkedNetwork {
             TimeAwareHeapInsert(2*iLink+2, RateMove_j,0,tstep);
         }
         
+	std::cout << "Walk links calc: compute SB rates" << std::endl;
         // Walking of singly-bound link
         int UnloadedStart = 2*_nDoubleBoundLinks+1;
         for (int iSite = 0; iSite < _TotSites; iSite++){
@@ -320,10 +329,10 @@ class EndedCrossLinkedNetwork {
 
         double systime;
         int eventindex;
-        //std::cout << "Try to find top of heap " << std::endl;
+        std::cout << "Try to find top of heap " << std::endl;
         topOfHeap(eventindex,systime);
         //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
-        while (eventindex > 0) {
+	while (eventindex > 0) {
             //std::cout << "System time " << systime << std::endl;
             //std::cout << "Event index " << eventindex << std::endl;
             if (eventindex < UnloadedStart){ // Moving loaded links
@@ -370,8 +379,11 @@ class EndedCrossLinkedNetwork {
             } else { // Moving unloaded links
                 int SiteToMove = eventindex - UnloadedStart;
                 bool IsEnd = ((SiteToMove+1) % _NSitesPerFib)==0;
-                bool IsFull = _TotalNumberBound[SiteToMove+1]==_MaxNumberPerSite;
-                if (IsEnd || IsFull){
+		bool IsFull = false;
+		if (!IsEnd){
+                    IsFull = _TotalNumberBound[SiteToMove+1]==_MaxNumberPerSite;
+		}
+		if (IsEnd || IsFull){
                     //std::cout << "Cannot move link because " << IsEnd << " , " << IsFull << std::endl;
                     TimeAwareHeapInsert(eventindex,_UnloadedRate*_FreeLinkBound[SiteToMove],systime,tstep); // TEMP
                 } else{ // Move the link
@@ -385,6 +397,7 @@ class EndedCrossLinkedNetwork {
             }
             topOfHeap(eventindex,systime);
         }
+	std::cout << "Walk links calc: end" << std::endl;
     }
         
 
