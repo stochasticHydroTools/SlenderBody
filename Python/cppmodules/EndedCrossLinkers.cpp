@@ -225,7 +225,7 @@ class EndedCrossLinkedNetwork {
                 _LinkTails.resize(_maxLinks);
                 _LinkShiftsPrime.resize(3*_maxLinks);
                 _RealDistances.resize(_maxLinks);
-                std::cout << "Expanding array size to " << _maxLinks << std::endl;
+                //std::cout << "Expanding array size to " << _maxLinks << std::endl;
             }
             // Rates of CL binding change based on number of bound ends
             updateSecondBindingRate(BoundEnd, FirstLinkBySite, NextLinkByLink, PropDistances, systime, tstep);

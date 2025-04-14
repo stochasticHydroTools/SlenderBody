@@ -228,7 +228,7 @@ class StericForceEvaluatorC {
         std::memcpy(PeriodicShifts.data(),pyPeriodicShifts.data(),pyPeriodicShifts.size()*sizeof(double));
         vec Intervals(pyIntervals.size());
         std::memcpy(Intervals.data(),pyIntervals.data(),pyIntervals.size()*sizeof(double));
-
+         
         int nPairs = iFibjFib.size()/2;
         vec StericForces(_NFib*_nXPerFib*3);
         #pragma omp parallel for num_threads(_nThreads)
@@ -258,6 +258,14 @@ class StericForceEvaluatorC {
             vec Seg1Qpts(NumS1Pts), Seg2Qpts(NumS2Pts), Seg1Wts(NumS1Pts), Seg2Wts(NumS2Pts);
             int Pt1StartIndex = int((1.0+NumS1Pts)*0.5*NumS1Pts+SMALL_NUM)-NumS1Pts;
             int Pt2StartIndex = int((1.0+NumS2Pts)*0.5*NumS2Pts+SMALL_NUM)-NumS2Pts;
+	    if (Pt1StartIndex+NumS1Pts > _LegPts.size() || Pt2StartIndex+NumS2Pts>_LegPts.size()){
+		    std::cout << "Memory access problem " << std::endl;
+		    std::cout << "Int 1 size and pts " << Seg1Bds[1]-Seg1Bds[0] << " , " << NumS1Pts << std::endl;
+		    std::cout << "Int 2 size and pts " << Seg2Bds[1]-Seg2Bds[0] << " , " << NumS2Pts << std::endl;
+		    std::cout << "Intervals entry = " << Intervals[4*iPair] << " , " << Intervals[4*iPair+1] << " , " << Intervals[4*iPair+2] << " , " << Intervals[4*iPair+3] << std::endl;
+		    std::cout << "Pair index " << iPair << " out of " << nPairs-1 << std::endl;
+		    std::cout << "The length of the array is " << _LegPts.size() << " and " << _LegWts.size() << std::endl;
+            }
             for (int q=0; q < NumS1Pts; q++){
                 Seg1Qpts[q]=(_LegPts[Pt1StartIndex+q]+1.0)*0.5*(Seg1Bds[1]-Seg1Bds[0])+Seg1Bds[0];
                 Seg1Wts[q]=_LegWts[Pt1StartIndex+q]*0.5*(Seg1Bds[1]-Seg1Bds[0]);
@@ -491,7 +499,15 @@ class StericForceEvaluatorC {
         int nIntervals = RepeatedPairs.size()/nCol;
         int iInterval = 0;
 
-        vec NewPairs;
+        vec NewPairs(0);
+	for (int j=0; j < nIntervals; j++){
+            if (RepeatedPairs[nCol*j+1] < 0 || RepeatedPairs[nCol*j+2] > _L ||
+                    RepeatedPairs[nCol*j+4]<0 || RepeatedPairs[nCol*j+5] > _L){
+                std::cout << "Merge method: bad interaction interval input: " << j << std::endl;
+                std::cout << RepeatedPairs[nCol*j+1] << " , " << RepeatedPairs[nCol*j+2] << " , " <<
+                        RepeatedPairs[nCol*j+4] << " , " << RepeatedPairs[nCol*j+5] << std::endl;
+            }
+        }
         while (iInterval < nIntervals){
             int iFib0 = RepeatedPairs[nCol*iInterval];
             int jFib0 = RepeatedPairs[nCol*iInterval+3];
@@ -505,6 +521,12 @@ class StericForceEvaluatorC {
             iInterval++;
             int iFib = RepeatedPairs[nCol*iInterval];
             int jFib = RepeatedPairs[nCol*iInterval+3];
+	    if (iFib!=iFib0 || jFib !=jFib0){
+               std::cout << "No repeated interval for this pair - shouldn't be in this method" << std::endl;
+	    }
+	    if (iInterval >=nIntervals){
+	       std::cout << "Interval is " << iInterval << " out of " << nIntervals << std::endl;
+	    }
             while (iFib == iFib0 && jFib==jFib0){
                 double s1start = RepeatedPairs[nCol*iInterval+1];
                 double s1end = RepeatedPairs[nCol*iInterval+2];
@@ -541,11 +563,24 @@ class StericForceEvaluatorC {
                     nJoined++;
                 }
                 iInterval++;
-                iFib = RepeatedPairs[nCol*iInterval];
-                jFib = RepeatedPairs[nCol*iInterval+3];
+		iFib=-1;
+		jFib=-1;
+		if (iInterval < nIntervals){
+                   iFib = RepeatedPairs[nCol*iInterval];
+                   jFib = RepeatedPairs[nCol*iInterval+3];
+	        }
             } // end loop over intervals for a pair
             NewPairs.insert(NewPairs.end(),JoinedIntervals.begin(),JoinedIntervals.end());
-        } // end loop over pairs
+	} // end loop over pairs
+	int nJoin=NewPairs.size()/nCol;
+	for (int j=0; j < nJoin; j++){
+            if (NewPairs[nCol*j+1] < 0 || NewPairs[nCol*j+2] > _L ||
+                    NewPairs[nCol*j+4]<0 || NewPairs[nCol*j+5] > _L){
+                std::cout << "Merge method: bad interaction interval output: " << j << std::endl;
+                std::cout << NewPairs[nCol*j+1] << " , " << NewPairs[nCol*j+2] << " , " <<
+                        NewPairs[nCol*j+4] << " , " << NewPairs[nCol*j+5] << std::endl;
+            }
+        }
         return makeNineByArray(NewPairs);
     }
     
