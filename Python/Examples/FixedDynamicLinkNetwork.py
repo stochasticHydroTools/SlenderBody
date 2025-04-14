@@ -9,7 +9,7 @@ from FileIO import prepareOutFile, writeArray
 from StericForceEvaluator import StericForceEvaluator, SegmentBasedStericForceEvaluator
 import numpy as np
 import chebfcns as cf
-from math import exp
+from math import exp, pi
 import sys, time, os
 from warnings import warn
 
@@ -120,6 +120,7 @@ if (Motors):
     MotorNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring_M,\
         rl_M,kon_M,koff_M,konSecond_M,koffSecond_M,seed,Dom,fibDisc,nThreads=nThr,\
         bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce,UnloadedVel=V0_M,StallForce=Fst_M);
+    MotorNet.SetSpatialBinding(True,pi/Ld);
     if (InFileString is None):
         MotorNet.updateNetwork(allFibers,Dom,100.0/min(kon_M*Lf,konSecond_M*Lf,koff_M,koffSecond_M),DontWalk=True) # just to load up CLs
     else:
@@ -216,7 +217,6 @@ for iT in range(stopcount):
             print('Number of motors %d' %MotorNet._nDoubleBoundLinks)   
             numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber(); 
             NewSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
-            print(NewSpeeds.shape)
             MotorSpeeds=np.append(MotorSpeeds,NewSpeeds);
         if (False and seed==1):
             ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);

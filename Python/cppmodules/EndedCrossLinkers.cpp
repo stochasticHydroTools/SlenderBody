@@ -70,6 +70,7 @@ class EndedCrossLinkedNetwork {
         _KStiffness = KStiffness;
         _UnloadedRate = 0;
         _LockContract = false;
+        _SpatialBinding = false;
      }
      
      void SetMotorParams(double UnloadedRate, double StallForce, int SitesPerFib){
@@ -80,6 +81,11 @@ class EndedCrossLinkedNetwork {
      
      void ChangeLockContract(bool which){
         _LockContract = which;
+    }
+    
+    void ChangeSpatialBinding(bool which,double SinFreq){
+        _SpatialBinding = which;
+        _SinFreq = SinFreq;
     }
 
      ~EndedCrossLinkedNetwork(){
@@ -98,7 +104,7 @@ class EndedCrossLinkedNetwork {
        
         */
         // Convert numpy to C++ vector and reset heap for the beginning of the step
-	intvec MaybeBindingPairs(pyMaybeBindingPairs.size());
+	    intvec MaybeBindingPairs(pyMaybeBindingPairs.size());
         std::memcpy(MaybeBindingPairs.data(),pyMaybeBindingPairs.data(),pyMaybeBindingPairs.size()*sizeof(int));
         vec uniPts(pyuniPts.size());
         std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
@@ -113,11 +119,15 @@ class EndedCrossLinkedNetwork {
         // Determine pairs that can actually bind
         int nPropUnique = MaybeBindingPairs.size()/2;
         vec PropDistances(nPropUnique,-1);
+        vec xBar(nPropUnique,-1);
         intvec FirstLinkBySite(_TotSites,-1);
         intvec NextLinkByLink(2*nPropUnique,-1);
         for (int iPair=0; iPair < nPropUnique; iPair++){
-            PropDistances[iPair] = LinkDistance(MaybeBindingPairs[2*iPair],MaybeBindingPairs[2*iPair+1],uniPts,iPair,RealShiftProposed);
+            PropDistances[iPair] = LinkDistance(MaybeBindingPairs[2*iPair],MaybeBindingPairs[2*iPair+1],uniPts,iPair,RealShiftProposed,xBar[iPair]);
             double BaseRate = BindingRate(PropDistances[iPair]);
+            if (_SpatialBinding){
+                BaseRate*=abs(sin(_SinFreq*xBar[iPair]));
+            }   
             for (int End=0; End < 2; End++){
                 int BoundEnd = MaybeBindingPairs[2*iPair+End];
                 TimeAwareHeapInsert(2*iPair+End+1, BaseRate*_FreeLinkBound[BoundEnd],0,tstep);// notice we start indexing from 1, this is how fortran is written
@@ -148,7 +158,8 @@ class EndedCrossLinkedNetwork {
         // One end of CL unbinding
         int indexSecondUnbind = indexFreeUnbinding+_TotSites;
         for (int iLink=0; iLink < _nDoubleBoundLinks; iLink++){
-            _RealDistances[iLink] = LinkDistance(_LinkHeads[iLink],_LinkTails[iLink],uniPts,iLink,RealShift);
+            double xBarThis=0;
+            _RealDistances[iLink] = LinkDistance(_LinkHeads[iLink],_LinkTails[iLink],uniPts,iLink,RealShift,xBarThis);
             double UnbindRate=2*UnbindingRate(_RealDistances[iLink]);
             TimeAwareHeapInsert(indexSecondUnbind+iLink,UnbindRate,0,tstep);
         }
@@ -228,7 +239,7 @@ class EndedCrossLinkedNetwork {
                 //std::cout << "Expanding array size to " << _maxLinks << std::endl;
             }
             // Rates of CL binding change based on number of bound ends
-            updateSecondBindingRate(BoundEnd, FirstLinkBySite, NextLinkByLink, PropDistances, systime, tstep);
+            updateSecondBindingRate(BoundEnd, FirstLinkBySite, NextLinkByLink, PropDistances, xBar, systime, tstep);
 
             // Update unbinding event at BoundEnd (the end whose state has changed)
             //std::cout << "About to insert unbinding single end in heap with index " << BoundEnd+indexFreeUnbinding <<  std::endl;
@@ -288,7 +299,7 @@ class EndedCrossLinkedNetwork {
         // can't move, but could it unbind? Need to figure that out (shouldn't be too 
         // big a deal to take it off)
         // Convert numpy to C++ vector and reset heap for the beginning of the step
-	vec uniPts(pyuniPts.size());
+	    vec uniPts(pyuniPts.size());
         std::memcpy(uniPts.data(),pyuniPts.data(),pyuniPts.size()*sizeof(double));
         vec uniTanVecs(pyuniTanVecs.size());
         std::memcpy(uniTanVecs.data(),pyuniTanVecs.data(),pyuniTanVecs.size()*sizeof(double));
@@ -321,7 +332,7 @@ class EndedCrossLinkedNetwork {
         int eventindex;
         topOfHeap(eventindex,systime);
         //std::cout << "Top of heap is at index " << eventindex << " and time " << systime << std::endl;
-	while (eventindex > 0) {
+	    while (eventindex > 0) {
             //std::cout << "System time " << systime << std::endl;
             //std::cout << "Event index " << eventindex << std::endl;
             if (eventindex < UnloadedStart){ // Moving loaded links
@@ -368,11 +379,11 @@ class EndedCrossLinkedNetwork {
             } else { // Moving unloaded links
                 int SiteToMove = eventindex - UnloadedStart;
                 bool IsEnd = ((SiteToMove+1) % _NSitesPerFib)==0;
-		bool IsFull = false;
-		if (!IsEnd){
+		    bool IsFull = false;
+		    if (!IsEnd){
                     IsFull = _TotalNumberBound[SiteToMove+1]==_MaxNumberPerSite;
-		}
-		if (IsEnd || IsFull){
+		    }
+		    if (IsEnd || IsFull){
                     //std::cout << "Cannot move link because " << IsEnd << " , " << IsFull << std::endl;
                     TimeAwareHeapInsert(eventindex,_UnloadedRate*_FreeLinkBound[SiteToMove],systime,tstep); // TEMP
                 } else{ // Move the link
@@ -489,22 +500,23 @@ class EndedCrossLinkedNetwork {
         double _kon, _konSecond, _koff, _koffSecond;// rates
         double _kT, _restlen, _KStiffness; // for distance-dependent binding
         double _upperCLBound, _lowerCLBound; // absolute distances
-        double _UnloadedRate, _FStall; // motors
+        double _UnloadedRate, _FStall, _SinFreq; // motors
         intvec _FreeLinkBound, _LinkHeads, _LinkTails, _TotalNumberBound;
         vec _LinkShiftsPrime, _RealDistances;
         std::uniform_real_distribution<double> unif;
         std::mt19937_64 rng;
-        bool _LockContract;
+        bool _LockContract, _SpatialBinding;
 
         double logrand(){
             return -log(1.0-unif(rng));
         }
         
-        double LinkDistance(int iPt, int jPt, const vec &uniPts, int iPair, const vec &RealShift){
+        double LinkDistance(int iPt, int jPt, const vec &uniPts, int iPair, const vec &RealShift, double &xBar){
             vec3 displacement;
             for (int d=0; d < 3; d++){
                 displacement[d]=uniPts[3*iPt+d]-uniPts[3*jPt+d]-RealShift[3*iPair+d];
             }
+            xBar = 0.5*(uniPts[3*iPt]+uniPts[3*jPt]+RealShift[3*iPair]);
             return normalize(displacement);
         }
             
@@ -527,7 +539,7 @@ class EndedCrossLinkedNetwork {
             
 
         void updateSecondBindingRate(int BoundEnd, const intvec &FirstLinkBySite, const intvec &NextLinkByLink, 
-            const vec &ProposedDistances, double systime, double tstep){
+            const vec &ProposedDistances, const vec &XBars, double systime, double tstep){
             /*
             Update the binding rate of every link with left end = BoundEnd.
             SecondEndRates = new rates for binding the second end, startPair = first index of sorted pairs of links that
@@ -537,6 +549,9 @@ class EndedCrossLinkedNetwork {
             while (CurLink!=-1){
                 int DistancesIndex = CurLink/2;
                 double BaseRate = BindingRate(ProposedDistances[DistancesIndex]);
+                if (_SpatialBinding){
+                    BaseRate*=abs(sin(_SinFreq*XBars[DistancesIndex]));
+                }
                 TimeAwareHeapInsert(CurLink+1, BaseRate*_FreeLinkBound[BoundEnd],systime,tstep);
                 // notice we start indexing from 1, this is how fortran is written
                 CurLink = NextLinkByLink[CurLink];
@@ -550,6 +565,9 @@ class EndedCrossLinkedNetwork {
             if (rate==0){
                 deleteFromHeap(index); // delete any previous copy
                 return;
+            } else if (rate < 0){
+                std::cout << "Your rate is less than zero!" << std::endl;
+                throw std::runtime_error("Your rate is less than zero!");
             }
             double newtime = systime+logrand()/rate;
             //std::cout << "Trying to insert index " << index << " with time " << newtime << " (systime = " << systime << std::endl;
@@ -615,6 +633,7 @@ PYBIND11_MODULE(EndedCrossLinkedNetwork, m) {
         .def("WalkLinks",&EndedCrossLinkedNetwork::WalkLinks)
         .def("MotorSpeeds", &EndedCrossLinkedNetwork::MotorSpeeds)
         .def("ChangeLockContract",&EndedCrossLinkedNetwork::ChangeLockContract)
+        .def("ChangeSpatialBinding",&EndedCrossLinkedNetwork::ChangeSpatialBinding)
         .def("SetMotorParams",&EndedCrossLinkedNetwork::SetMotorParams)
         .def("getNBoundEnds", &EndedCrossLinkedNetwork::getNBoundEnds)
         .def("getLinkHeadsOrTails",&EndedCrossLinkedNetwork::getLinkHeadsOrTails)

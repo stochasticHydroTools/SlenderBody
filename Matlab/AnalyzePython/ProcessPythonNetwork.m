@@ -1,18 +1,22 @@
 % clear
 % addpath(genpath('../../Python'))
-% %names = [ "SegStLocHydBundLp2.0Dt_5e-05_" "SegStNLHydBundLp2.0Dt_5e-05_" "NoStLocHydBundLp2.0Dt_5e-05_" ...
-% %"SegStLocHydBundLp2.0Dt_2e-05_" "SegStNLHydBundLp2.0Dt_2e-05_" "NoStLocHydBundLp2.0Dt_2e-05_"];
-% %names = ["SegStNLHydBundLp2.0Dt_5e-05_" "CHKSegStNLHydBundLp2.0Dt_5e-05_"];
-% names=["BundlingWithoutMotors_" "BundlingWithMotorsAll_"];
-% tmaxes = [8];
+% names=["BDLTurn0_Time10_Links1_Motors0_Dt2.5e-05_" ...
+%     "BDLTurn0_Time10_Links1_Motors1_Dt2.5e-05_" ...
+%     "BDLTurn1_Time10_Links1_Motors0_Dt2.5e-05_" ...
+%     "BDLTurn1_Time10_Links1_Motors1_Dt2.5e-05_" ...
+%     "BDLTurn1_Time10_Links0_Motors1_Dt2.5e-05_" ...
+%     "BDLTurn1_Time5_Links1_Motors0_Dt2.5e-05_NtwrkDt0.01_" ...
+%     "BDLTurn1_Time5_Links1_Motors1_Dt2.5e-05_NtwrkDt0.01_"];
+% tmaxes = [8*ones(1,length(names))];
 % dtsaves = 2e-2*ones(1,length(names));
-% clear nLinks nBund nInBund MBAlign MaxBundSize meanDispP meanCurvatures meanBund
 % if (exist('parSet','var'))
 % else
 %     parSet=1;
 % end
 % F = 200;
 % L = 1;
+% nUniSites=40;
+% uni_ds = L/(nUniSites-1);
 % Ld = 2;
 % plots = 1;
 % eebinwidths = [0.02 0.001 0.001 0.001 0.001 0.001];
@@ -137,7 +141,30 @@
 %         FibersInBundles{iT} = NPerBundle_Sep(start:BundStart(iT+1));
 %     end
 % end
-% % End-end distances
+% % Motor calculations
+% AvgMotorSpeed = zeros(numTs,1);
+% NumMotorsPerFib = zeros(numTs,1);
+% PctStuckMotors = zeros(numTs,1);
+% try
+%     NMotorsPerFib = load(strcat('nMotorsPerFib',FileName));
+%     try
+%     MotorSpeeds = load(strcat('MotorSpeeds',FileName));
+%     NumMotorsPerT = sum(NMotorsPerFib,2);
+%     NumMotorsPerFib = mean(NMotorsPerFib,2);
+%     startind = [0; cumsum(NumMotorsPerT)];
+%     for iT=1:numTs
+%         MotSpeeds = MotorSpeeds(startind(iT)+1:startind(iT+1))*uni_ds;
+%         AvgMotorSpeed(iT)=mean(MotSpeeds);
+%         PctStuckMotors(iT)=sum(MotSpeeds==0)/length(MotSpeeds);
+%     end
+%     catch
+%         keyboard
+%     end
+% catch
+% end
+% AvgMotSpeeds(seed,:)=AvgMotorSpeed;
+% PctStuckMotorsss(seed,:)=PctStuckMotors;
+% NumMotorsPerFibs(seed,:)=NumMotorsPerFib;
 % nLinks(seed,:)=nLinksPerT*2/(F*L);
 % nBund(seed,:)=BundDensity;
 % nContactsTrials(seed,:)=nContacts;
@@ -158,6 +185,9 @@
 % AllEndEndDists{parSet,seed}=EndEndDistances;
 % clear FibersInBundles EndEndDists
 % end
+% AvgMotSpeedAll{parSet}=AvgMotSpeeds;
+% PctStuckMotorsAll{parSet}=PctStuckMotorsss;
+% nMotsAll{parSet}=NumMotorsPerFibs;
 % nLinksAll{parSet}=nLinks;
 % nBundAll{parSet}=nBund;
 % nInBundAll{parSet}=nInBund;
@@ -180,7 +210,7 @@
 
 if (plots)
 
-    tiledlayout(3,2,'Padding', 'none', 'TileSpacing', 'compact');
+    tiledlayout(4,2,'Padding', 'none', 'TileSpacing', 'compact');
     nexttile
     ErrorEvery = 20*ones(1,length(names));
     ErrStart=5;
@@ -198,9 +228,27 @@ if (plots)
     end
     %xlabel('$t$','interpreter','latex')
     ylabel('Link density (per fiber)')
-    xlim([0 min(tmaxes)])
+    xlim([0 max(tmaxes)])
 
-    
+    nexttile
+    ErrorEvery = 20*ones(1,length(names));
+    ErrStart=5;
+    for iP=1:parSet-1
+        hold on
+        nMots = nMotsAll{iP};
+        [nTri,nSteps] = size(nMots);
+        dtsave=dtsaves(iP);
+        plot((0:nSteps-1)*dtsave,mean(nMots),'LineWidth',2.0)
+        hold on
+        set(gca,'ColorOrderIndex',iP)
+        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(nMots(:,ErrStart*iP:ErrorEvery(iP):end)),...
+            std(nMots(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+            'o','MarkerSize',0.5,'LineWidth',1.0)
+    end
+    %xlabel('$t$','interpreter','latex')
+    ylabel('Motor density (per fiber)')
+    xlim([0 max(tmaxes)])
+
     nexttile
     for iP=1:parSet-1
         nBund = nBundAll{iP};
@@ -216,6 +264,7 @@ if (plots)
     end
     ylabel('Bundle density')
     box on
+    xlim([0 max(tmaxes)])
 
     nexttile
     for iP=1:parSet-1
@@ -232,7 +281,7 @@ if (plots)
     end
     %xlabel('$t$','interpreter','latex')
     ylabel('\% in bundles')
-    %xlim([0 min(tmaxes)])
+    xlim([0 max(tmaxes)])
 
     nexttile
     for iP=1:parSet-1
@@ -247,7 +296,6 @@ if (plots)
             std(meanDispThis(:,BarInds))*2/sqrt(nTri),...
             'o','MarkerSize',0.5,'LineWidth',1.0)
     end
-    xlabel('$t$','interpreter','latex')
     ylabel('Mean displacement $(\Delta t = 0.02)$')
     xlim([0 max(tmaxes)])
 
@@ -265,4 +313,43 @@ if (plots)
             std(nContactsThis(:,BarInds))*2/sqrt(nTri),...
             'o','MarkerSize',0.5,'LineWidth',1.0)
     end
+    xlim([0 max(tmaxes)])
+
+    nexttile
+    ErrorEvery = 20*ones(1,length(names));
+    ErrStart=5;
+    for iP=1:parSet-1
+        hold on
+        avgspeed = AvgMotSpeedAll{iP};
+        [nTri,nSteps] = size(avgspeed);
+        dtsave=dtsaves(iP);
+        plot((0:nSteps-1)*dtsave,mean(avgspeed),'LineWidth',2.0)
+        hold on
+        set(gca,'ColorOrderIndex',iP)
+        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(avgspeed(:,ErrStart*iP:ErrorEvery(iP):end)),...
+            std(avgspeed(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+            'o','MarkerSize',0.5,'LineWidth',1.0)
+    end
+    xlabel('$t$','interpreter','latex')
+    ylabel('Avg motor speed')
+    xlim([0 max(tmaxes)])
+
+    nexttile
+    ErrorEvery = 20*ones(1,length(names));
+    ErrStart=5;
+    for iP=1:parSet-1
+        hold on
+        pctstuck = PctStuckMotorsAll{iP};
+        [nTri,nSteps] = size(nMots);
+        dtsave=dtsaves(iP);
+        plot((0:nSteps-1)*dtsave,mean(pctstuck),'LineWidth',2.0)
+        hold on
+        set(gca,'ColorOrderIndex',iP)
+        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(pctstuck(:,ErrStart*iP:ErrorEvery(iP):end)),...
+            std(pctstuck(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+            'o','MarkerSize',0.5,'LineWidth',1.0)
+    end
+    xlabel('$t$','interpreter','latex')
+    ylabel('Frac motors stuck')
+    xlim([0 max(tmaxes)])
 end

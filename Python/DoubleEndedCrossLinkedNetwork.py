@@ -133,7 +133,10 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         return self._FreeLinkBound;
         
     def ChangeLockContract(self,Lock):
-        self._cppNet.ChangeLockContract(Lock);    
+        self._cppNet.ChangeLockContract(Lock);   
+    
+    def SetSpatialBinding(self,Spatial,coeff):
+        self._cppNet.ChangeSpatialBinding(Spatial,coeff);
     
     def sitesPerFib(self,iFib):
         """
@@ -326,7 +329,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
         tauPts = fiberCol.getXs();
         uniTau = fiberCol.getUniformTau(tauPts);
         RealShifts = Dom.unprimecoords(self._PrimedShifts[:self._nDoubleBoundLinks,:]);
-        return self._cppNet.MotorSpeeds(uniPts,uniTau,RealShifts);
+        return self._cppNet.MotorSpeeds(uniPts,uniTau,RealShifts)*self._ds;
 
     ## ======================================== ##
     ##    PRIVATE METHODS (INVOLVED IN UPDATE)
