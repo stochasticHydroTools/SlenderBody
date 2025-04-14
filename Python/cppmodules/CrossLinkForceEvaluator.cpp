@@ -176,14 +176,8 @@ class CrossLinkForceEvaluator {
         #pragma omp parallel for num_threads(_nThreads)
         for (uint iL=0; iL < iPts.size(); iL++){
             int iPtstar = iPts[iL];
-	    if (iPtstar >= _Nuniform*200){
-		std::cout << "Head at point " << iPtstar << std::endl;
-	    }
             int iuPtMod = iPtstar % _Nuniform;
             int jPtstar = jPts[iL];
-            if (jPtstar >= _Nuniform*200){
-                std::cout << "Tail at point " << iPtstar << std::endl;
-            }
             int juPtMod = jPtstar % _Nuniform;
             int iFib = _FibFromSiteIndex[iPtstar];
             int jFib = _FibFromSiteIndex[jPtstar];
