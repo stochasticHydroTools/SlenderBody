@@ -24,14 +24,6 @@ In the input file, there is a list of inputs to the simulation.
 """
 
 
-def saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,OutputFileName,wora='a'):
-    Xf = allFibers.getX();
-    LinkStrains = CLNet.calcLinkStrains(allFibers.getUniformPoints(Xf), Dom);
-    LinkStrainSqu = np.sum(LinkStrains**2);
-    FibCurvatures = allFibers.calcCurvatures(Xf);
-    writeArray('BundlingBehavior/LinkStrains'+OutputFileName,[LinkStrainSqu],wora=wora)
-    writeArray('BundlingBehavior/FibCurvesF'+OutputFileName,FibCurvatures,wora=wora)
-
 if not os.path.exists('BundlingBehavior'):
     os.makedirs('BundlingBehavior')
     
@@ -116,16 +108,16 @@ else:
 print('Number of links initially %d' %CLNet._nDoubleBoundLinks)
 CLNets=[CLNet];
 
-if (Motors):
-    MotorNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring_M,\
-        rl_M,kon_M,koff_M,konSecond_M,koffSecond_M,seed,Dom,fibDisc,nThreads=nThr,\
-        bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce,UnloadedVel=V0_M,StallForce=Fst_M);
-    if (InFileString is None):
-        MotorNet.updateNetwork(allFibers,Dom,100.0/min(kon_M*Lf,konSecond_M*Lf,koff_M,koffSecond_M),DontWalk=True) # just to load up CLs
-    else:
-        MotorNet.setLinksFromFile('BundlingBehavior/FinalMotors'+InFileString,'BundlingBehavior/FinalFreeMotorBound'+InFileString);
-    CLNets.append(MotorNet);
-    print('Number of motors initially %d' %MotorNet._nDoubleBoundLinks)
+MotorNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring_M,\
+    rl_M,kon_M,koff_M,konSecond_M,koffSecond_M,seed,Dom,fibDisc,nThreads=nThr,\
+    bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce,UnloadedVel=V0_M,StallForce=Fst_M);
+MotorNet.SetSpatialBinding(True,pi/Ld);
+if (InFileString is None):
+    MotorNet.updateNetwork(allFibers,Dom,100.0/min(kon_M*Lf,konSecond_M*Lf,koff_M,koffSecond_M),DontWalk=True) # just to load up CLs
+else:
+    MotorNet.setLinksFromFile('BundlingBehavior/FinalMotors'+InFileString,'BundlingBehavior/FinalFreeMotorBound'+InFileString);
+CLNets.append(MotorNet);
+print('Number of motors initially %d' %MotorNet._nDoubleBoundLinks)
         
 
 # Initialize the temporal integrator
@@ -147,14 +139,13 @@ np.random.seed(seed);
 # Barymat for the quarter points
 LocsFileName = 'BundlingBehavior/Locs'+FileString;
 allFibers.writeFiberLocations(LocsFileName,'w');
-if (False and seed==1):
+if (True and seed==1):
     ofCL = prepareOutFile('BundlingBehavior/Step'+str(0)+'Links'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
-    if (Motors):
-        ofMot = prepareOutFile('BundlingBehavior/Step'+str(0)+'Motors'+FileString);
-        MotorNet.writeLinks(ofMot)
-        ofMot.close()
+    ofMot = prepareOutFile('BundlingBehavior/Step'+str(0)+'Motors'+FileString);
+    MotorNet.writeLinks(ofMot)
+    ofMot.close()
 
 stopcount = int(tf/dt+1e-10);
 numSaves = stopcount//saveEvery+1;
@@ -167,22 +158,20 @@ AllLabels = np.zeros((numSaves,nFib),dtype=np.int64);
 numLinksByFib = np.zeros((numSaves,nFib),dtype=np.int64);
 numLinksByFib[0,:] = CLNet.numLinksOnEachFiber();
 
-if (Motors):
-    numMotsByFib = np.zeros((numSaves,nFib),dtype=np.int64);
-    numMotsByFib[0,:] = MotorNet.numLinksOnEachFiber();
-    MotorSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
+numMotsByFib = np.zeros((numSaves,nFib),dtype=np.int64);
+numMotsByFib[0,:] = MotorNet.numLinksOnEachFiber();
+MotorSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
 
 numBundlesSep =  np.zeros(numSaves,dtype=np.int64)
-numBundlesSep[0], AllLabels[0,:] = CLNet.FindBundles(bunddist);
-AllOrders_Sep, NPerBundleAll_Sep, AllaverageBundleTangents = CLNet.BundleOrderParameters(allFibers,numBundlesSep[0], AllLabels[0,:],minPerBundle=2)
+numBundlesSep[0], AllLabels[0,:] = MotorNet.FindBundles(bunddist);
+AllOrders_Sep, NPerBundleAll_Sep, AllaverageBundleTangents = MotorNet.BundleOrderParameters(allFibers,numBundlesSep[0], AllLabels[0,:],minPerBundle=2)
 numBundlesSep[0] = len(AllOrders_Sep);
 avgBundleAlignment_Sep = np.zeros(numSaves)
-avgBundleAlignment_Sep[0] = CLNet.avgBundleAlignment(AllOrders_Sep,NPerBundleAll_Sep);
+avgBundleAlignment_Sep[0] = MotorNet.avgBundleAlignment(AllOrders_Sep,NPerBundleAll_Sep);
 
-LocalAlignment,numCloseBy = CLNet.LocalOrientations(1,allFibers)
+LocalAlignment,numCloseBy = MotorNet.LocalOrientations(1,allFibers)
 NumFibsConnected[0,:] = numCloseBy;
 AllLocalAlignment[0,:] = LocalAlignment;
-saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
 
 ItsNeed = np.zeros(stopcount);
 nContacts = np.zeros(numSaves);
@@ -205,40 +194,37 @@ for iT in range(stopcount):
         print('Max x: %f' %maxX)
         thist = time.time();
         print('Number of links %d' %CLNet._nDoubleBoundLinks)
-        saveCurvaturesAndStrains(nFib,konCL,allFibers,CLNet,rl,FileString);
         saveIndex = (iT+1)//saveEvery;
         numLinksByFib[saveIndex,:] = CLNet.numLinksOnEachFiber();
         _, _, FibContacts=StericEval.CheckContacts(allFibers._ptsCheb,Dom, excludeSelf=True);
         nCont, _ = FibContacts.shape;
         print('Number of contacts %d' %nCont)
         nContacts[saveIndex]=nCont;
-        if (Motors):
-            print('Number of motors %d' %MotorNet._nDoubleBoundLinks)   
-            numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber(); 
-            NewSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
-            MotorSpeeds=np.append(MotorSpeeds,NewSpeeds);
-        if (False and seed==1):
+        print('Number of motors %d' %MotorNet._nDoubleBoundLinks)   
+        numMotsByFib[saveIndex,:] = MotorNet.numLinksOnEachFiber(); 
+        NewSpeeds = MotorNet.MotorSpeeds(allFibers,Dom);
+        MotorSpeeds=np.append(MotorSpeeds,NewSpeeds);
+        if (True and seed==1):
             ofCL = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Links'+FileString);
             CLNet.writeLinks(ofCL)
             ofCL.close()
-            if (Motors):
-                ofMot = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Motors'+FileString);
-                MotorNet.writeLinks(ofMot)
-                ofMot.close()
+            ofMot = prepareOutFile('BundlingBehavior/Step'+str(saveIndex)+'Motors'+FileString);
+            MotorNet.writeLinks(ofMot)
+            ofMot.close()
                
         # Bundles where connections are 2 links
-        numBundlesSep[saveIndex], AllLabels[saveIndex,:] = CLNet.FindBundles(bunddist);
+        numBundlesSep[saveIndex], AllLabels[saveIndex,:] = MotorNet.FindBundles(bunddist);
         print('Number bundles (1 per bundle possible) %d' %numBundlesSep[saveIndex])
-        Orders, NPerBundle, avgTangents = CLNet.BundleOrderParameters(allFibers,numBundlesSep[saveIndex], AllLabels[saveIndex,:],minPerBundle=2)
+        Orders, NPerBundle, avgTangents = MotorNet.BundleOrderParameters(allFibers,numBundlesSep[saveIndex], AllLabels[saveIndex,:],minPerBundle=2)
         numBundlesSep[saveIndex] = len(Orders);
         print('Number bundles (excluding 1 per bundle) %d' %numBundlesSep[saveIndex])
         NPerBundleAll_Sep = np.concatenate((NPerBundleAll_Sep,NPerBundle));
         AllOrders_Sep = np.concatenate((AllOrders_Sep,Orders));
         AllaverageBundleTangents = np.concatenate((AllaverageBundleTangents,avgTangents));
-        avgBundleAlignment_Sep[saveIndex] = CLNet.avgBundleAlignment(Orders,NPerBundle);
+        avgBundleAlignment_Sep[saveIndex] = MotorNet.avgBundleAlignment(Orders,NPerBundle);
         
         # Local alignment stats
-        LocalAlignment,numCloseBy = CLNet.LocalOrientations(1,allFibers)
+        LocalAlignment,numCloseBy = MotorNet.LocalOrientations(1,allFibers)
         NumFibsConnected[saveIndex,:] = numCloseBy;
         AllLocalAlignment[saveIndex,:] = LocalAlignment;
         
@@ -260,10 +246,9 @@ if (True):
     ofCL = prepareOutFile('BundlingBehavior/FinalLinks'+FileString);
     CLNet.writeLinks(ofCL)
     ofCL.close()
-    if (Motors):
-        np.savetxt('BundlingBehavior/FinalFreeMotorBound'+FileString, MotorNet._FreeLinkBound);
-        np.savetxt('BundlingBehavior/nMotorsPerFib'+FileString,numMotsByFib);  
-        np.savetxt('BundlingBehavior/MotorSpeeds'+FileString,MotorSpeeds);
-        ofMot = prepareOutFile('BundlingBehavior/FinalMotors'+FileString);
-        MotorNet.writeLinks(ofMot)
-        ofMot.close()
+    np.savetxt('BundlingBehavior/FinalFreeMotorBound'+FileString, MotorNet._FreeLinkBound);
+    np.savetxt('BundlingBehavior/nMotorsPerFib'+FileString,numMotsByFib);  
+    np.savetxt('BundlingBehavior/MotorSpeeds'+FileString,MotorSpeeds);
+    ofMot = prepareOutFile('BundlingBehavior/FinalMotors'+FileString);
+    MotorNet.writeLinks(ofMot)
+    ofMot.close()
