@@ -53,5 +53,5 @@ updateNet = True;              # Updating the network at each time step?
 turnover = True;              # Turning over the fibers? Turnover time above
 
 # Input output
-FileString = 'FlowMostMotTurn'+str(int(turnover))+'_Time'+str(turnovertime)+'_Dt'+str(dt)+'_'+str(seed)+'.txt';
+FileString = 'FlowLongLocalMotTurn'+str(int(turnover))+'_Time'+str(turnovertime)+'_Dt'+str(dt)+'_'+str(seed)+'.txt';
 InFileString = None;
