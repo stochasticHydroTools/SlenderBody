@@ -187,7 +187,7 @@ for iT in range(stopcount):
         mythist = time.time()
     maxX, ItsNeed[iT], _ = TIntegrator.updateAllFibers(iT,dt,stopcount,Dom,outfile=LocsFileName,write=wr,\
         updateNet=updateNet,BrownianUpdate=RigidDiffusion,Ewald=Ewald,\
-        turnoverFibs=turnover,StericEval=StericEval,dtFactor=NetworkStepEvery);
+        turnoverFibs=turnover,StericEval=StericEval,dtFactor=NetworkStepEvery,ZConfStrength=ZConfSpring);
     if (wr==1):
         print('Time %1.2E' %(float(iT+1)*dt));
         print('MAIN Time step time %f ' %(time.time()-mythist));

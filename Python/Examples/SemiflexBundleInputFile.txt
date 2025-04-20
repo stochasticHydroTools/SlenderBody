@@ -13,24 +13,24 @@ Eb = kbT*lp     # fiber bending stiffness
 # Time stepping
 dt = float(sys.argv[2]);      # timestep
 Networkdt = 0.01;
-tf= 40;          # final time
+tf= 20;          # final time
 saveEvery = max(1,int(5e-2/dt+1e-10)); # How often do we save? 
 seed = int(sys.argv[1]);
 nThr = 12;                     # Number of threads for OpenMP
 
 # Fluid mechanics / quadratures
-RPYQuad = True;                # Doing special quadrature for mobility (default is oversample)
+RPYQuad = False;                # Doing special quadrature for mobility (default is oversample)
 NupsampleForDirect = 100;      # Number of oversampled points
 FluctuatingFibs = True;        # Are there semiflexible bending fluctuations?
 RigidDiffusion = False;        # Are the fibers diffusing as rigid bodies every time step?
 rigidFibs = False;             # Are the fibers actually rigid and straight the whole time?
 smForce = False;               # Are we smoothing out the cross linking force or using a delta function?
 Sterics = True;                # Are we doing steric interactions?
-NsegForSterics = 10;           # For segment based sterics, number of segments. Set to zero for sphere-based segments.
+NsegForSterics = 0;           # For segment based sterics, number of segments. Set to zero for sphere-based segments.
 deltaLocal = 1;                # Regularization if doing local drag SBT. 
 
 # Cross linkers and motors
-Nuniformsites = 40;            # Number of uniform points for CL binding. 
+Nuniformsites = 20;            # Number of uniform points for CL binding. 
 Kspring = 10                   # cross linker stiffness
 rl = 0.05                      # cross linker rest length 
 konCL = 2;                     # first end binding rate
@@ -47,11 +47,12 @@ kon_M = 2;                     # first end binding rate
 konSecond_M = 5;                # second end binding rate
 koff_M = 1;                    # free end unbinding rate
 koffSecond_M = 1;                # bound CL unbinding rate
-V0_M = 1;                      # Unloaded walking speed
+V0_M = 0.4;                      # Unloaded walking speed
 Fst_M = 0.5;                   # Stall force
 updateNet = True;              # Updating the network at each time step?
 turnover = True;              # Turning over the fibers? Turnover time above
+ZConfSpring = 0.5; 		# Confining spring in the z direction
 
 # Input output
-FileString = 'FlowLongLocalMotTurn'+str(int(turnover))+'_Time'+str(turnovertime)+'_Dt'+str(dt)+'_'+str(seed)+'.txt';
+FileString = 'ConfinedFlowMot'+str(kon_M)+'Turn_Dt'+str(dt)+'_'+str(seed)+'.txt';
 InFileString = None;

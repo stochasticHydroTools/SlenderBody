@@ -1202,6 +1202,12 @@ class fiberCollection(object):
         U0[:,0]=self._gam0*np.cos(self._omega*t)*Xin[:,1];
         return np.reshape(U0,3*len(Xin[:,0]));
     
+    def ZConfineForce(self,Xin,Dom,SpringStr):
+        ConfForceDen = np.zeros(Xin.shape);
+        DLens = Dom.getPeriodicLens();
+        ConfForceDen[:,2]=SpringStr*np.sin(2*pi*Xin[:,2]/DLens[2]);
+        return np.reshape(ConfForceDen,3*len(Xin[:,0]));
+
     def evalBendForce(self,X_nonLoc):
         """
         Evaluate the bending FORCES on the fibers by applying the 

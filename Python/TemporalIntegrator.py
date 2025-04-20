@@ -351,7 +351,7 @@ class TemporalIntegrator(object):
         return lamalph, itsneeded, XforNL;
 
     def updateAllFibers(self,iT,dt,numSteps,Dom,Ewald=None,gravden=0.0,outfile=None,write=False,\
-        updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False,StericEval=None,dtFactor=1):
+        updateNet=False,turnoverFibs=False,BrownianUpdate=False,fixedg=None,stress=False,StericEval=None,dtFactor=1,ZConfStrength=0):
         """
         This is the main update method which updates the fiber collection and cross linked network. 
         The method proceeds in the following order:
@@ -462,7 +462,9 @@ class TemporalIntegrator(object):
         
         # Forces from gravity and CLs to be treated EXPLICITLY
         forceExt = self._allFibers.uniformForce([0,0,gravden]);
-        if (gravden != 0):
+        if (ZConfStrength>0):
+            forceExt = self._allFibers.ZConfineForce(XforNL,Dom,ZConfStrength);
+        if (gravden != 0 or ZConfStrength>0):
             forceExt = self._allFibers.ForceFromForceDensity(forceExt)
         if (self._CLNetwork is not None):
             uniPoints = self._allFibers.getUniformPoints(XforNL);
