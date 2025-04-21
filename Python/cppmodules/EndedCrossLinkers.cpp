@@ -479,6 +479,7 @@ class EndedCrossLinkedNetwork {
             _LinkHeads.resize(_maxLinks);
             _LinkTails.resize(_maxLinks);
             _LinkShiftsPrime.resize(3*_maxLinks);
+            _RealDistances.resize(_maxLinks);
         }
         _nDoubleBoundLinks = nLinksIn;
         std::cout << "Setting C++ links with " << _nDoubleBoundLinks << " links " << std::endl;
