@@ -2,9 +2,13 @@
 clear
 addpath(genpath('../../Python'))
 names=["FlowTurn1_Dt0.0001_" "FlowMoreMotTurn1_Time10_Dt0.0001_" ...
-    "FlowMostMotTurn1_Time10_Dt0.0001_"];
-tmaxes = 20*ones(1,length(names));
+    "FlowMostMotTurn1_Time10_Dt0.0001_" ... 
+    "FlowLongLocalMotTurn1_Time10_Dt0.0001_" ...
+    "FlowCLongLocalMotTurn1_Time10_Dt5e-05_" ...
+    "FlowHydroMotTurn1_Time10_Dt0.0001_"];
+tmaxes = [20 20 20 40 20 20];
 dtsaves = 5e-2*ones(1,length(names));
+nSeeds=[2 2 2 5 4 2];
 if (exist('parSet','var'))
 else
     parSet=1;
@@ -14,8 +18,12 @@ L = 0.5;
 Ld = 2;
 plots = 1;
 for iName=1:length(names)
-seedmax=2;
+seedmax=nSeeds(iName);
+if (iName==5)
+N=13;
+else
 N=9;
+end
 [s,w,b]=chebpts(N,[0 L],2);
 [sD,wD,bD]=chebpts(2*N,[0 L],2);
 Ext = barymat(sD,s,b);
@@ -30,7 +38,6 @@ NBundlesPerstep_Sep = load(strcat('NumberOfBundles_Sep',FileName));
 BundDensity=NBundlesPerstep_Sep/Ld^3;
 BundStart = [0; cumsum(NBundlesPerstep_Sep)];
 % Fiber info
-FiberCurves = load(strcat('FibCurvesF',FileName));
 try 
 nContacts = load(strcat('nContacts',FileName));
 catch
@@ -39,8 +46,6 @@ end
 LocalFibAlignment = load(strcat('LocalAlignmentPerFib',FileName));
 nFibsConnected = load(strcat('NumFibsConnectedPerFib',FileName));
 % Link info
-LinkStrains = load(strcat('LinkStrains',FileName));
-max(LinkStrains(2:end))
 NLinksPerFib = load(strcat('nLinksPerFib',FileName));
 nLinksPerT = sum(NLinksPerFib')/2;
 [~,numTs]=size(nLinksPerT);
@@ -179,11 +184,12 @@ if (plots)
         MeanX = meanXLocs{iP};
         [nTri,nSteps] = size(MeanX);
         dtsave=dtsaves(iP);
-        plot((0:nSteps-1)*dtsave,mean(MeanX),'LineWidth',2.0)
+        plot((0:nSteps-1)*dtsave,mean(MeanX,'omitnan'),'LineWidth',2.0)
         hold on
         set(gca,'ColorOrderIndex',iP)
-        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(MeanX(:,ErrStart*iP:ErrorEvery(iP):end)),...
-            std(MeanX(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps)*dtsave,...
+            mean(MeanX(:,ErrStart*iP:ErrorEvery(iP):end),'omitnan'),...
+            std(MeanX(:,ErrStart*iP:ErrorEvery(iP):end),'omitnan')*2/sqrt(nTri),...
             'o','MarkerSize',0.5,'LineWidth',1.0)
     end
     %xlabel('$t$','interpreter','latex')
@@ -197,17 +203,17 @@ if (plots)
         FlowSpeeds = meanXFlowSpeeds{iP}/dtsave*60; % um/min
         [nSteps,nFlowBins,nTri] = size(FlowSpeeds);
         % Do the first half and second half of the steps
-        nWindowsFlow=2;
+        nWindowsFlow=1;%tmaxes(iP)/10;
         WindowSize = floor(nSteps/nWindowsFlow);
-        for PlStep=1:nWindowsFlow
+        for PlStep=nWindowsFlow
             FlowsToPlot = FlowSpeeds((PlStep-1)*WindowSize+1:PlStep*WindowSize,:,:);
             TimeMeanFlow = reshape(mean(FlowsToPlot,1),nFlowBins,nTri)';
             set(gca,'ColorOrderIndex',iP)
-            plot((1/2:nFlowBins)*Ld/nFlowBins,mean(TimeMeanFlow),'LineWidth',2.0)
+            plot((1/2:nFlowBins)*Ld/nFlowBins,mean(TimeMeanFlow,'omitnan'),'LineWidth',2.0)
             hold on
             set(gca,'ColorOrderIndex',iP)
-            errorbar((1/2:nFlowBins)*Ld/nFlowBins,mean(TimeMeanFlow),...
-                std(TimeMeanFlow)*2/sqrt(nTri),...
+            errorbar((1/2:nFlowBins)*Ld/nFlowBins,mean(TimeMeanFlow,'omitnan'),...
+                std(TimeMeanFlow,'omitnan')*2/sqrt(nTri),...
                 'o','MarkerSize',0.5,'LineWidth',1.0)
         end
     end
@@ -294,7 +300,7 @@ if (plots)
     for iP=1:parSet-1
         hold on
         pctstuck = PctStuckMotorsAll{iP};
-        [nTri,nSteps] = size(nMots);
+        [nTri,nSteps] = size(pctstuck);
         dtsave=dtsaves(iP);
         plot((0:nSteps-1)*dtsave,mean(pctstuck),'LineWidth',2.0)
         hold on

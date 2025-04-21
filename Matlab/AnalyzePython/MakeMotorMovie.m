@@ -7,8 +7,8 @@ Npl = 100;
 Ld = 2;
 f=figure;
 %tiledlayout(3,3,'Padding', 'none', 'TileSpacing', 'compact');
-Name="FlowTurn1_Dt0.0001_";
-seed=1;
+Name="ConfinedFlowMot2Turn_Dt5e-05_";
+seed=2;
 Locs=load(strcat("Locs",Name,num2str(seed),".txt"));
 nT = length(Locs)/(Nx*F);
 [sx,wx,bx]=chebpts(Nx,[0 L],2);
@@ -16,7 +16,7 @@ Rpl = barymat((0:1/Npl:L)',sx,bx);
 Ru = barymat((0:1/(Nu-1):L)',sx,bx);
 nLTime=zeros(nT,1);
 X0 = Locs(1:F*Nx,:);
-for iT=1:5:nT
+for iT=1:nT
     %nexttile
     X = Locs((iT-1)*F*Nx+1:iT*F*Nx,:);
     if (iT>1)
@@ -39,7 +39,7 @@ for iT=1:5:nT
 %             plot3(PltPts(:,1),PltPts(:,2),PltPts(:,3),':','Color',[0.8500 0.3250 0.0980])
 %         end
     end
-    view(2)
+    view(3)
     % Plot links
 %     for LinkMot=[0 1]
 %         if (LinkMot==0)
