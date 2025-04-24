@@ -1,14 +1,15 @@
-F = 400;
-N = 8;
+F = 300;
+N = 12;
 Nx = N+1;
-L = 0.5;
+L = 1;
 Nu = 40;
 Npl = 100;
 Ld = 2;
+Ldx = 5;
 f=figure;
 %tiledlayout(3,3,'Padding', 'none', 'TileSpacing', 'compact');
-Name="ConfinedFlowMot2Turn_Dt5e-05_";
-seed=2;
+Name="ConfinedNoStFlowLdx5Mot0.3Turn10_Dt0.0001_";
+seed=1;
 Locs=load(strcat("Locs",Name,num2str(seed),".txt"));
 nT = length(Locs)/(Nx*F);
 [sx,wx,bx]=chebpts(Nx,[0 L],2);
@@ -16,30 +17,41 @@ Rpl = barymat((0:1/Npl:L)',sx,bx);
 Ru = barymat((0:1/(Nu-1):L)',sx,bx);
 nLTime=zeros(nT,1);
 X0 = Locs(1:F*Nx,:);
-for iT=1:nT
+for iT=1:10:nT
     %nexttile
     X = Locs((iT-1)*F*Nx+1:iT*F*Nx,:);
-    if (iT>1)
-        Xp=Locs((iT-2)*F*Nx+1:(iT-1)*F*Nx,:);
-        change(iT)=max(max(abs(X-Xp)));
+    if (iT>10)
+        Xp=Locs((iT-11)*F*Nx+1:(iT-10)*F*Nx,:);
+    else
+        Xp=0*X;
     end
     % Plot fibers
+    COMDisp=zeros(F,1);
     for iF=1:F
         PltPts=Rpl*X((iF-1)*Nx+1:iF*Nx,:);
+        Disp=X((iF-1)*Nx+1:iF*Nx,:)-Xp((iF-1)*Nx+1:iF*Nx,:);
+        COMDisp(iF) = wx/L*Disp(:,1)/0.5*60;
         % Plot any periodic copies that fall in the box
-        Shifts = unique(Ld*floor(PltPts/Ld),'Rows');
+        Shifts = unique([Ldx Ld Ld].*floor(PltPts./[Ldx Ld Ld]),'Rows');
         nS=size(Shifts,1);
+        if (iF==1)
+            c='r';
+        elseif (iF==20)
+            c='g';
+        elseif (iF==200)
+            c='k';
+        else
+            c=[0 0.4470 0.7410];
+        end
         for iS=1:nS
             plot3(PltPts(:,1)-Shifts(iS,1),PltPts(:,2)-Shifts(iS,2),...
-                PltPts(:,3)-Shifts(iS,3),'-','Color',[0 0.4470 0.7410])
+                PltPts(:,3)-Shifts(iS,3),'-','Color',c)
             hold on
         end
-%         if (iF>2)
-%             PltPts=Rpl*X0((iF-1)*Nx+1:iF*Nx,:);    
-%             plot3(PltPts(:,1),PltPts(:,2),PltPts(:,3),':','Color',[0.8500 0.3250 0.0980])
-%         end
     end
-    view(3)
+    title(strcat('COM vel (rgk) = ',num2str(COMDisp(1)),' , ',...
+            num2str(COMDisp(20)),' , ' , num2str(COMDisp(200))))
+    view(2)
     % Plot links
 %     for LinkMot=[0 1]
 %         if (LinkMot==0)
@@ -72,12 +84,11 @@ for iT=1:nT
 %             end
 %         end
 %     end
-    xlim([0 Ld])
+    xlim([0 Ldx])
     ylim([0 Ld])
     zlim([0 Ld])
     PlotAspect;
     movieframes(iT)=getframe(f);
     hold off
 end
-%MFreeBd = load('Mot_FreeLinkBound_1.txt');
-%CFreeBd = load('CL_FreeLinkBound_1.txt');
+

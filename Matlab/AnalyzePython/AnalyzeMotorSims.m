@@ -1,29 +1,22 @@
 % Analyze simulations of "cortical flows"
 clear
 addpath(genpath('../../Python'))
-names=["FlowTurn1_Dt0.0001_" "FlowMoreMotTurn1_Time10_Dt0.0001_" ...
-    "FlowMostMotTurn1_Time10_Dt0.0001_" ... 
-    "FlowLongLocalMotTurn1_Time10_Dt0.0001_" ...
-    "FlowCLongLocalMotTurn1_Time10_Dt5e-05_" ...
-    "FlowHydroMotTurn1_Time10_Dt0.0001_"];
-tmaxes = [20 20 20 40 20 20];
+names=["ConfinedNoStFlowLdx5Mot0.3Turn10_Dt0.0001_"];
+tmaxes = [20];
 dtsaves = 5e-2*ones(1,length(names));
-nSeeds=[2 2 2 5 4 2];
+nSeeds=[2];
 if (exist('parSet','var'))
 else
     parSet=1;
 end
-F = 400;
-L = 0.5;
-Ld = 2;
+F = 300;
+L = 1;
 plots = 1;
+Ld = 2;
+Ldx = 5;
+N=13;
 for iName=1:length(names)
 seedmax=nSeeds(iName);
-if (iName==5)
-N=13;
-else
-N=9;
-end
 [s,w,b]=chebpts(N,[0 L],2);
 [sD,wD,bD]=chebpts(2*N,[0 L],2);
 Ext = barymat(sD,s,b);
@@ -35,7 +28,7 @@ Locs=load(strcat('Locs',FileName));
 BundleOrders_Sep = load(strcat('BundleOrderParams_Sep',FileName));
 NPerBundle_Sep = load(strcat('NFibsPerBundle_Sep',FileName));
 NBundlesPerstep_Sep = load(strcat('NumberOfBundles_Sep',FileName));
-BundDensity=NBundlesPerstep_Sep/Ld^3;
+BundDensity=NBundlesPerstep_Sep/(Ld^2*Ldx);
 BundStart = [0; cumsum(NBundlesPerstep_Sep)];
 % Fiber info
 try 
@@ -73,36 +66,23 @@ for iT=1:nts
     end
 end
 
-DispForTurnover = 0.2;
 StepDisplacements = zeros(numTs-1,F);
-nBinsForFlow=20;
-dBin=Ld/nBinsForFlow;
-xFlowSpeeds = zeros(numTs-1,nBinsForFlow);
 EndEndDistances = zeros(numTs-1,F);
 MeanXFromCenter = zeros(numTs-1,F);
 step=N*F;
 for iT=1:numTs-1
     XThisT = Locs((iT-1)*step+1:iT*step,:);
     XNextT = Locs(iT*step+1:(iT+1)*step,:);
-    DispEachBin = zeros(1,nBinsForFlow);
-    nEachBins = zeros(1,nBinsForFlow);
     for iF=1:F
         ThisX=XThisT((iF-1)*N+1:iF*N,:);
-        MeanX = mod(w*ThisX(:,1)/L,Ld);
-        MeanXFromCenter(iT,iF) = abs(MeanX-Ld/2);
+        MeanX = mod(w*ThisX(:,1)/L,Ldx);
+        MeanXFromCenter(iT,iF) = abs(MeanX/Ldx-1/2);
         NextX=XNextT((iF-1)*N+1:iF*N,:);
         D = NextX-ThisX;
-        MeanXDisp = w*D(:,1)/L;
-        BinNum = ceil(MeanX/dBin);
         NormD = wD*sum((Ext*D).*(Ext*D),2);
         StepDisplacements(iT,iF) = sqrt(NormD);
-        if (StepDisplacements(iT,iF)<DispForTurnover)
-            nEachBins(BinNum)=nEachBins(BinNum)+1;
-            xFlowSpeeds(iT,BinNum)=xFlowSpeeds(iT,BinNum)+MeanXDisp;
-        end
         EndEndDistances(iT,iF)=norm(barymat(0,s,b)*ThisX-barymat(L,s,b)*ThisX);
     end
-    xFlowSpeeds(iT,:)=xFlowSpeeds(iT,:)./nEachBins;
 end
 max(StepDisplacements(:))
 
@@ -147,7 +127,6 @@ MaxBundSize(seed,:)=maxPerBundle;
 meanEndEnd(seed,:)=mean(EndEndDistances');
 meanStepDisplacementsP(seed,:)=mean(StepDisplacements');
 maxStepDisplacementsP(seed,:)=max(StepDisplacements');
-meanXFlowSpeed(:,:,seed)=xFlowSpeeds;
 meanXLoc(seed,:)=mean(MeanXFromCenter');
 end
 AvgMotSpeedAll{parSet}=AvgMotSpeeds;
@@ -163,13 +142,12 @@ meanBundAll{parSet}=meanBund;
 MeanDispAll{parSet}=meanStepDisplacementsP;
 MaxDispAll{parSet}=maxStepDisplacementsP;
 meanEndEndAll{parSet}=meanEndEnd;
-meanXFlowSpeeds{parSet}=meanXFlowSpeed;
 meanXLocs{parSet} = meanXLoc;
 parSet=parSet+1;
 clear nLinks nBund nInBund MBAlign MaxBundSize meanDispP meanCurvatures meanBund meanEndEnd
 clear AllFibsInBundlesS MeanInBundleDispP MeanOutBundleDispP meanStepDisplacementsP
 clear maxStepDisplacementsP nContactsTrials
-clear AvgMotSpeeds PctStuckMotorsss NumMotorsPerFibs meanXFlowSpeed meanXLoc
+clear AvgMotSpeeds PctStuckMotorsss NumMotorsPerFibs meanXLoc
 end
 
 if (plots)
@@ -195,31 +173,6 @@ if (plots)
     %xlabel('$t$','interpreter','latex')
     ylabel('$\bar x$ (from center)')
     xlim([0 max(tmaxes)])
-
-    % Flow speeds
-    nexttile
-    for iP=1:parSet-1
-        dtsave=dtsaves(iP);
-        FlowSpeeds = meanXFlowSpeeds{iP}/dtsave*60; % um/min
-        [nSteps,nFlowBins,nTri] = size(FlowSpeeds);
-        % Do the first half and second half of the steps
-        nWindowsFlow=1;%tmaxes(iP)/10;
-        WindowSize = floor(nSteps/nWindowsFlow);
-        for PlStep=nWindowsFlow
-            FlowsToPlot = FlowSpeeds((PlStep-1)*WindowSize+1:PlStep*WindowSize,:,:);
-            TimeMeanFlow = reshape(mean(FlowsToPlot,1),nFlowBins,nTri)';
-            set(gca,'ColorOrderIndex',iP)
-            plot((1/2:nFlowBins)*Ld/nFlowBins,mean(TimeMeanFlow,'omitnan'),'LineWidth',2.0)
-            hold on
-            set(gca,'ColorOrderIndex',iP)
-            errorbar((1/2:nFlowBins)*Ld/nFlowBins,mean(TimeMeanFlow,'omitnan'),...
-                std(TimeMeanFlow,'omitnan')*2/sqrt(nTri),...
-                'o','MarkerSize',0.5,'LineWidth',1.0)
-        end
-    end
-    %xlabel('$t$','interpreter','latex')
-    ylabel('Mean flow speed ($\mu$m/min)')
-    xlim([0 Ld])
     
     % Fiber end to end distances
     nexttile
