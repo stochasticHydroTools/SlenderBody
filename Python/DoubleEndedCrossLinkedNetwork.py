@@ -109,7 +109,7 @@ class DoubleEndedCrossLinkedNetwork(CrossLinkedNetwork):
             self._deltaL = 2*np.sqrt(kT/self._kCL); # Strain-dependent rate, modify self._deltaL to be 2 or 1/2 rest length
         CLBounds = [self._rl-self._deltaL,self._rl+self._deltaL];
         if (self._deltaL > self._rl):
-            CLBounds = [0,self._rl+self._deltaL];    
+            CLBounds = [0,2*self._rl];    
         print(CLBounds)
         if (CLseed is None):
             CLseed = int(time.time());

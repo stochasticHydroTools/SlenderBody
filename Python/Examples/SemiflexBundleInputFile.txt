@@ -1,5 +1,5 @@
 # Inputs for bundling simulation
-nFib=300        # number of fibers
+nFib=500        # number of fibers
 N=12            # number of tangent vectors per fiber
 Lf=1            # length of each fiber
 nonLocal=0;     # doing nonlocal solves? 0 = intra-fiber hydro, 1 = full nonlocal hydro
@@ -14,13 +14,13 @@ Eb = kbT*lp     # fiber bending stiffness
 # Time stepping
 dt = float(sys.argv[2]);      # timestep
 Networkdt = 0.01;
-tf= 10;          # final time
+tf= 30;          # final time
 saveEvery = max(1,int(5e-2/dt+1e-10)); # How often do we save? 
 seed = int(sys.argv[1]);
 nThr = 12;                     # Number of threads for OpenMP
 
 # Fluid mechanics / quadratures
-RPYQuad = True;                # Doing special quadrature for mobility (default is oversample)
+RPYQuad = False;                # Doing special quadrature for mobility (default is oversample)
 NupsampleForDirect = 100;      # Number of oversampled points
 FluctuatingFibs = True;        # Are there semiflexible bending fluctuations?
 RigidDiffusion = False;        # Are the fibers diffusing as rigid bodies every time step?
@@ -33,21 +33,21 @@ deltaLocal = 1;                # Regularization if doing local drag SBT.
 # Cross linkers and motors
 Nuniformsites = 40;            # Number of uniform points for CL binding. 
 Kspring = 10                   # cross linker stiffness
-rl = 0.05                      # cross linker rest length 
-konCL = 0.1;                     # first end binding rate
-konSecond = 5;                # second end binding rate
-koffCL = 0.1;                    # free end unbinding rate
-koffSecond = 0.1;                # bound CL unbinding rate
+rl = 0.012                      # cross linker rest length 
+konCL = 0.2;                     # first end binding rate
+konSecond = 10*konCL;                # second end binding rate
+koffCL = 0.04;                    # free end unbinding rate
+koffSecond = koffCL;                # bound CL unbinding rate
 turnovertime = 10;            # mean fiber lifetime
 bindingSiteWidth = 20e-3;      # Set to 0 for no limit, 20 nm otherwise
 bunddist = 1/4                 # Distance separating 2 links to form a bundle
 Motors = True;
 Kspring_M = 10                   # cross linker stiffness
-rl_M = 0.2;                      # cross linker rest length 
-kon_M = 0.3;                     # first end binding rate
-konSecond_M = 1;                # second end binding rate
-koff_M = 0.15;                    # free end unbinding rate
-koffSecond_M = 0.15;                # bound CL unbinding rate
+rl_M = 0.3;                      # cross linker rest length 
+kon_M = 0.1;                     # first end binding rate
+konSecond_M = 10*kon_M;                # second end binding rate
+koff_M = 0.35;                    # free end unbinding rate
+koffSecond_M = koff_M;                # bound CL unbinding rate
 V0_M = 0.3;                      # Unloaded walking speed
 Fst_M = 2;                   # Stall force
 updateNet = True;              # Updating the network at each time step?
@@ -55,6 +55,6 @@ turnover = True;              # Turning over the fibers? Turnover time above
 ZConfSpring = 0.5; 		# Confining spring in the z direction
 
 # Input output
-FileString = 'FromSSConfinedLocQFlowLdx'+str(Ldx)+'Mot'+str(kon_M)+'Turn'+str(turnovertime)+'_Dt'+str(dt)+'_'+str(seed)+'.txt';
-InFileString = 'ConfinedFlowLdx5Mot0.3Turn10_Dt5e-05_1.txt'
+FileString = 'FConfinedLocFlowLdx'+str(Ldx)+'Mot'+str(kon_M)+'CL'+str(konCL)+'_Dt'+str(dt)+'_'+str(seed)+'.txt';
+InFileString = None;
 

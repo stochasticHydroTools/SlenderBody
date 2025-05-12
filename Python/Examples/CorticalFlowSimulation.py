@@ -88,7 +88,7 @@ if (InFileString is None):
 else:
     XFile = 'BundlingBehavior/FinalLocs'+InFileString;
     allFibers.initFibList(fibList,Dom,XFile);
-# allFibers.initFibList(fibList,Dom);
+#allFibers.initFibList(fibList,Dom);
 
 # Initialize the network of cross linkers
 # New seed for CLs
