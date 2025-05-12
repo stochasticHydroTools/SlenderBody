@@ -42,7 +42,7 @@ copyInput.close();
 Input.close();
     
 # Initialize the domain
-Dom = PeriodicShearedDomain(Ld,Ld,Ld);
+Dom = PeriodicShearedDomain(Ldx,Ld,Ld);
 
 # Initialize fiber discretization
 fibDisc = ChebyshevDiscretization(Lf,eps,Eb,mu,N,RPYSpecialQuad=RPYQuad,\
@@ -111,7 +111,7 @@ CLNets=[CLNet];
 MotorNet = DoubleEndedCrossLinkedNetwork(nFib,fibDisc._Nx,fibDisc._nptsUniform,Lf,Kspring_M,\
     rl_M,kon_M,koff_M,konSecond_M,koffSecond_M,seed,Dom,fibDisc,nThreads=nThr,\
     bindingSiteWidth=bindingSiteWidth,kT=kbT,smoothForce=smForce,UnloadedVel=V0_M,StallForce=Fst_M);
-MotorNet.SetSpatialBinding(True,pi/Ld);
+MotorNet.SetSpatialBinding(True,pi/Ldx);
 if (InFileString is None):
     MotorNet.updateNetwork(allFibers,Dom,100.0/min(kon_M*Lf,konSecond_M*Lf,koff_M,koffSecond_M),DontWalk=True) # just to load up CLs
 else:
