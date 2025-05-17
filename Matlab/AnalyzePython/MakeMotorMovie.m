@@ -8,7 +8,7 @@ Ld = 2;
 Ldx = 5;
 f=figure;
 %tiledlayout(3,3,'Padding', 'none', 'TileSpacing', 'compact');
-Name="ConfinedNoStFlowLdx5Mot0.3Turn10_Dt0.0001_";
+Name="FromSSConfinedLocFlowLdx5Mot0.3Turn10_Dt5e-05_";
 seed=1;
 Locs=load(strcat("Locs",Name,num2str(seed),".txt"));
 nT = length(Locs)/(Nx*F);

@@ -1,15 +1,16 @@
 % Analyze simulations of "cortical flows"
 clear
 addpath(genpath('../../Python'))
-names=["ConfinedNoStFlowLdx5Mot0.3Turn10_Dt0.0001_"];
-tmaxes = [20];
+names=["ConfinedLocQFlowLdx5Mot0.2CL0.3_Dt2.5e-05_" ...
+    "ConfinedLocQFlowLdx5Mot0.2CL0.3_Dt5e-05_"];
+tmaxes = [15 30];
 dtsaves = 5e-2*ones(1,length(names));
-nSeeds=[2];
+nSeeds=[2 2];
 if (exist('parSet','var'))
 else
     parSet=1;
 end
-F = 300;
+F = 500;
 L = 1;
 plots = 1;
 Ld = 2;
@@ -153,7 +154,7 @@ end
 if (plots)
     % We want to plot the X position of the fibers, the flow speed
     % (um/min), the end to end distances, and statistics about the CLs and motors
-    tiledlayout(4,2,'Padding', 'none', 'TileSpacing', 'compact');
+    tiledlayout(3,1,'Padding', 'none', 'TileSpacing', 'compact');
     nexttile
     ErrorEvery = 20*ones(1,length(names));
     ErrStart=5;
@@ -162,6 +163,7 @@ if (plots)
         MeanX = meanXLocs{iP};
         [nTri,nSteps] = size(MeanX);
         dtsave=dtsaves(iP);
+        if (iP<parSet)
         plot((0:nSteps-1)*dtsave,mean(MeanX,'omitnan'),'LineWidth',2.0)
         hold on
         set(gca,'ColorOrderIndex',iP)
@@ -169,40 +171,57 @@ if (plots)
             mean(MeanX(:,ErrStart*iP:ErrorEvery(iP):end),'omitnan'),...
             std(MeanX(:,ErrStart*iP:ErrorEvery(iP):end),'omitnan')*2/sqrt(nTri),...
             'o','MarkerSize',0.5,'LineWidth',1.0)
+        else
+        for j=1:nSeeds(iP)
+        plot((0:nSteps-1)*dtsave,MeanX(j,:),'LineWidth',2.0)
+        end
+        end
     end
     %xlabel('$t$','interpreter','latex')
     ylabel('$\bar x$ (from center)')
     xlim([0 max(tmaxes)])
     
-    % Fiber end to end distances
-    nexttile
-    for iP=1:parSet-1
-        meanEE = meanEndEndAll{iP};
-        [nTri,nSteps] = size(meanEE);
-        dtsave=dtsaves(iP);
-        plot((0:nSteps-1)*dtsave,mean(meanEE),'LineWidth',2.0)
-        hold on
-        set(gca,'ColorOrderIndex',iP)
-        BarInds=ErrStart*iP:ErrorEvery(iP):nSteps-1;
-        errorbar((BarInds-1)*dtsave,mean(meanEE(:,BarInds)),...
-            std(meanEE(:,BarInds))*2/sqrt(nTri),...
-            'o','MarkerSize',0.5,'LineWidth',1.0)
-    end
-    ylabel('Mean end-to-end distance')
-    xlim([0 max(tmaxes)])
-    
+%     % Fiber end to end distances
+%     nexttile
+%     for iP=1:parSet-1
+%         meanEE = meanEndEndAll{iP};
+%         [nTri,nSteps] = size(meanEE);
+%         dtsave=dtsaves(iP);
+%         if (iP<parSet)
+%         plot((0:nSteps-1)*dtsave,mean(meanEE),'LineWidth',2.0)
+%         hold on
+%         set(gca,'ColorOrderIndex',iP)
+%         BarInds=ErrStart*iP:ErrorEvery(iP):nSteps-1;
+%         errorbar((BarInds-1)*dtsave,mean(meanEE(:,BarInds)),...
+%             std(meanEE(:,BarInds))*2/sqrt(nTri),...
+%             'o','MarkerSize',0.5,'LineWidth',1.0)
+%         else
+%         for j=1:nSeeds(iP)
+%         plot((0:nSteps-1)*dtsave,meanEE(j,:),'LineWidth',2.0)
+%         end
+%         end
+%     end
+%     ylabel('Mean end-to-end distance')
+%     xlim([0 max(tmaxes)])
+%     
     nexttile
     for iP=1:parSet-1
         hold on
         nLinks = nLinksAll{iP};
         [nTri,nSteps] = size(nLinks);
         dtsave=dtsaves(iP);
+        if (iP<parSet)
         plot((0:nSteps-1)*dtsave,mean(nLinks),'LineWidth',2.0)
         hold on
         set(gca,'ColorOrderIndex',iP)
         errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(nLinks(:,ErrStart*iP:ErrorEvery(iP):end)),...
             std(nLinks(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
             'o','MarkerSize',0.5,'LineWidth',1.0)
+        else
+        for j=1:nSeeds(iP)
+        plot((0:nSteps-1)*dtsave,nLinks(j,:),'LineWidth',2.0)
+        end
+        end
     end
     %xlabel('$t$','interpreter','latex')
     ylabel('Link density (per fiber)')
@@ -217,54 +236,72 @@ if (plots)
         nMots = nMotsAll{iP};
         [nTri,nSteps] = size(nMots);
         dtsave=dtsaves(iP);
+        if (iP<parSet)
         plot((0:nSteps-1)*dtsave,mean(nMots),'LineWidth',2.0)
         hold on
         set(gca,'ColorOrderIndex',iP)
         errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(nMots(:,ErrStart*iP:ErrorEvery(iP):end)),...
             std(nMots(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
             'o','MarkerSize',0.5,'LineWidth',1.0)
+        else
+        for j=1:nSeeds(iP)
+        plot((0:nSteps-1)*dtsave,nMots(j,:),'LineWidth',2.0)
+        end
+        end
     end
     %xlabel('$t$','interpreter','latex')
     ylabel('Motor density (per fiber)')
     xlim([0 max(tmaxes)])
 
-    nexttile
-    ErrorEvery = 20*ones(1,length(names));
-    ErrStart=5;
-    for iP=1:parSet-1
-        hold on
-        avgspeed = AvgMotSpeedAll{iP};
-        [nTri,nSteps] = size(avgspeed);
-        dtsave=dtsaves(iP);
-        plot((0:nSteps-1)*dtsave,mean(avgspeed),'LineWidth',2.0)
-        hold on
-        set(gca,'ColorOrderIndex',iP)
-        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(avgspeed(:,ErrStart*iP:ErrorEvery(iP):end)),...
-            std(avgspeed(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
-            'o','MarkerSize',0.5,'LineWidth',1.0)
-    end
-    xlabel('$t$','interpreter','latex')
-    ylabel('Avg motor speed')
-    xlim([0 max(tmaxes)])
-
-    nexttile
-    ErrorEvery = 20*ones(1,length(names));
-    ErrStart=5;
-    for iP=1:parSet-1
-        hold on
-        pctstuck = PctStuckMotorsAll{iP};
-        [nTri,nSteps] = size(pctstuck);
-        dtsave=dtsaves(iP);
-        plot((0:nSteps-1)*dtsave,mean(pctstuck),'LineWidth',2.0)
-        hold on
-        set(gca,'ColorOrderIndex',iP)
-        errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(pctstuck(:,ErrStart*iP:ErrorEvery(iP):end)),...
-            std(pctstuck(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
-            'o','MarkerSize',0.5,'LineWidth',1.0)
-    end
-    xlabel('$t$','interpreter','latex')
-    ylabel('Frac motors stuck')
-    xlim([0 max(tmaxes)])
+%     nexttile
+%     ErrorEvery = 20*ones(1,length(names));
+%     ErrStart=5;
+%     for iP=1:parSet-1
+%         hold on
+%         avgspeed = AvgMotSpeedAll{iP};
+%         [nTri,nSteps] = size(avgspeed);
+%         dtsave=dtsaves(iP);
+%         if (iP<parSet)
+%         plot((0:nSteps-1)*dtsave,mean(avgspeed),'LineWidth',2.0)
+%         hold on
+%         set(gca,'ColorOrderIndex',iP)
+%         errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(avgspeed(:,ErrStart*iP:ErrorEvery(iP):end)),...
+%             std(avgspeed(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+%             'o','MarkerSize',0.5,'LineWidth',1.0)
+%         else
+%         for j=1:nSeeds(iP)
+%         plot((0:nSteps-1)*dtsave,avgspeed(j,:),'LineWidth',2.0)
+%         end
+%         end
+%     end
+%     xlabel('$t$','interpreter','latex')
+%     ylabel('Avg motor speed')
+%     xlim([0 max(tmaxes)])
+% 
+%     nexttile
+%     ErrorEvery = 20*ones(1,length(names));
+%     ErrStart=5;
+%     for iP=1:parSet-1
+%         hold on
+%         pctstuck = PctStuckMotorsAll{iP};
+%         [nTri,nSteps] = size(pctstuck);
+%         dtsave=dtsaves(iP);
+%         if (iP<parSet)
+%         plot((0:nSteps-1)*dtsave,mean(pctstuck),'LineWidth',2.0)
+%         hold on
+%         set(gca,'ColorOrderIndex',iP)
+%         errorbar((ErrStart*iP:ErrorEvery(iP):nSteps-1)*dtsave,mean(pctstuck(:,ErrStart*iP:ErrorEvery(iP):end)),...
+%             std(pctstuck(:,ErrStart*iP:ErrorEvery(iP):end))*2/sqrt(nTri),...
+%             'o','MarkerSize',0.5,'LineWidth',1.0)
+%         else
+%         for j=1:nSeeds(iP)
+%         plot((0:nSteps-1)*dtsave,pctstuck(j,:),'LineWidth',2.0)
+%         end
+%         end        
+%     end
+%     xlabel('$t$','interpreter','latex')
+%     ylabel('Frac motors stuck')
+%     xlim([0 max(tmaxes)])
 
     figure;
     % Contacts

@@ -1,7 +1,5 @@
 N = 13;
-F = 200;
-step = F*N;
-FileName = 'BundlingWithMotorsAll_1';
+FileName = 'FromSSConfinedLocFlowLdx5Mot0.3Turn10_Dt5e-05_1';
 LoadFileName = strcat(FileName,'.txt'); % ALWAYS LOOK @ MOVIE!
 Locs=load(strcat('Locs',LoadFileName));
 Labels=load(strcat('FinalLabels_Sep',LoadFileName));
