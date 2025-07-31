@@ -11,7 +11,7 @@ function JRot = DrotateTau(Xsin,Omega)
         t2 = Xsin(k,2);
         t3 = Xsin(k,3);
         nOm = norm(Omega(k,:));
-        if (nOm > 1e-8)
+        if (nOm > 1e-6)
         t5 = abs(Om1);
         t6 = abs(Om2);
         t7 = abs(Om3);
