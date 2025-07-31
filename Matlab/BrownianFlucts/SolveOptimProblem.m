@@ -1,4 +1,5 @@
-function Xnew = SolveOptimProblem(Xin,XonNp1Mat,WTilde_Np1,InvXonNp1Mat,ConsMat,Constr)
+function [Xnew,nIts,NewNorm] = ...
+    SolveOptimProblem(Xin,XonNp1Mat,WTilde_Np1,InvXonNp1Mat,ConsMat,Constr)
     % Now that we checked everything, ready to implement Newton
     % Get built in Matlab answer
     TauIn = InvXonNp1Mat*Xin;
@@ -21,6 +22,7 @@ function Xnew = SolveOptimProblem(Xin,XonNp1Mat,WTilde_Np1,InvXonNp1Mat,ConsMat,
     NormRHS = 1;
     NewNorm = 1;
     StepSize = 1;
+    nIts=0;
     while (NewNorm > 1e-6 && StepSize > 1e-4)
         % Compute function, constraints, Hessian and Jacobian at x 
         JacC = ConstraintJacobian(N,x,XonNp1Mat,ConsMat);
@@ -48,9 +50,7 @@ function Xnew = SolveOptimProblem(Xin,XonNp1Mat,WTilde_Np1,InvXonNp1Mat,ConsMat,
         end
         x=xtry;
         lambda = lamtry;
-    end
-    if (NewNorm>1e-6)
-        keyboard
+        nIts=nIts+1;
     end
     Xnew = XonNp1Mat*xtry;
     %max(abs(Xnew1-Xnew))
