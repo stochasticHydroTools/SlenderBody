@@ -1,7 +1,8 @@
-function Xpts = FluctClamped2(seed,ForceRt,N,dt)
+function FluctClamped2(seed,ForceRt,N,dt)
 %seed='1';
-%N='8';
+%N='12';
 %dt='1e-3';
+%ForceRt='5';
 % Single fluctuating clamped filament
 addpath(genpath('../'))
 %close all;
@@ -21,11 +22,11 @@ makeMovie = 0;
 dt = str2double(dt);
 tf = 40;
 Tau0BC = [0;1;0];
-TrkLoc = L/2;
+TrkLoc = 0;
 XTrk=[0;TrkLoc;0];
 %q=3; 
 X_s=repmat(Tau0BC',N,1);
-[s,w,b] = chebpts(N, [0 L], 1);
+[s,w,b] = chebpts(N, [0 L], 2);
 %X_s = [cos(q*s.^3 .* (s-L).^3) sin(q*s.^3.*(s - L).^3) ones(N,1)]/sqrt(2);
 InitializationNoTwist;
 saveEvery=floor(1e-1/dt+1e-10);
@@ -36,7 +37,8 @@ ConsMat = [stackMatrix(barymat(0,sNp1,bNp1)); ...
     stackMatrix([barymat(0,s,b) 0])*InvXonNp1Mat;...
     stackMatrix([barymat(L,s,b) 0])*InvXonNp1Mat];
 Constr=[0;0;0;Tau0BC;Tau0BC];
-Correct = 1;
+Correct = 0;
+nConstr=length(Constr);
 
 %% Initialization 
 stopcount=floor(tf/dt+1e-5);
@@ -113,22 +115,22 @@ for count=0:stopcount
     %alphaU = ManualPinv(Kaug'*(MWsymTilde \ B),maxRank)*RHS;
     KWithImp = Ktilde-impcoeff*dt*MWsymTilde*BendForceMat*Ktilde;
     % tic
-    MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
-    MobC = ConsMat'*pinv(ConsMat*Ktilde*MobK*Ktilde'*ConsMat')*ConsMat;
-    alphaU = (MobK*Ktilde' - ...
-        MobK*Ktilde'*MobC*Ktilde*MobK*Ktilde')*...
-        (BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
+    % MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
+    % MobC = ConsMat'*pinv(ConsMat*Ktilde*MobK*Ktilde'*ConsMat',1e-8)*ConsMat;
+    % alphaU = (MobK*Ktilde' - ...
+    %     MobK*Ktilde'*MobC*Ktilde*MobK*Ktilde')*...
+    %     (BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
     % toc
     % tic
-    % Mat2 = [-MWsymTilde KWithImp zeros(3*Nx,nConstr); ...
-    %     Ktilde' zeros(3*Nx) Ktilde'*ConsMat'; ...
-    %     zeros(nConstr,3*Nx) ConsMat*Ktilde zeros(nConstr)];
-    % RHS2 = [MWsymTilde*(BendForceMat*Xt + Fext) + RandomVel+U0; ...
-    %     zeros(3*Nx+nConstr,1)];
-    % Sol2 = pinv(Mat2)*RHS2;
-    % Lambda = Sol2(1:3*Nx);
-    % alphaU = Sol2(3*Nx+1:6*Nx);
-    % Gamma = Sol2(6*Nx+1:end);
+    Mat2 = [-MWsymTilde KWithImp zeros(3*Nx,nConstr); ...
+        Ktilde' zeros(3*Nx) Ktilde'*ConsMat'; ...
+        zeros(nConstr,3*Nx) ConsMat*Ktilde zeros(nConstr)];
+    RHS2 = [MWsymTilde*(BendForceMat*Xt + Fext) + RandomVel+U0; ...
+        zeros(3*Nx+nConstr,1)];
+    Sol2 = pinv(Mat2)*RHS2;
+    Lambda = Sol2(1:3*Nx);
+    alphaU = Sol2(3*Nx+1:6*Nx);
+    Gamma = Sol2(6*Nx+1:end);
     % toc
     Omega = reshape(alphaU(1:3*N),3,N)';
     newXs = rotateTau(Xs3,Omega,dt);
@@ -151,6 +153,6 @@ for count=0:stopcount
 end
 mean(MeanOmTurn)
 Totaltime=toc(tStart);
-save(strcat('T1Lp',num2str(lp),'_Force',num2str(ForceRt),...
+save(strcat('T2Lp',num2str(lp),'_Force',num2str(ForceRt),...
     '_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
