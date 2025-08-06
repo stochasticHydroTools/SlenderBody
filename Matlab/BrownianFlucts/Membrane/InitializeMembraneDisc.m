@@ -1,0 +1,23 @@
+function Mem = InitializeMembraneDisc(mu,Lm,Kc,Kh,dt)
+    Mem.Lm = Lm;
+    Mem.M = 16;
+    Mem.dx=Mem.Lm/Mem.M;
+    Mem.x=(0:Mem.M-1)*Mem.dx;
+    [Mem.xg,Mem.yg]=meshgrid(Mem.x,Mem.x);
+    Mem.kvals = [0:Mem.M/2 -Mem.M/2+1:-1]*2*pi/Mem.Lm;
+    [Mem.kx,Mem.ky]=meshgrid(Mem.kvals);
+    Mem.ksq=Mem.kx.^2+Mem.ky.^2;
+    % KSqDiag = diag(ksq(:));
+    % FMatBase = dftmtx(M);
+    % FMat2 = kron(FMatBase,FMatBase);
+    Mem.Kcmem = Kc;
+    %EnergyMatrixMem = Kcmem*real((FMat2'*(KSqDiag'*KSqDiag)*FMat2)/M^4*Lm^2);
+    Mem.Mmem = eye(Mem.M^2)/(8*pi*mu);
+    Mem.Mhalfmem = eye(Mem.M^2)/sqrt(8*pi*mu);
+    %ImpMatMem = eye(M^2)/dt + Mmem*EnergyMatrixMem;
+    %InvImpMatMem = ImpMatMem^(-1); % fix this later to Fourier
+    Mem.hmem = zeros(Mem.M^2,1);
+    Mem.Kh = Kh;
+    Mem.FourierEnergyMat = Mem.Kcmem*Mem.ksq.^2*Mem.dx^2;
+    Mem.ImpfacFourier = (1/dt+Mem.Mmem(1,1)*Mem.FourierEnergyMat);
+end

@@ -1,5 +1,6 @@
 %% Preliminaries
-function Disc = InitializeDiscretization(Xs3,TrkPt,TrkLoc,Lin,Eb,rin,mu,clamp)
+function Disc = InitializeDiscretization(Xs3,TrkPt,TrkLoc,Lin,Eb,...
+    rin,mu,clamp,Nu)
     [Disc.N,~]=size(Xs3);
     Disc.L = Lin;
     [Disc.s,Disc.w,Disc.b]=chebpts(Disc.N,[0 Disc.L],1);
@@ -41,6 +42,10 @@ function Disc = InitializeDiscretization(Xs3,TrkPt,TrkLoc,Lin,Eb,rin,mu,clamp)
     Disc.RplNp1 = barymat(Disc.spl,Disc.sNp1,Disc.bNp1);
     Disc.r=rin;
     Disc.eps = Disc.r/Disc.L;
+    Disc.mu = mu;
     Disc.MobConst = -log(Disc.eps^2)/(8*pi*mu);
     Disc.clamp=clamp;
+    Disc.nPolEvents = 0;
+    Disc.su = (0:Nu-1)'*Disc.L/(Nu-1);
+    Disc.Runi = barymat(Disc.su,Disc.sNp1,Disc.bNp1);
 end

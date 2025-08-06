@@ -1,12 +1,16 @@
-function hInterp = InterpolatehNUFFT(h,InterpPts,ksq,x)
-    dx=x(2)-x(1);
-    gw=dx;
-    N = length(x);
+function hInterp = InterpolatehNUFFT(InterpPts,Mem)
+    dx=Mem.x(2)-Mem.x(1);
+    gw=Mem.dx;
+    N = length(Mem.x);
     L = N*dx;
-    hhat = fft2(h);
-    ksqMult=ksq;
-    ksqMult(abs(ksqMult)>(3*N/8*2*pi/L)^2)=0;
-    hhatConv = hhat.*exp(gw^2*ksq/2);
+    hmem=Mem.hmem;
+    if (size(hmem,1)~=size(hmem,2))
+        hmem=reshape(Mem.hmem,Mem.M,Mem.M);
+    end
+    hhat = fft2(hmem);
+    ksqMult=Mem.ksq;
+    %ksqMult(abs(ksqMult)>(3*N/8*2*pi/L)^2)=0;
+    hhatConv = hhat.*exp(gw^2*ksqMult/2);
     hConv = ifft2(hhatConv);
-    hInterp = InterpFromGrid(x,x,hConv,InterpPts,gw);
+    hInterp = InterpFromGrid(Mem.x,Mem.x,hConv,InterpPts,gw);
 end
