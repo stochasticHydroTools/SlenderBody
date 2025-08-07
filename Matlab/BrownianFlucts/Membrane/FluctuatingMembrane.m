@@ -7,14 +7,16 @@ kvals = [0:N/2 -N/2+1:-1]*2*pi/L;
 [kx,ky]=meshgrid(kvals);
 ksq=kx.^2+ky.^2;
 KSqDiag = diag(ksq(:));
+FourierEnergyMat = ksq.^2*L^2/N^4
 
 % Check calculation of energy
 h = sin(2*pi*xg/L).*sin(4*pi*yg/L);
+h = rand(N);
 %h = ones(N);
-hhat = fft2(h)/N^2;
-ksqhhat = ksq.*hhat;
+hhat = fft2(h);
+ksqhhat = conj(hhat).*FourierEnergyMat.*hhat;
 % Integrate and square
-SqEn = L^2*(ksqhhat(:))'*ksqhhat(:)
+SqEn = sum(ksqhhat(:))
 
 % NUFFT to evaluate anywhere 
 % IBpts = [0.378 0.642; 0.672 0.88; 0.547 0.02];

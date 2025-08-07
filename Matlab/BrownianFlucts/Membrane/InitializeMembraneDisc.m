@@ -12,12 +12,14 @@ function Mem = InitializeMembraneDisc(mu,Lm,Kc,Kh,dt)
     % FMat2 = kron(FMatBase,FMatBase);
     Mem.Kcmem = Kc;
     %EnergyMatrixMem = Kcmem*real((FMat2'*(KSqDiag'*KSqDiag)*FMat2)/M^4*Lm^2);
-    Mem.Mmem = eye(Mem.M^2)/(8*pi*mu);
-    Mem.Mhalfmem = eye(Mem.M^2)/sqrt(8*pi*mu);
+    % Need to sort this out - just do spheres?
+    hmem = 0.01;
+    Mem.Mmem = eye(Mem.M^2)/(6*pi*mu*hmem);
+    Mem.Mhalfmem = eye(Mem.M^2)/sqrt(6*pi*mu*hmem);
     %ImpMatMem = eye(M^2)/dt + Mmem*EnergyMatrixMem;
     %InvImpMatMem = ImpMatMem^(-1); % fix this later to Fourier
     Mem.hmem = zeros(Mem.M^2,1);
     Mem.Kh = Kh;
-    Mem.FourierEnergyMat = Mem.Kcmem*Mem.ksq.^2*Mem.dx^2;
+    Mem.FourierEnergyMat = Mem.Kcmem*Mem.ksq.^2*Mem.Lm^2/Mem.M^4;
     Mem.ImpfacFourier = (1/dt+Mem.Mmem(1,1)*Mem.FourierEnergyMat);
 end

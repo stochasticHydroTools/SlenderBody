@@ -3,16 +3,16 @@ addpath(genpath('../'))
 deltaP = 0.003; 
 UpdateFil = 1;
 nTrial = 1;
-Kster = 1;
+Kster = 0;
 KCL = 10;
 %for iF=1:length(Fmems)
 %for iTrial=1:nTrial
 % Polymerization
 kPolyOn = 100; % 1/sec
-rng(0);
+rng(1);
 
 % Temporal integration
-tf = 10;
+tf = 100;
 dt = 1e-3;
 impcoeff = 1;
 
@@ -31,8 +31,8 @@ N = 12;
 Nu = 41;
 rtrue = 4e-3; % 4 nm radius
 kbT = 4.1e-3;
-lp = 10;
-Eb = lp*kbT; % pN*um^2 (Lp=17 um)
+lp = 17;
+Eb = 10;%lp*kbT; % pN*um^2 (Lp=17 um)
 makeMovie = 1;
 Tau0BC = [0;0;1];
 TrkLoc=0;
@@ -50,7 +50,7 @@ for j = 1:nFib
     uPts = [uPts; Discr(j).Runi*reshape(Discr(j).Xt,3,[])'];
 end
 % Initialize CLs
-fibsToLink=[1 2; 2 3; 3 1];
+fibsToLink=[];%[1 2; 2 3; 3 1];
 nLinks = size(fibsToLink,1);
 links=[];
 rCLs = [];
@@ -69,6 +69,9 @@ saveEvery=floor(1e-1/dt+1e-10);
 Xpts=[];
 FibLens=[];
 AllMemPts=[];
+MemEnergy=[];
+FibEnergy=[];
+TotalFibEnergy=[];
 if (makeMovie)
     f=figure;
     frameNum=0;
@@ -103,7 +106,9 @@ for count=0:stopcount
             %nexttile
             frameNum=frameNum+1;
             for iFib=1:nFib
-                PlotFil(Discr(iFib))
+                Rpl = Discr(iFib).RplNp1;
+                Xv = Rpl*reshape(Discr(iFib).Xt,3,[])';
+                plot3(Xv(:,1),Xv(:,2),Xv(:,3));
                 hold on
             end
             [~,X1stars,X2stars] = getCLforceEn(links,X3All,Discr(1).Runi,...
@@ -113,19 +118,38 @@ for count=0:stopcount
                 plot3(linkPts(:,1),linkPts(:,2),linkPts(:,3),':ko');
             end
             title(sprintf('$t=$ %1.2f',(frameNum-1)*saveEvery*dt))
-            % view(2)
-            % ylim([0 Lm])
-            % xlim([0 Lm])
-            % zlim([-1 0.5])
+            zlim([-1 0.5])
             PlotAspect
             hold on
-            PlotMem(Mem);
+            xbd = xlim;
+            ybd = ylim;
+            xCt = floor(xbd(1)/Lm):ceil(xbd(2)/Lm);
+            yCt = floor(ybd(1)/Lm):ceil(ybd(2)/Lm);
+            PlotMem(Mem,xCt(1:end-1),yCt(1:end-1));
             view([-45 0])
+            xbd = xlim;
+            ybd = ylim;
+            if (range(xbd)<Lm)
+                xlim([0 Lm])
+            end
+            if (range(ybd)<Lm)
+                ylim([0 Lm])
+            end
+            PlotAspect
             movieframes(frameNum)=getframe(f);
         end
         Xpts=[Xpts;reshape(Xt,3,[])'];
         AllMemPts =[AllMemPts Mem.hmem];
         FibLens=[FibLens Lens];
+        % Compute energy stored in the membrane
+        MemEnergy = [MemEnergy computeMembraneEnergy(Mem)];
+        FibEn=0;
+        for iFib=1:nFib
+            Xthis = Discr(iFib).Xt;
+            FibEn=FibEn+Xthis'*Discr(iFib).BendingEnergyMatrix_Np1*Xthis;
+        end
+        FibEnergy = [FibEnergy FibEn];
+
     end
 
     % Polymerize the filaments
