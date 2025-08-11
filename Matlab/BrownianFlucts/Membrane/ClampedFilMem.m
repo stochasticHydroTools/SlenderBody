@@ -3,7 +3,7 @@ addpath(genpath('../'))
 deltaP = 0.003; 
 UpdateFil = 1;
 nTrial = 1;
-Kster = 0;
+Kster = 5;
 KCL = 10;
 %for iF=1:length(Fmems)
 %for iTrial=1:nTrial
@@ -12,17 +12,20 @@ kPolyOn = 100; % 1/sec
 rng(1);
 
 % Temporal integration
-tf = 100;
-dt = 1e-3;
+tf = 30;
+dt = 5e-4;
 impcoeff = 1;
 
 % Membrane discretization
 Fmem = 0;%Fmems(iF);
+M = 16; % num points per d for membrane
 mu = 1;
 Lm = 1;
 Kh = 1;
 Kc = 0.2;
-Mem = InitializeMembraneDisc(mu,Lm,Kc,Kh,dt);
+uRatio=3;
+Cutoffxy = 2*Lm/(uRatio*M);
+Mem = InitializeMembraneDisc(M,Lm,Kc,Kh,dt,mu,uRatio);
 
 % Fiber discretization
 nFib = 3;
@@ -36,9 +39,9 @@ Eb = 10;%lp*kbT; % pN*um^2 (Lp=17 um)
 makeMovie = 1;
 Tau0BC = [0;0;1];
 TrkLoc=0;
-XTrk0=[Lm/2;Lm/2;-L-deltaP];
+XTrk0=[Lm/2;Lm/2;-L-deltaP-0.001];
 XTrk=zeros(3,nFib);
-rCirc = 0.02;
+rCirc = 0.02.*(nFib>1);
 clamp=1;
 uPts = [];
 % Initialize fibers
@@ -65,7 +68,7 @@ for iLp = LinkPts
 end
 
 stopcount=floor(tf/dt+1e-5);
-saveEvery=floor(1e-1/dt+1e-10);
+saveEvery=floor(5e-2/dt+1e-10);
 Xpts=[];
 FibLens=[];
 AllMemPts=[];
@@ -80,10 +83,10 @@ end
 % Equilibrate membrane
 minh=[];
 stcteq = floor(10/dt+1e-5);
-for count=0:stcteq
+for count=0
     Fpush = Fmem*ones(Mem.M^2,1);
     Mem = UpdateMembrane(Mem,Fpush,kbT,dt);
-    minh=[minh;min(Mem.hmem)];
+    minh=[minh;min(Mem.h)];
 end
 mempts=zeros(stopcount,1);
 filH = zeros(stopcount,1);
@@ -118,7 +121,8 @@ for count=0:stopcount
                 plot3(linkPts(:,1),linkPts(:,2),linkPts(:,3),':ko');
             end
             title(sprintf('$t=$ %1.2f',(frameNum-1)*saveEvery*dt))
-            zlim([-1 0.5])
+            zbd = zlim;
+            zlim([-1 max(0.75,zbd(2))])
             PlotAspect
             hold on
             xbd = xlim;
@@ -139,14 +143,14 @@ for count=0:stopcount
             movieframes(frameNum)=getframe(f);
         end
         Xpts=[Xpts;reshape(Xt,3,[])'];
-        AllMemPts =[AllMemPts Mem.hmem];
+        AllMemPts =[AllMemPts Mem.h];
         FibLens=[FibLens Lens];
         % Compute energy stored in the membrane
         MemEnergy = [MemEnergy computeMembraneEnergy(Mem)];
         FibEn=0;
         for iFib=1:nFib
             Xthis = Discr(iFib).Xt;
-            FibEn=FibEn+Xthis'*Discr(iFib).BendingEnergyMatrix_Np1*Xthis;
+            FibEn=FibEn+1/2*Xthis'*Discr(iFib).BendingEnergyMatrix_Np1*Xthis;
         end
         FibEnergy = [FibEnergy FibEn];
 
@@ -159,29 +163,32 @@ for count=0:stopcount
     end
 
     % Compute steric forces 
-    Xt = [];
+    AllMemSterForce = zeros(Mem.M^2,1);
+    AllFibSterForce = zeros(length(Xt),1);
     for iFib=1:nFib
-        Xt = [Xt;Discr(iFib).Xt];
+        [FibForce,MemForce,Energy] = MembraneFiberRepelForce(Discr(iFib),...
+            Mem,Kster,deltaP,Cutoffxy);
+        AllFibSterForce((iFib-1)*3*Discr(iFib).Nx+1:...
+            iFib*3*Discr(iFib).Nx) = reshape(FibForce',[],1);
+        AllMemSterForce = AllMemSterForce+MemForce;
     end
-    X3All = reshape(Xt,3,[])';
-    Fiberxypts=X3All(:,1:2);
-    MemPtsAtX = InterpolatehNUFFT(Fiberxypts,Mem);
-    dh = (MemPtsAtX - X3All(:,end)); % Should be > 0
-    stForce = Kster*(1-dh/deltaP).*(dh<deltaP); % This is key; need to think about it
-    
+        
     % Evolve the membrane
     Fpush = Fmem*ones(Mem.M^2,1);
-    Fgmem = SpreadStericForceToMem(Fiberxypts,stForce,Mem);
-    Mem = UpdateMembrane(Mem,Fpush+Fgmem,kbT,dt);
-    minh=[minh;min(Mem.hmem)];
+    Mem = UpdateMembrane(Mem,Fpush+AllMemSterForce,kbT,dt);
+    minh=[minh;min(Mem.h)];
 
     % Evolve fibers
     if (UpdateFil)
         % Compute cross linking forces
+        Xt = [];
+        for iFib=1:nFib
+            Xt = [Xt;Discr(iFib).Xt];
+        end
+        X3All = reshape(Xt,3,[])';
         [CLf,X1stars,X2stars] = getCLforceEn(links,X3All,Discr(1).Runi, ...
             KCL,rCLs,0,0);
-        F_Ext = reshape(CLf',[],1);
-        F_Ext(3:3:end) = F_Ext(3:3:end) - stForce;
+        F_Ext = reshape(CLf',[],1)  + AllFibSterForce;
         Nx = Discr(1).Nx;
         for iFib=1:nFib
             RandomNums = randn(9*(N+1),1);

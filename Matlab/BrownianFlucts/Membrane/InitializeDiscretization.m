@@ -46,6 +46,8 @@ function Disc = InitializeDiscretization(Xs3,TrkPt,TrkLoc,Lin,Eb,...
     Disc.MobConst = -log(Disc.eps^2)/(8*pi*mu);
     Disc.clamp=clamp;
     Disc.nPolEvents = 0;
+    Disc.Nu = Nu;
     Disc.su = (0:Nu-1)'*Disc.L/(Nu-1);
     Disc.Runi = barymat(Disc.su,Disc.sNp1,Disc.bNp1);
+    Disc.wu = [1/2 ones(1,Disc.Nu-2) 1/2]*Disc.L/Disc.Nu;
 end

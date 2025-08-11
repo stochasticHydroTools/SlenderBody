@@ -7,7 +7,7 @@ function Disc = PolymerizeClampedFib(Disc,Mem,ratePoly,deltaP)
     XLast = barymat(Disc.L,Disc.sNp1,Disc.bNp1)*reshape(Disc.Xt,3,[])';
     Xadded = TauLast/norm(TauLast)*deltaP+XLast;
     % Check the membrane position at this (x,y)
-    hmempt = InterpolatehNUFFT(Xadded(1:2),Mem);
+    hmempt = Interpolateh(Xadded(1:2),Mem,0);
     if (Xadded(3) > hmempt+1e-10)
         return
     end
@@ -42,6 +42,8 @@ function Disc = PolymerizeClampedFib(Disc,Mem,ratePoly,deltaP)
     Disc.MobConst = -log(Disc.eps^2)/(8*pi*Disc.mu);
     PositionsToMatch = [Disc.sNp1/Lfac; Disc.L];
     Rnew = stackMatrix(barymat(PositionsToMatch,Disc.sNp1,Disc.bNp1));
+    Disc.su = Lfac*Disc.su;
+    Disc.wu = Lfac*Disc.wu;
     % Fill in what you know
     Tau0BC = Disc.Xst(1:3);
     ErrorNew=@(NewDOF) (Rnew*NewPos(NewDOF,Disc.XonNp1Mat,Tau0BC',Disc.TrkPt,...

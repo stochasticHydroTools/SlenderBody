@@ -1,5 +1,7 @@
 L=3;
-N=24;
+N=25;
+uRatio=2;
+Kc = 0.2;
 dx=L/N;
 x=(0:N-1)*dx;
 [xg,yg]=meshgrid(x,x);
@@ -7,22 +9,41 @@ kvals = [0:N/2 -N/2+1:-1]*2*pi/L;
 [kx,ky]=meshgrid(kvals);
 ksq=kx.^2+ky.^2;
 KSqDiag = diag(ksq(:));
-FourierEnergyMat = ksq.^2*L^2/N^4
+FourierEnergyMat = ksq.^2*L^2/N^4;
+Mem = InitializeMembraneDisc(N,L,Kc,0,0,1,uRatio);
 
 % Check calculation of energy
 h = sin(2*pi*xg/L).*sin(4*pi*yg/L);
-h = rand(N);
-%h = ones(N);
+%h = rand(N);
+Mem.h = h(:);
+En = computeMembraneEnergy(Mem);
+
+% Matrix to Upsample membrane
 hhat = fft2(h);
-ksqhhat = conj(hhat).*FourierEnergyMat.*hhat;
-% Integrate and square
-SqEn = sum(ksqhhat(:))
+nPair = (N-1)/2;
+% Pad 
+hhatPad = zeros(Mem.Nu);
+hhatPad(1:nPair+1,1:nPair+1)=Mem.uRatio^2*hhat(1:nPair+1,1:nPair+1);
+hhatPad(1:nPair+1,end-nPair+1:end)=Mem.uRatio^2*hhat(1:nPair+1,end-nPair+1:end);
+hhatPad(end-nPair+1:end,1:nPair+1)=Mem.uRatio^2*hhat(end-nPair+1:end,1:nPair+1);
+hhatPad(end-nPair+1:end,end-nPair+1:end)=Mem.uRatio^2*hhat(end-nPair+1:end,end-nPair+1:end);
+hup = ifft2(hhatPad);
+
+hu = sin(2*pi*Mem.xgu/L).*sin(4*pi*Mem.ygu/L);
+max(abs(hup(:)-hu(:)))
+
+hup2 = Mem.UpsamplingMatrix*h(:);
+hup2 = reshape(hup2,Mem.Nu,Mem.Nu);
+max(abs(hup2(:)-hu(:)))
 
 % NUFFT to evaluate anywhere 
-% IBpts = [0.378 0.642; 0.672 0.88; 0.547 0.02];
-% hReal = sin(8*pi*IBpts(:,1)/L).*cos(12*pi*IBpts(:,2)/L);
-% hInterp = InterpolatehNUFFT(h,IBpts,ksq,x);
-% return
+IBpts = [0.378 0.642; 0.672 0.88; 0.547 0.02];
+hReal = sin(8*pi*IBpts(:,1)/L).*cos(12*pi*IBpts(:,2)/L);
+h = sin(8*pi*xg/L).*cos(12*pi*yg/L);
+Mem.h = h(:);
+hInterp = Interpolateh(IBpts,Mem,-1);
+max(abs(hInterp-hReal))
+return
 
 % Write this as a matrix
 % Then you can do Brownian dynamics on h
@@ -30,7 +51,7 @@ FMatBase = dftmtx(N);
 FMat2 = kron(FMatBase,FMatBase);
 EnergyMatrix = real((FMat2'*(KSqDiag'*KSqDiag)*FMat2)/N^4*L^2);
 %EnergySqRt = real(EnergyMatrix^(1/2));
-SqEnFromMat = h(:)'*EnergyMatrix*h(:)
+SqEnFromMat = 1/2*Kc*h(:)'*EnergyMatrix*h(:)
 
 g =rand(N^2,1);
 fg = EnergyMatrix*g;
@@ -39,7 +60,7 @@ ghat = fft2(g2);
 ghatF = ghat.*ksq.^2*dx^2;
 fg2 = ifft2(ghatF);
 
-TrueEn=100*pi^4/L^2
+TrueEn=50*Kc*pi^4/L^2
 
 % Brownian dynamics
 % Projector for edges
