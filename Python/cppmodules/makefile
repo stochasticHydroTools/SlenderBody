@@ -1,4 +1,4 @@
-all: RPYKernelEvaluator.so FiberCollectionC.so DomainC.so CrossLinkForceEvaluator.so  StericForceEvaluatorC.so
+all: EndedCrossLinkedNetwork.so RPYKernelEvaluator.so FiberCollectionC.so DomainC.so CrossLinkForceEvaluator.so  StericForceEvaluatorC.so
 
 CXX=icpx
 PYTHON3=python3
@@ -17,7 +17,7 @@ EndedCrossLinkedNetwork.so: FortranHeap.o EndedCrossLinkers.cpp
 	$(CXX)  -shared  -o $@ $^ $(CXXFLAGS)
 
 FortranHeap.o: $(SLENDER_ROOT)/Fortran/MinHeapModule.f90 makefile
-	$(CXX) -x f95 -O3 -c  $< -o $@ -fPIC
+	gfortran -fPIC -x f95 -O3 -c  $< -o $@
 
 clean:
 	rm -f *.so FortranHeap.o
