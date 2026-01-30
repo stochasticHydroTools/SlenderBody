@@ -1,5 +1,5 @@
 # Inputs for bundling simulation
-nFib=500        # number of fibers
+nFib=100        # number of fibers
 N=12            # number of tangent vectors per fiber
 Lf=1            # length of each fiber
 nonLocal=0;     # doing nonlocal solves? 0 = intra-fiber hydro, 1 = full nonlocal hydro
