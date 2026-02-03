@@ -367,9 +367,8 @@ class _KrylovSolver(object):
         """Approximate solution."""
 
         # find common dtype
-        self.dtype = numpy.find_common_type(
-            [linear_system.dtype, self.x0.dtype, dtype], []
-        )
+        self.dtype = numpy.result_type(
+            linear_system.dtype, self.x0.dtype, dtype )
 
         # store operator (can be modified in derived classes)
         self.MlAMr = linear_system.MlAMr

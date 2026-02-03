@@ -119,7 +119,7 @@ def find_common_dtype(*args):
                 dtypes.append(arg.dtype)
             else:
                 warnings.warn("object %s does not have a dtype." % arg.__repr__)
-    return numpy.find_common_type(dtypes, [])
+    return numpy.result_type(*dtypes)
 
 
 def shape_vec(x):
@@ -1459,7 +1459,7 @@ def _get_dtype(operators, dtypes=None):
     for obj in operators:
         if obj is not None and hasattr(obj, "dtype"):
             dtypes.append(obj.dtype)
-    return numpy.find_common_type(dtypes, [])
+    return numpy.result_type(*dtypes)
 
 
 class _SumLinearOperator(LinearOperator):
