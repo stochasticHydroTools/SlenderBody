@@ -1,8 +1,8 @@
 function FluctClamped2(seed,ForceRt,N,dt)
-%seed='1';
-%N='12';
-%dt='1e-3';
-%ForceRt='5';
+% seed='1';
+% N='16';
+% dt='1e-3';
+% ForceRt='3';
 % Single fluctuating clamped filament
 addpath(genpath('../'))
 %close all;
@@ -14,36 +14,34 @@ ForceRt=str2num(ForceRt);
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 3*L;
+lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
 makeMovie = 0;
 dt = str2double(dt);
-tf = 40;
+tf = 20;
 Tau0BC = [0;1;0];
-TrkLoc = 0;
+TrkLoc = L/2;
 XTrk=[0;TrkLoc;0];
-%q=3; 
 X_s=repmat(Tau0BC',N,1);
-[s,w,b] = chebpts(N, [0 L], 2);
-%X_s = [cos(q*s.^3 .* (s-L).^3) sin(q*s.^3.*(s - L).^3) ones(N,1)]/sqrt(2);
+[s,w,b] = chebpts(N, [0 L], 1);
 InitializationNoTwist;
-saveEvery=floor(1e-1/dt+1e-10);
+saveEvery=floor(1e-2/dt+1e-10);
 ee=[];
-MeanOmTurn=[];
 MobConst = -log(eps^2)/(8*pi*mu);
 ConsMat = [stackMatrix(barymat(0,sNp1,bNp1)); ...
     stackMatrix([barymat(0,s,b) 0])*InvXonNp1Mat;...
     stackMatrix([barymat(L,s,b) 0])*InvXonNp1Mat];
 Constr=[0;0;0;Tau0BC;Tau0BC];
-Correct = 0;
+Correct = 1;
 nConstr=length(Constr);
 
 %% Initialization 
 stopcount=floor(tf/dt+1e-5);
 nNewtonIts=zeros(stopcount,1);
-FinalNorms = zeros(stopcount,1);
+MeanOmTurn = zeros(stopcount,1);
+ConstrErs = zeros(stopcount,1);
 Xpts=[];
 if (makeMovie)
     close all;
@@ -101,58 +99,48 @@ for count=0:stopcount
     RandomVelBE = sqrt(kbT)*...
          MWsymTilde*BendMatHalf_Np1*randn(3*Nx,1);
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
-    % B = Kaug-impcoeff*dt*MWsymTilde*BendForceMat*Kaug;
     U0 = zeros(3*Nx,1);
     U0(1:3:end)=0;
     Fext = zeros(3*Nx,1);
     Fext(end-1) = ForceRt^2*Eb;
-    %RHS = Kaug'*(BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
-    % Form psuedo-inverse manually
-    %maxRank = 2*N+3;
-    %if (clamp)
-    %    maxRank = 2*N-2;
-    %end
-    %alphaU = ManualPinv(Kaug'*(MWsymTilde \ B),maxRank)*RHS;
     KWithImp = Ktilde-impcoeff*dt*MWsymTilde*BendForceMat*Ktilde;
-    % tic
-    % MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
-    % MobC = ConsMat'*pinv(ConsMat*Ktilde*MobK*Ktilde'*ConsMat',1e-8)*ConsMat;
-    % alphaU = (MobK*Ktilde' - ...
-    %     MobK*Ktilde'*MobC*Ktilde*MobK*Ktilde')*...
-    %     (BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
-    % toc
-    % tic
-    Mat2 = [-MWsymTilde KWithImp zeros(3*Nx,nConstr); ...
-        Ktilde' zeros(3*Nx) Ktilde'*ConsMat'; ...
-        zeros(nConstr,3*Nx) ConsMat*Ktilde zeros(nConstr)];
-    RHS2 = [MWsymTilde*(BendForceMat*Xt + Fext) + RandomVel+U0; ...
-        zeros(3*Nx+nConstr,1)];
-    Sol2 = pinv(Mat2)*RHS2;
-    Lambda = Sol2(1:3*Nx);
-    alphaU = Sol2(3*Nx+1:6*Nx);
-    Gamma = Sol2(6*Nx+1:end);
-    % toc
+    MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
+    MobC = ConsMat'*pinv(ConsMat*Ktilde*MobK*Ktilde'*ConsMat')*ConsMat;
+    alphaU = (MobK*Ktilde' - ...
+        MobK*Ktilde'*MobC*Ktilde*MobK*Ktilde')*...
+        (BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
+    % Mat2 = [-MWsymTilde KWithImp zeros(3*Nx,nConstr); ...
+    %     Ktilde' zeros(3*Nx) Ktilde'*ConsMat'; ...
+    %     zeros(nConstr,3*Nx) ConsMat*Ktilde zeros(nConstr)];
+    % RHS2 = [MWsymTilde*(BendForceMat*Xt + Fext) + RandomVel+U0; ...
+    %     zeros(3*Nx+nConstr,1)];
+    % Sol2 = pinv(Mat2)*RHS2;
+    % Lambda = Sol2(1:3*Nx);
+    % alphaU1 = Sol2(3*Nx+1:6*Nx);
+    % Gamma = Sol2(6*Nx+1:end);
+    % if (max(abs(alphaU1-alphaU))>1e-8)
+    %     keyboard
+    % end
     Omega = reshape(alphaU(1:3*N),3,N)';
     newXs = rotateTau(Xs3,Omega,dt);
     Xsp1 = reshape(newXs',[],1);
     XTrk_p1 = XTrk+dt*alphaU(end-2:end);
     Xp1 = XonNp1Mat*[Xsp1;XTrk_p1];
     % Solve for minimum Omega s.t. you get back on constraint
-    ConstrEr = norm(ConsMat*Xp1-Constr);
-    if (Correct && ConstrEr>0)
+    tNewt = tic;
+    ConstrErs(count+1) = norm(ConsMat*Xp1-Constr);
+    if (Correct && ConstrErs(count+1)>0)
         % Solve for the "closest" X that satisfies constraints
         ogXp1 = Xp1;
-        [Xp1,nNewtonIts(count+1),FinalNorms(count+1)] = ...
+        [Xp1,nNewtonIts(count+1)] = ...
             SolveOptimProblem(Xp1,XonNp1Mat,WTilde_Np1,...
-            InvXonNp1Mat,ConsMat,Constr);
-        SqEr = (Xp1-ogXp1)'*WTilde_Np1*(Xp1-ogXp1);
-        MeanOmTurn=[MeanOmTurn;sqrt(SqEr)];
+            InvXonNp1Mat,ConsMat,Constr,Xt);
+        sqDiff = (Xp1-ogXp1)'*WTilde_Np1*(Xp1-ogXp1);
+        MeanOmTurn(count+1)=sqrt(sqDiff);
     end
+    NewtonTime = NewtonTime+toc(tNewt);
     Xt=Xp1;
-    ee=[ee;norm(Xt(1:3)-Xt(end-2:end))];
 end
-mean(MeanOmTurn)
 Totaltime=toc(tStart);
-save(strcat('T2Lp',num2str(lp),'_Force',num2str(ForceRt),...
-    '_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('Type1_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end

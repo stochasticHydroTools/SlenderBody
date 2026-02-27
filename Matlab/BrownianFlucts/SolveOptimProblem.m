@@ -1,58 +1,46 @@
-function [Xnew,nIts,NewNorm] = ...
-    SolveOptimProblem(Xin,XonNp1Mat,WTilde_Np1,InvXonNp1Mat,ConsMat,Constr)
+function [Xnew,nIts] = ...
+    SolveOptimProblem(Xin,XonNp1Mat,WTilde_Np1,InvXonNp1Mat,ConsMat,Constr,Xt)
     % Now that we checked everything, ready to implement Newton
-    % Get built in Matlab answer
     TauIn = InvXonNp1Mat*Xin;
     Nx = length(Xin)/3;
     N = Nx - 1;
     nConstr=length(Constr)+N;
-    % opts=optimoptions(@lsqnonlin,'OptimalityTolerance',1e-10,...
-    %     'SpecifyObjectiveGradient',true,'Display','off');
-    % tic
-    % fun=@(x)NLMinimizer(x,TauIn,XonNp1Mat,WTilde_Np1);
-    % ceqfcn=@(x)EqConstr(x,N,XonNp1Mat,ConsMat,Constr);
-    % [x,resnorm,residual,exitflag,output,lambda,jacobian] = ...
-    %     lsqnonlin(fun,TauIn,[],[],[],[],[],[],ceqfcn,opts);
-    % toc
-    % Xnew1=XonNp1Mat*x;
-    
+
     x = TauIn;
     HessEachConstr = ConstraintHessian(N,ConsMat);
     lambda = zeros(nConstr,1);
-    NormRHS = 1;
-    NewNorm = 1;
-    StepSize = 1;
-    nIts=0;
-    while (NewNorm > 1e-6 && StepSize > 1e-4)
-        % Compute function, constraints, Hessian and Jacobian at x 
+    maxIts = 20;
+    tol = 1e-8;
+    GradNorms = zeros(maxIts,1);
+    % Compute function, constraints, Hessian and Jacobian at x 
+    for nIts=1:maxIts
         JacC = ConstraintJacobian(N,x,XonNp1Mat,ConsMat);
         DfDx = XonNp1Mat'*WTilde_Np1*XonNp1Mat*(x-TauIn) + JacC'*lambda;
         [~,ceq] = EqConstr(x,N,XonNp1Mat,ConsMat,Constr);
         Grad = -[DfDx; ceq];
+        GradNorms(nIts)=norm(Grad);
+        if (norm(Grad)<tol)
+            break
+        end
         % Compute Hessian at x
         HessLam = sum(reshape(lambda,1,1,nConstr).*HessEachConstr,3);
         Hxx = XonNp1Mat'*WTilde_Np1*XonNp1Mat + HessLam;
-        HMat = [Hxx JacC'; JacC zeros(nConstr)];%+0.1*eye(3*Nx+nConstr);
-        %HMat = eye(3*Nx+nConstr);
-        NormRHS = norm(Grad);
+        HMat = [Hxx JacC'; JacC zeros(nConstr)];
         deltaVars = pinv(HMat)*Grad;
-        StepSize = 2;
-        NewNorm = inf;
-        while (NewNorm>NormRHS)
-            StepSize = StepSize/2;
-            xtry = x + StepSize*deltaVars(1:3*Nx);
-            lamtry = lambda+StepSize*deltaVars(3*Nx+1:end);
-            JacC = ConstraintJacobian(N,xtry,XonNp1Mat,ConsMat);
-            DfDx = XonNp1Mat'*WTilde_Np1*XonNp1Mat*(xtry-TauIn) + JacC'*lamtry;
-            [~,ceq] = EqConstr(xtry,N,XonNp1Mat,ConsMat,Constr);
-            NewGrad = -[DfDx; ceq];
-            NewNorm = norm(NewGrad);
-        end
-        x=xtry;
-        lambda = lamtry;
-        nIts=nIts+1;
+        x = x + deltaVars(1:3*Nx);
+        lambda = lambda+deltaVars(3*Nx+1:end);
     end
-    Xnew = XonNp1Mat*xtry;
+
+    if (nIts==maxIts)
+        % Switch to built-in solve if Newton is slow
+        opts=optimoptions(@lsqnonlin,'OptimalityTolerance',1e-10,...
+            'SpecifyObjectiveGradient',true,'Display','off');
+        fun=@(x)NLMinimizer(x,TauIn,XonNp1Mat,WTilde_Np1);
+        ceqfcn=@(x)EqConstr(x,N,XonNp1Mat,ConsMat,Constr);
+        [x,resnorm,residual,exitflag,output,lambda,jacobian] = ...
+            lsqnonlin(fun,TauIn,[],[],[],[],[],[],ceqfcn,opts);
+    end
+    Xnew=XonNp1Mat*x;
     %max(abs(Xnew1-Xnew))
 end
 
