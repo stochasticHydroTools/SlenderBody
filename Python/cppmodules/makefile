@@ -1,10 +1,10 @@
-all: RPYKernelEvaluator.so FiberCollectionC.so DomainC.so CrossLinkForceEvaluator.so EndedCrossLinkedNetwork.so StericForceEvaluatorC.so
+all: EndedCrossLinkedNetwork.so RPYKernelEvaluator.so FiberCollectionC.so DomainC.so CrossLinkForceEvaluator.so  StericForceEvaluatorC.so
 
-CXX=g++
+CXX=icpx
 PYTHON3=python3
 
-LDLIBS=-llapacke -lcblas -lgfortran -llapack
-OPENMP=-fopenmp
+LDLIBS= -qmkl  -lgfortran
+OPENMP=-qopenmp
 PYBINDINCLUDE:=`$(PYTHON3) -m pybind11 --includes`
 
 CXXFLAGS=-Wall -O3 -std=c++11 -fPIC $(OPENMP) $(LDLIBS)  $(PYBINDINCLUDE)
@@ -17,7 +17,7 @@ EndedCrossLinkedNetwork.so: FortranHeap.o EndedCrossLinkers.cpp
 	$(CXX)  -shared  -o $@ $^ $(CXXFLAGS)
 
 FortranHeap.o: $(SLENDER_ROOT)/Fortran/MinHeapModule.f90 makefile
-	$(CXX) -x f95 -O3 -c  $< -o $@ -fPIC
+	gfortran -fPIC -x f95 -O3 -c  $< -o $@
 
 clean:
 	rm -f *.so FortranHeap.o

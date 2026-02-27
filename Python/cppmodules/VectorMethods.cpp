@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include "types.h"
-#include "cblas.h"
-#include "lapacke.h"
+//#include "cblas.h"
+//#include "lapacke.h"
 #include<exception>
 
 
@@ -15,7 +15,7 @@ void throwLapackeError(int info, std::string functionName){
 
 #define LAPACKESafeCall(info) {if(info != 0){throwLapackeError(info, __func__);}}
 
-//#include <mkl.h> // Use when compiling with intel
+#include <mkl.h> // Use when compiling with intel
 #pragma once // only include once
 
 // Some standard vector methods 

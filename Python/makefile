@@ -1,4 +1,4 @@
-all: UAMMD_PSE BatchedNBodyRPY cppfiles Neighbors finufft
+all: UAMMD_PSE BatchedNBodyRPY cppfiles Neighbors
 
 UAMMD_PSE:    
 	cd Dependencies/UAMMD_PSE_Python && $(MAKE)
