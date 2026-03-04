@@ -1,16 +1,10 @@
 function FluctClamped2(seed,ForceRt,N,dt)
-% seed='1';
-% N='16';
-% dt='1e-3';
-% ForceRt='3';
 % Single fluctuating clamped filament
 addpath(genpath('../'))
 %close all;
-rng(str2num(seed));
+rng(seed);
 nFib = 1;
 L = 1;   % microns
-N = str2num(N);
-ForceRt=str2num(ForceRt);
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -19,8 +13,7 @@ Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
 makeMovie = 0;
-dt = str2double(dt);
-tf = 20;
+tf = 50;
 Tau0BC = [0;1;0];
 TrkLoc = L/2;
 XTrk=[0;TrkLoc;0];
