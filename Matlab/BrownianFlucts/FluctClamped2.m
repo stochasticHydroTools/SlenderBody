@@ -1,5 +1,10 @@
 function FluctClamped2(seed,ForceRt,N,dt)
 % Single fluctuating clamped filament
+% ForceRt=0;
+% seed=1;
+% N=16;
+% dt=1e-3;
+gtype=2;
 addpath(genpath('../'))
 %close all;
 rng(seed);
@@ -13,21 +18,27 @@ Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
 makeMovie = 0;
-tf = 50;
+tf = 1;
 Tau0BC = [0;1;0];
-TrkLoc = L/2;
+if (gtype==2)
+    TrkLoc = 0;
+else
+    TrkLoc=L/2;
+end
 XTrk=[0;TrkLoc;0];
 X_s=repmat(Tau0BC',N,1);
-[s,w,b] = chebpts(N, [0 L], 1);
+[s,w,b] = chebpts(N, [0 L], gtype);
 InitializationNoTwist;
-saveEvery=floor(1e-2/dt+1e-10);
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 ee=[];
 MobConst = -log(eps^2)/(8*pi*mu);
 ConsMat = [stackMatrix(barymat(0,sNp1,bNp1)); ...
     stackMatrix([barymat(0,s,b) 0])*InvXonNp1Mat;...
     stackMatrix([barymat(L,s,b) 0])*InvXonNp1Mat];
+ConsMat([5 8],:)=[];
 Constr=[0;0;0;Tau0BC;Tau0BC];
-Correct = 1;
+Constr([5 8])=[];
+Correct = (gtype~=2);
 nConstr=length(Constr);
 
 %% Initialization 
@@ -111,7 +122,7 @@ for count=0:stopcount
     % Lambda = Sol2(1:3*Nx);
     % alphaU1 = Sol2(3*Nx+1:6*Nx);
     % Gamma = Sol2(6*Nx+1:end);
-    % if (max(abs(alphaU1-alphaU))>1e-8)
+    % if (max(abs(alphaU1-alphaU))>0.5)
     %     keyboard
     % end
     Omega = reshape(alphaU(1:3*N),3,N)';
@@ -135,5 +146,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('Type1_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('Type2_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
