@@ -23,7 +23,7 @@ Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
 makeMovie = 0;
-tf = 5;
+tf = 50;
 Tau0BC = [0;1;0];
 if (gtype==2)
     TrkLoc = 0;
