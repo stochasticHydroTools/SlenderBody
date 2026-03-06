@@ -23,7 +23,7 @@ Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
 makeMovie = 0;
-tf = 50;
+tf = 5;
 Tau0BC = [0;1;0];
 if (gtype==2)
     TrkLoc = 0;
@@ -187,6 +187,7 @@ for count=0:stopcount
     end   
     Xt=Xp1;
 end
+ConstrErs=ConstrErs(1:saveEvery:end);
 Totaltime=toc(tStart);
 save(strcat('CDOFType',num2str(gtype),'_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
