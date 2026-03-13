@@ -1,12 +1,12 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-seed=1;
+seed=2;
 Nx=13;
 dt=1e-4;
 gtype=1;
 gtypeX=2;
 addpath(genpath('../'))
-LinkLocs = [0 1];
+LinkLocs = [0];
 ell = 0.1;
 Nlinks=length(LinkLocs);
 %close all;
@@ -14,7 +14,7 @@ rng(seed);
 nFib = 2;
 N = Nx - 1; % Number of off-grid tangent vector constraints 
 L = 1;   % microns
-TrkLoc=L/2;
+TrkLoc = LinkLocs;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -22,8 +22,8 @@ lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
-makeMovie = 1;
-tf = 10;
+makeMovie = 0;
+tf = 100;
 Kcl=100;
 Tau0 = [0;1;0];
 XTrk=[0 ell;TrkLoc TrkLoc;0 0];
@@ -108,13 +108,13 @@ for count=0:stopcount
                 hold on
             end
             for pL = 1:Nlinks
-                linkPts=[X1stars(pL,:); X2stars(pL,:)];
-                plot3(linkPts(:,1),linkPts(:,2),linkPts(:,3),':ko')
+               linkPts=[X1stars(pL,:); X2stars(pL,:)];
+               plot3(linkPts(:,1),linkPts(:,2),linkPts(:,3),':ko')
             end
             title(sprintf('$t=$ %2.1f',(frameNum-1)*saveEvery*dt),'Interpreter','latex')
             view(2)
-            ylim([-1 2])
-            xlim([-1 1])
+            ylim([-1 6])
+            xlim([-1 2])
             PlotAspect
             movieframes(frameNum)=getframe(f);
         end
