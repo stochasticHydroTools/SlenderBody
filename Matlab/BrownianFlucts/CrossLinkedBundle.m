@@ -1,15 +1,13 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-% TODO: Figure out the inverse of K for multiple links. 
-% Understand source of instabilities when links are too close to the ends. 
-seed=1;
+seed=2;
 Nx=13;
 dt=1e-4;
 gtype=1;
 gtypeX=2;
 addpath(genpath('../'))
 Nlinks = 1;
-LinkLocs = [0];
+LinkLocs = [0 0];
 %close all;
 rng(seed);
 nFib = 2;
@@ -23,41 +21,16 @@ Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 ell = 0.1;
 impcoeff = 1;
-makeMovie = 0;
-tf = 100;
+makeMovie = 1;
+tf = 20;
 Tau0 = [0;1;0];
-LinkLocs=reshape(LinkLocs,Nlinks,1);
-LinkCenters = [ell/2*ones(Nlinks,1) LinkLocs zeros(Nlinks,1)];
-LinkVectors = [ones(Nlinks,1) zeros(Nlinks,2)];
-LinkDOFs = [reshape(LinkCenters',[],1); reshape(LinkVectors',[],1)];
-
-XFibFromLinkMat = zeros(6*Nlinks);
-for iLink=1:Nlinks
-    linkInds = 3*(iLink-1)+1:3*iLink;
-    XFibFromLinkMat(linkInds,linkInds)= eye(3); % Fiber 1
-    XFibFromLinkMat(3*Nlinks+linkInds,linkInds)=eye(3); % Fiber 2
-    XFibFromLinkMat(linkInds,3*Nlinks+linkInds)= -ell/2*eye(3); % Fiber 1
-    XFibFromLinkMat(3*Nlinks+linkInds,3*Nlinks+linkInds)=ell/2*eye(3); % Fiber 2
-end
-XDOFFromLink = zeros(6*Nx);
-XDOFFromLink(1:3*N,1:3*N)=eye(3*N);
-XDOFFromLink(3*N+1:3*Nx,6*N+1:end)=XFibFromLinkMat(1:3*Nlinks,:);
-XDOFFromLink(3*Nx+1:3*Nx+3*N,3*N+1:6*N)=eye(3*N);
-XDOFFromLink(3*Nx+3*N+1:end,6*N+1:end)=XFibFromLinkMat(3*Nlinks+1:end,:);
+Link0 = [1;0;0];
+Xbar = [0;L/2;0];
 
 Xs3=repmat(Tau0',nFib*N,1);
 % Add rows for the constraints 
 [s,~,b] = chebpts(N,[0 L], gtype);
-[sp1,~,bp1]=chebpts(N+1,[0,L],gtype);
-sTot=[sp1;LinkLocs(2:end)];
-[sNx,~,bNx]=chebpts(Nx,[0 L],gtypeX);
-if (gtype==2)
-    Dp1 = diffmat(N+1,[0 L],'chebkind2');
-elseif (gtype==1)
-    Dp1 = diffmat(N+1,[0 L],'chebkind1');
-else
-    error('Enter valid grid type for N+1');
-end
+[sNx,wNx,bNx]=chebpts(Nx,[0 L],gtypeX);
 if (gtypeX==2)
     DX = diffmat(Nx,[0 L],'chebkind2');
 elseif (gtypeX==1)
@@ -65,57 +38,24 @@ elseif (gtypeX==1)
 else
     error('Enter valid grid type for X');
 end
-RXToLocs = barymat(LinkLocs,sNx,bNx);
+IntDX = pinv(DX);
+RxToLoc_1 = barymat(LinkLocs(:,1),sNx,bNx);
+RxToLoc_2 = barymat(LinkLocs(:,2),sNx,bNx);
 RXToN = barymat(s,sNx,bNx);
 RToX = barymat(sNx,s,b);
-RNxToDOF = barymat(sTot,sNx,bNx);
-if (rank(RNxToDOF) < Nx)
-    error('Rank deficient matrix - your links are on the phantom grid points')
-end
-% Option 1: integrate using the first constant, then integrate again using
-% the other constants (this still generates high frequency stuff)
-% RDOFToNx = RNxToDOF^(-1);
-% RToNp1 = barymat(sp1,s,b);
-% 
-% XonNp1Mat = [(eye(3*(N+1))-repmat(stackMatrix(BL1),N+1,1))*stackMatrix(pinv(Dp1)*RToNp1) repmat(eye(3),N+1,1)];
-% XMat = stackMatrix(RDOFToNx)*[XonNp1Mat zeros(3*(N+1),3*(Nlinks-1)); zeros(3*(Nlinks-1),3*(N+1)) eye(3*(Nlinks-1))];
 
-% Construct matrix that gives X on the N+1 grid from (X_s, X_MP)
-I=repmat(eye(3),Nx,1);
-BL1 = barymat(LinkLocs(1),sNx,bNx);
-XMat = [(eye(3*Nx)-repmat(stackMatrix(BL1),Nx,1))*...
-    stackMatrix(pinv(DX)*RToX) I];
-XMat=blkdiag(XMat,XMat)*XDOFFromLink;
-InvXMat = [stackMatrix(RXToN*DX); stackMatrix(BL1)];
-InvXMat = XDOFFromLink \ blkdiag(InvXMat,InvXMat);
-
-if (0)
-% Option 2: Subtract the constant associated with the closest link pt! This is the
-% most robust. 
-SubMat = zeros(Nx);
-AddMat = zeros(Nx,Nlinks);
-for p=1:Nx
-    [~,ind]=min(abs(LinkLocs-sNx(p)));
-    SubMat(p,:)=barymat(LinkLocs(ind),sNx,bNx);
-    AddMat(p,ind)=1;
-end
-XMat = stackMatrix([(eye(Nx)-SubMat)*pinv(DX)*barymat(sNx,s,b) AddMat]);
+I = repmat(eye(3),Nx,1);
+XFromTaus = zeros(3*nFib*Nx,3*nFib*N+3*Nlinks);
+% Integrating the tangents
+XFromTaus(1:3*Nx,1:3*N) = stackMatrix(IntDX*RToX);
+XFromTaus(3*Nx+(1:3*Nx),3*N+(1:3*N)) = (eye(3*Nx)-I*stackMatrix(RxToLoc_2))*stackMatrix(IntDX*RToX);
+XFromTaus(3*Nx+(1:3*Nx),1:3*N) = I*stackMatrix(RxToLoc_1)*stackMatrix(IntDX*RToX);
+XFromTaus(3*Nx+(1:3*Nx),3*N*nFib+(1:3))=ell*I;
+% Subtract a constant and add
+AvgMat = 1/(nFib*L)*repmat(stackMatrix(wNx),1,nFib);
+SubAvg = eye(3*Nx*nFib)-repmat(I,nFib,1)*AvgMat;
+XMat = [SubAvg*XFromTaus repmat(I,nFib,1)];
 InvXMat = XMat^(-1);
-
-% Option 3: 
-% This is a delicate thing - not correct right now!
-% The way it is being done now, looking for the Nx degree polynomial that
-% goes through the tangent vectors and the points. Creates high order
-% instabilities (the bending forces are not "getting through" to the
-% tangents in this cases)
-InvXonNp1Mat = [RXToN*DX; RXToLocs];
-if (~isempty(null(InvXonNp1Mat)))
-    error('Polynomial is not unique - switch discretization')
-end
-XonNp1Mat = InvXonNp1Mat^(-1);
-InvXonNp1Mat = stackMatrix(InvXonNp1Mat);
-XonNp1Mat = stackMatrix(XonNp1Mat);
-end
 
 % Bending energy matrix (2Nx grid)
 [s2Nx, w2x, ~] = chebpts(2*Nx, [0 L], 2);
@@ -129,7 +69,7 @@ BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
 BendMatAll = blkdiag(BendForceMat,BendForceMat);
 BendMatHalfAll = blkdiag(BendMatHalf,BendMatHalf);
 
-Xt = XMat* [reshape(Xs3',[],1);LinkDOFs];
+Xt = XMat* [reshape(Xs3',[],1);Link0;Xbar];
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 MobConst = -log(eps^2)/(8*pi*mu);
 
@@ -139,6 +79,7 @@ ConstrErs = zeros(stopcount,1);
 Xpts=[];
 ee=[];
 mpdist=[];
+Xbars=[];
 Npl=100;
 [spl,~,~]=chebpts(Npl,[0 L]);
 RplNp1 = barymat(spl,sNx,bNx);
@@ -154,10 +95,10 @@ nConstr=1;
 for count=0:stopcount
     t=count*dt;
     if (mod(count,saveEvery)==0)
-        %t
+        DOFs = InvXMat*Xt;
         PtsThisT = reshape(Xt,3,Nx*nFib)';
         MPs = blkdiag(barymat(L/2,sNx,bNx),barymat(L/2,sNx,bNx))*PtsThisT;
-        LinkedPts = reshape(XFibFromLinkMat*InvXMat(end-6*Nlinks+1:end,:)*Xt,3,[])';
+        LinkedPts = [RxToLoc_1 zeros(1,Nx); zeros(1,Nx) RxToLoc_2]*PtsThisT;
         if (makeMovie)
             clf;
             %nexttile
@@ -172,14 +113,15 @@ for count=0:stopcount
             end
             title(sprintf('$t=$ %2.1f',(frameNum-1)*saveEvery*dt),'Interpreter','latex')
             view(2)
-            ylim([-1 4])
-            xlim([-1 2])
+            ylim([-1 1])
+            xlim([-1 1])
             PlotAspect
             movieframes(frameNum)=getframe(f);
         end
         Xpts=[Xpts;PtsThisT];
         ee=[ee;norm(PtsThisT(end-Nx,:)-PtsThisT(1,:)); norm(PtsThisT(end,:)-PtsThisT(end-Nx+1,:))];
         mpdist=[mpdist; norm(MPs(1,:)-MPs(2,:))];
+        Xbars = [Xbars; DOFs(end-2:end,:)'];
     end  
 
     % Matrices at time step n 
@@ -229,61 +171,59 @@ Totaltime=toc(tStart);
 %end
 
 function [KTogether,KTogetherInv] = KWithLink(nFib,N,Nx,Xt,XMat,InvXMat)
-    DOFVelocity = zeros(nFib*3*Nx);
-    InvDOFVelocity = zeros(nFib*3*Nx);
     Nlinks = Nx - N;
-    XsLinkDOFs = InvXMat*Xt;
+    TauVelocity = zeros(3*Nx*nFib);
+    InvTauVelocity = zeros(3*Nx*nFib);
+    TausAndXBar = InvXMat*Xt;
     % The matrix for all the taus to evolve
     for iFib=1:nFib
         finds = 3*N*(iFib-1)+1:3*N*iFib;
-        Xs3 = reshape(XsLinkDOFs(finds),3,N)';
+        Xs3 = reshape(TausAndXBar(finds),3,N)';
         TauCross = zeros(3*N);
         for iR=1:N
             inds = (iR-1)*3+1:iR*3;
             TauCross(inds,inds)=CPMatrix(Xs3(iR,:));
         end
-        DOFVelocity(finds,finds) =  -TauCross;
-        InvDOFVelocity(finds,finds) = TauCross;
+        TauVelocity(finds,finds) =  -TauCross;
+        InvTauVelocity(finds,finds) = TauCross;
     end
     % The matrix for the links to evolve
     for iLink=1:Nlinks
-        trinds = (nFib*3*N)+(1:3);
-        rotinds = (nFib*3*N+3*Nlinks)+(1:3);
-        RLink = XsLinkDOFs(rotinds);
+        ellInds = 3*N*nFib+(3*iLink-2:3*iLink);
+        RLink = TausAndXBar(ellInds);
         CPMatR = CPMatrix(RLink);
         % Velocity of each DOF should be = UL + RLink cross Omega
-        DOFVelocity(trinds,trinds)=eye(3);
-        DOFVelocity(rotinds,rotinds)=-CPMatR;
-        InvDOFVelocity(trinds,trinds)=eye(3);
-        InvDOFVelocity(rotinds,rotinds)=CPMatR;
+        TauVelocity(ellInds,ellInds)=-CPMatR;
+        InvTauVelocity(ellInds,ellInds)=CPMatR;
     end
-    KTogether = XMat*DOFVelocity;
-    KTogetherInv = InvDOFVelocity*InvXMat;
+    TauVelocity(end-2:end,end-2:end)=eye(3);
+    InvTauVelocity(end-2:end,end-2:end)=eye(3);
+    KTogether = XMat*TauVelocity;
+    KTogetherInv = InvTauVelocity*InvXMat;
 end
 
 function XNew = updateByRotate(nFib,N,Nx,Xt,alphaU,XMat,InvXMat,dt)
     Nlinks = Nx - N;
-    XsLinkDOFs = InvXMat*Xt;
-    XsLinkDOFsNew = zeros(3*Nx*nFib,1);
+    TausXBar = InvXMat*Xt;
+    TausXBarNew = zeros(3*Nx*nFib,1);
     % Update the tangent vectors
     for iFib=1:nFib
         finds = 3*N*(iFib-1)+1:3*N*iFib;
-        Xs3 = reshape(XsLinkDOFs(finds),3,N)';
+        Xs3 = reshape(TausXBar(finds),3,N)';
         Omega = reshape(alphaU(finds),3,N)';
         newXs = rotateTau(Xs3,Omega,dt);
-        XsLinkDOFsNew(finds)=reshape(newXs',[],1);
+        TausXBarNew(finds)=reshape(newXs',[],1);
     end
     % Update the links
     for iLink=1:Nlinks
-        trinds = (nFib*3*N)+(1:3);
-        rotinds = (nFib*3*N+3*Nlinks)+(1:3);
-        XLink = XsLinkDOFs(trinds);
-        RLink = XsLinkDOFs(rotinds);
-        OmLink = alphaU(rotinds);
-        XsLinkDOFsNew(trinds)=XLink+dt*alphaU(trinds);
-        XsLinkDOFsNew(rotinds)=rotateTau(RLink',OmLink',dt);
+        ellInds = 3*N*nFib+(3*iLink-2:3*iLink);
+        RLink = TausXBar(ellInds);
+        OmLink = alphaU(ellInds);
+        TausXBarNew(ellInds)=rotateTau(RLink',OmLink',dt);
     end
-    XNew = XMat*XsLinkDOFsNew;
+    % Add the constant
+    TausXBarNew(end-2:end)=TausXBar(end-2:end)+dt*alphaU(end-2:end);
+    XNew = XMat*TausXBarNew;
 end
 
 
