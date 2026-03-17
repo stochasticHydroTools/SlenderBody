@@ -1,4 +1,4 @@
-function MWsym = LocalDragMob(X,DNp1,const,WTilde_Np1_Inverse)
+function MWsym = LocalDragMob(X,DNp1,const,WInv)
     % Compute tangent vector
     Nx = length(X)/3;
     Xs = DNp1*reshape(X,3,[])';
@@ -9,6 +9,5 @@ function MWsym = LocalDragMob(X,DNp1,const,WTilde_Np1_Inverse)
         % Mhalf(3*j-2:3*j,3*j-2:3*j)=sqrt(const)*(eye(3)+...
         %     (sqrt(2)-1)*Xs(j,:)'*Xs(j,:));
     end
-    MWsym = 1/2*(M*WTilde_Np1_Inverse ...
-            + WTilde_Np1_Inverse*M');
+    MWsym = 1/2*(M*WInv + WInv*M');
 end
