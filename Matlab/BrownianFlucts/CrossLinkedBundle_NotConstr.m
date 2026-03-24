@@ -1,12 +1,12 @@
+function CrossLinkedBundle_NotConstr(seed,Nx,dt,Kstiff)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-seed=2;
-Nx=13;
-dt=1e-4;
+%seed=2;
+%Nx=13;
+%dt=1e-4;
 gtype=1;
-gtypeX=2;
 addpath(genpath('../'))
-LinkLocs = [0];
+LinkLocs = [0 1];
 ell = 0.1;
 Nlinks=length(LinkLocs);
 %close all;
@@ -21,9 +21,9 @@ lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
-makeMovie = 1;
-tf = 20;
-Kcl=100;
+makeMovie = 0;
+tf = 50;
+Kcl=Kstiff;
 Tau0 = [0;1;0];
 Xbar=[-ell/2 ell/2;0 0; 0 0];
 Xs3=repmat(Tau0',nFib*N,1);
@@ -31,14 +31,8 @@ links = [1+2*LinkLocs(:) 4+2*LinkLocs(:) zeros(Nlinks,3)];
 
 % Chebyshev grids
 [s,~,b] = chebpts(N,[0 L], gtype);
-[sNx,wNx,bNx]=chebpts(Nx,[0 L],gtypeX);
-if (gtypeX==2)
-    DX = diffmat(Nx,[0 L],'chebkind2');
-elseif (gtypeX==1)
-    DX = diffmat(Nx,[0 L],'chebkind1');
-else
-    error('Enter valid grid type for X');
-end
+[sNx,wNx,bNx]=chebpts(Nx,[0 L],2);
+DX = diffmat(Nx,[0 L],'chebkind2');
 RToNp1 = barymat(sNx,s,b);
 RNp1ToN = barymat(s,sNx,bNx);
 IntDX = pinv(DX);
@@ -139,15 +133,15 @@ for count=0:stopcount
         XsXbar = reshape(InvXonNp1Mat*Xt(finds),3,Nx)';
         Xs3 = XsXbar(1:Nx-1,:);
         MWsym = LocalDragMob(Xt(finds),DX,MobConst,WTilde_Nx_Inverse);
-        MWsymHalf = chol(MWsym);
+        MWsymHalf = chol(MWsym)';
         % Obtain Brownian velocity
         g = randn(3*Nx,1);
         RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
         OmegaTilde = cross(Xs3,RNp1ToN*DX*reshape(RandomVelBM,3,[])');
         Xstilde = rotateTau(Xs3,OmegaTilde(1:N,:),dt/2);
-       % Xdr = XsXbar(end,:)'+dt/2*AvgMat*RandomVelBM;
+        Xdr = XsXbar(end,:)'+dt/2*AvgMat*RandomVelBM;
         Ktilde = KonNp1(Xstilde,XonNp1Mat,I);
-        Xtilde = XonNp1Mat*[reshape(Xstilde',[],1);XsXbar(end,:)'];
+        Xtilde = XonNp1Mat*[reshape(Xstilde',[],1);Xdr];
         MWsymTilde = LocalDragMob(Xtilde,DX,MobConst,WTilde_Nx_Inverse);
  
         % Solve at midpoint
@@ -166,7 +160,6 @@ for count=0:stopcount
     end
     Xt=Xp1;
 end
-ConstrErs=ConstrErs(1:saveEvery:end);
 Totaltime=toc(tStart);
-%save(strcat('CDOFType',num2str(gtype),'_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-%end
+save(strcat('BundleK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+end
