@@ -3,9 +3,9 @@ function CrossLinkedBundle(seed,Nx,dt)
 % locations
 
 %% Define constants 
-%seed=2;
+%seed=30;
 %Nx=13;
-%dt=1e-4;
+%dt=1e-5;
 gtype=1;
 addpath(genpath('../'))
 LinkLocs = [0 0; 1 1];
@@ -51,19 +51,31 @@ LinkHat = Diff./LinkLengths;
 [s2,~,b2] = chebpts(N2,[0 L], gtype);
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
-[s1NoLinks,~] = chebpts(Nx-Nlinks,[0 L], gtype);
-[s2NoLinks,~,~] = chebpts(Nx-Nlinks,[0 L], gtype);
+[sNoLinks,~] = chebpts(Nx-Nlinks,[0 L], gtype);
+%dnL = 1/(Nx-Nlinks);
+%sNoLinks=(1/2:Nx-Nlinks)'*dnL; % Uniform points are a terrible idea!
+% When you put extra nodes (Nlinks>1), you're still going to run into instabilties
+% with the polynomials because you are essentially adding a term of degree
+% s^(Nx-1) to make all the conditions come out. Fiber shapes might look
+% funky because of that. But those oscillations get damped by the bending
+% force, so it should work ok. 
 
 % Order of the nodes
 % First set = no links and the first link (does not affect tau's)
 % Second set = those that are master on this filament
 % Third set = those that are slave to the other filament
-AllNodes_1=[s1NoLinks;LinkLocs(1:2:end,1);LinkLocs(2:2:end,1)];
-AllNodes_2=[s2NoLinks;LinkLocs(1,2);LinkLocs(2:2:end,2);LinkLocs(3:2:end,2)];
+AllNodes_1=[sNoLinks;LinkLocs(1:2:end,1);LinkLocs(2:2:end,1)];
+AllNodes_2=[sNoLinks;LinkLocs(1,2);LinkLocs(2:2:end,2);LinkLocs(3:2:end,2)];
 ChebToNodes_1 = barymat(AllNodes_1,sX,bX);
 NodesToCheb_1 = ChebToNodes_1^(-1);
 ChebToNodes_2 = barymat(AllNodes_2,sX,bX);
 NodesToCheb_2 = ChebToNodes_2^(-1);
+% Try linear interpolation instead
+Id = eye(Nx);
+for jC=1:Nx
+    NodesToCheb_1(:,jC) = interp1(AllNodes_1,Id(:,jC),sX);
+    NodesToCheb_2(:,jC) = interp1(AllNodes_2,Id(:,jC),sX);
+end
 if (~isempty(null(ChebToNodes_2)) || ~isempty(null(ChebToNodes_1)))
     error('Cross linker is on a grid point exactly')
 end
@@ -204,7 +216,7 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('LinintConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)
