@@ -1,11 +1,11 @@
-function CrossLinkedBundle(seed,Nx,dt)
+%function CrossLinkedBundle(seed,Nx,dt)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 
 %% Define constants 
-%seed=30;
-%Nx=13;
-%dt=1e-5;
+seed=30;
+Nx=13;
+dt=1e-4;
 gtype=1;
 addpath(genpath('../'))
 LinkLocs = [0 0; 1 1];
@@ -34,7 +34,7 @@ end
 NLink1 = (Nx-1)-N1;
 NLink2 = (Nx-1)-N2;
 impcoeff = 1;
-makeMovie = 0;
+makeMovie = 1;
 tf = 50;
 Tau0 = [0 1 0];
 Xbar = [0 0 0];
@@ -51,7 +51,9 @@ LinkHat = Diff./LinkLengths;
 [s2,~,b2] = chebpts(N2,[0 L], gtype);
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
-[sNoLinks,~] = chebpts(Nx-Nlinks,[0 L], gtype);
+[sNoLinks,~] = chebpts(Nx,[0 L], 2);
+sNoLinks(1)=[];
+sNoLinks(end)=[];
 %dnL = 1/(Nx-Nlinks);
 %sNoLinks=(1/2:Nx-Nlinks)'*dnL; % Uniform points are a terrible idea!
 % When you put extra nodes (Nlinks>1), you're still going to run into instabilties
@@ -71,11 +73,11 @@ NodesToCheb_1 = ChebToNodes_1^(-1);
 ChebToNodes_2 = barymat(AllNodes_2,sX,bX);
 NodesToCheb_2 = ChebToNodes_2^(-1);
 % Try linear interpolation instead
-Id = eye(Nx);
-for jC=1:Nx
-    NodesToCheb_1(:,jC) = interp1(AllNodes_1,Id(:,jC),sX);
-    NodesToCheb_2(:,jC) = interp1(AllNodes_2,Id(:,jC),sX);
-end
+% Id = eye(Nx);
+% for jC=1:Nx
+%     NodesToCheb_1(:,jC) = interp1(AllNodes_1,Id(:,jC),sX);
+%     NodesToCheb_2(:,jC) = interp1(AllNodes_2,Id(:,jC),sX);
+% end
 if (~isempty(null(ChebToNodes_2)) || ~isempty(null(ChebToNodes_1)))
     error('Cross linker is on a grid point exactly')
 end
@@ -101,7 +103,30 @@ DOFsToCustomNodes = [XToLink_1(1:N1+1,:)*XMat_1 zeros(N1+1,N2+Nlinks); ...
     zeros(N2+1,N1) XToLink_2(1:N2+1,:)*XMat_2 LinkLengths(1)*ones(N2+1,1) zeros(N2+1,Nlinks-1); ...
     XToLink_1((Nx-Nlinks+1)+(1:NLink2),:)*XMat_1 zeros(NLink2,N2) zeros(NLink2,1) altTwos];
 
-% Fix the constant 
+ChebNodesFromTau = [XMat_1 zeros(Nx,N2+Nlinks); zeros(Nx,N1) XMat_2 LinkLengths(1)*ones(Nx,1) zeros(Nx,Nlinks-1); ...
+    zeros(Nlinks,N1+N2) eye(Nlinks)];
+
+% Evaluate X1 at the odds, X2 at the evens
+X1Odds = barymat(LinkLocs(1:2:end,1),sX,bX);
+X2Evens = barymat(LinkLocs(2:2:end,2),sX,bX);
+LinkPts = zeros(Nlinks,2*Nx+Nlinks);
+LinkPts(1:2:end,1:Nx)=X1Odds;
+LinkPts(2:2:end,Nx+1:2*Nx)=X2Evens;
+LinkPts_1=LinkPts;
+LinkPts_2=LinkPts;
+for k=1:Nlinks
+    if (mod(k,2)==0)
+        % Fiber 1 is slave to fiber 2
+        LinkPts_1(k,2*Nx+k)=-LinkLengths(k);
+    else
+        % Fiber 2 slave to fiber 1
+        LinkPts_2(k,2*Nx+k)=LinkLengths(k);
+    end
+end
+
+XTauAndXc = [eye(2*Nx) zeros(2*Nx,Nlinks); LinkPts_1; LinkPts_2]*ChebNodesFromTau;
+
+% Only involves the first link
 AvgMat = 1/(nFib*L)*repmat(wX,1,nFib);
 SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
 ChebMatZeroMean = SubAvg*blkdiag(NodesToCheb_1,NodesToCheb_2)*DOFsToCustomNodes;
@@ -115,7 +140,8 @@ Xt = XMat* DOFs;
 [s2Nx, w2x, ~] = chebpts(2*Nx, [0 L], 2);
 W2Nx = diag(w2x);
 R_Nx_To_2Nx = barymat(s2Nx,sX,bX);
-WTilde_Nx = stackMatrix((R_Nx_To_2Nx'*W2Nx*R_Nx_To_2Nx));
+WTilde_1D = R_Nx_To_2Nx'*W2Nx*R_Nx_To_2Nx;
+WTilde_Nx = stackMatrix(WTilde_1D);
 WTilde_Nx_Inverse = WTilde_Nx^(-1);
 BendingEnergyMatrix_Nx = Eb*stackMatrix(DX^2)'*WTilde_Nx*stackMatrix(DX^2);
 BendForceMat = -BendingEnergyMatrix_Nx;
@@ -124,6 +150,14 @@ BendMatAll = blkdiag(BendForceMat,BendForceMat);
 BendMatHalfAll = blkdiag(BendMatHalf,BendMatHalf);
 % Pre-computations for mobility
 MobConst = -log(eps^2)/(8*pi*mu);
+
+% Least squares position
+% RLinks = [XToLink_1(Nx-Nlinks+1:end,:) zeros(Nlinks,Nx);zeros(Nlinks,Nx) XToLink_2(Nx-Nlinks+1:end,:)];
+% RProj = blkdiag(WTilde_1D,WTilde_1D)^(-1)*RLinks'*(RLinks*blkdiag(WTilde_1D,WTilde_1D)^(-1)*RLinks')^(-1);
+% LeastSquaresPolyMat = [eye(nFib*Nx)-RProj*RLinks RProj]*XTauAndXc;
+% ChebMatZeroMean2 = SubAvg*LeastSquaresPolyMat;
+% DOFsToChebNodes = [ChebMatZeroMean2 ones(nFib*Nx,1)];
+% XMat = stackMatrix(DOFsToChebNodes);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
@@ -217,7 +251,7 @@ for count=0:stopcount
 end
 Totaltime=toc(tStart);
 save(strcat('LinintConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
-end
+%end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)
     nTaus = length(Xt)/3-1;
