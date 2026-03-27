@@ -5,7 +5,7 @@ function CrossLinkedBundle(seed,Nx,dt)
 %% Define constants 
 %seed=30;
 %Nx=13;
-%dt=1e-3;
+%dt=1e-4;
 gtype=1;
 addpath(genpath('../'))
 LinkLocs = [0 0; 1 1];
@@ -47,7 +47,18 @@ LinkHat = Diff./LinkLengths;
 
 %% Calculation of the X matrix
 % Grids for tangent vectors and integration
-[s1,~,b1] = chebpts(N1,[0 0.95], gtype);
+[s,~,~] = chebpts(Nx-1,[0 L],gtype);
+sTru_1=s;
+sTru_2=s;
+for p=1:NLink1
+    [~,indmin]=min(abs(sTru_1-LinkLocs(2*p,1)));
+    sTru_1(indmin)=[];
+end
+for p=1:NLink2
+    [~,indmin]=min(abs(sTru_2-LinkLocs(2*p+1,2)));
+    sTru_2(indmin)=[];
+end
+[s1,~,b1] = chebpts(N1,[0 L], gtype);
 [s2,~,b2] = chebpts(N2,[0 L], gtype);
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
@@ -77,12 +88,6 @@ ChebToNodes_1 = barymat(AllNodes_1,sX,bX);
 NodesToCheb_1 = ChebToNodes_1^(-1);
 ChebToNodes_2 = barymat(AllNodes_2,sX,bX);
 NodesToCheb_2 = ChebToNodes_2^(-1);
-% Try linear interpolation instead
-% Id = eye(Nx);
-% for jC=1:Nx
-%     NodesToCheb_1(:,jC) = interp1(AllNodes_1,Id(:,jC),sX);
-%     NodesToCheb_2(:,jC) = interp1(AllNodes_2,Id(:,jC),sX);
-% end
 if (~isempty(null(ChebToNodes_2)) || ~isempty(null(ChebToNodes_1)))
     error('Cross linker is on a grid point exactly')
 end
@@ -90,8 +95,8 @@ XToLink_1 = barymat(AllNodes_1,sX,bX);
 XToLink_2 = barymat(AllNodes_2,sX,bX);
 
 % Set up so that the first links are on top of each other
-XMat_1 = (eye(Nx)-ones(Nx,1).*XToLink_1(Nx-Nlinks+1,:))*pinv(DX)*barymat(sX,s1,b1);
-XMat_2 = (eye(Nx)-ones(Nx,1).*XToLink_2(Nx-Nlinks+1,:))*pinv(DX)*barymat(sX,s2,b2);
+XMat_1 = (eye(Nx)-ones(Nx,1).*XToLink_1(Nx-Nlinks+1,:))*pinv(DX)*barymat(sX,s1,b1)*barymat(sTru_1,s1,b1)^(-1);
+XMat_2 = (eye(Nx)-ones(Nx,1).*XToLink_2(Nx-Nlinks+1,:))*pinv(DX)*barymat(sX,s2,b2)*barymat(sTru_2,s2,b2)^(-1);
 
 % Matrices to increment the cross linkers
 altOnes = zeros(NLink1,Nlinks-1);
@@ -175,13 +180,13 @@ for count=0:stopcount
             ylim([-1 1])
             xlim([-1 1])
             PlotAspect
-            Locs1=barymat(s1,sX,bX)*PtsThisT(1:Nx,:);
+            Locs1=barymat(sTru_1,sX,bX)*PtsThisT(1:Nx,:);
             DOF3=reshape(DOFs,3,[])';
             Xs1=DOF3(1:N1,:);
             quiver3(Locs1(:,1),Locs1(:,2),Locs1(:,3),Xs1(:,1),Xs1(:,2),Xs1(:,3),'LineWidth',2,'AutoScaleFactor',0.5)
-            Locs2=barymat(s2,sX,bX)*PtsThisT(Nx+1:2*Nx,:);
+            Locs2=barymat(sTru_2,sX,bX)*PtsThisT(Nx+1:2*Nx,:);
             Xs2=DOF3(N1+1:N1+N2,:);
-            quiver3(Locs2(:,1),Locs2(:,2),Locs2(:,3),Xs2(:,1),Xs2(:,2),Xs2(:,3),'LineWidth',2,'AutoScaleFactor',0.3)
+            quiver3(Locs2(:,1),Locs2(:,2),Locs2(:,3),Xs2(:,1),Xs2(:,2),Xs2(:,3),'LineWidth',2,'AutoScaleFactor',0.5)
             movieframes(frameNum)=getframe(f);
         end
         Xpts=[Xpts;PtsThisT];
@@ -230,7 +235,7 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ExEndConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('RmCloseConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)
