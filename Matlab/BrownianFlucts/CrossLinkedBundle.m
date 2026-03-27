@@ -134,7 +134,7 @@ MobConst = -log(eps^2)/(8*pi*mu);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
-saveEvery=1;%max(1,floor(1e-2/dt+1e-10));
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
 mpdist=[];
