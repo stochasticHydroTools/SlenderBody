@@ -5,10 +5,10 @@ function CrossLinkedBundle(seed,Nx,dt)
 %% Define constants 
 %seed=30;
 %Nx=13;
-%dt=1e-4;
+%dt=1e-3;
 gtype=1;
 addpath(genpath('../'))
-LinkLocs = [0.5 0.5];
+LinkLocs = [0 0; 1 1];
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
@@ -47,7 +47,7 @@ LinkHat = Diff./LinkLengths;
 
 %% Calculation of the X matrix
 % Grids for tangent vectors and integration
-[s1,~,b1] = chebpts(N1,[0 L], gtype);
+[s1,~,b1] = chebpts(N1,[0 0.95], gtype);
 [s2,~,b2] = chebpts(N2,[0 L], gtype);
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
@@ -134,7 +134,7 @@ MobConst = -log(eps^2)/(8*pi*mu);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
-saveEvery=max(1,floor(1e-2/dt+1e-10));
+saveEvery=1;%max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
 mpdist=[];
@@ -175,6 +175,13 @@ for count=0:stopcount
             ylim([-1 1])
             xlim([-1 1])
             PlotAspect
+            Locs1=barymat(s1,sX,bX)*PtsThisT(1:Nx,:);
+            DOF3=reshape(DOFs,3,[])';
+            Xs1=DOF3(1:N1,:);
+            quiver3(Locs1(:,1),Locs1(:,2),Locs1(:,3),Xs1(:,1),Xs1(:,2),Xs1(:,3),'LineWidth',2,'AutoScaleFactor',0.5)
+            Locs2=barymat(s2,sX,bX)*PtsThisT(Nx+1:2*Nx,:);
+            Xs2=DOF3(N1+1:N1+N2,:);
+            quiver3(Locs2(:,1),Locs2(:,2),Locs2(:,3),Xs2(:,1),Xs2(:,2),Xs2(:,3),'LineWidth',2,'AutoScaleFactor',0.3)
             movieframes(frameNum)=getframe(f);
         end
         Xpts=[Xpts;PtsThisT];
@@ -223,7 +230,7 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ConstrOneLink_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('ExEndConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)
