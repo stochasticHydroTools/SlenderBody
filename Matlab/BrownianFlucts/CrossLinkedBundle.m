@@ -8,7 +8,7 @@ function CrossLinkedBundle(seed,Nx,dt)
 %dt=1e-4;
 gtype=1;
 addpath(genpath('../'))
-LinkLocs = [0 0; 1 1];
+LinkLocs = [0.5 0.5];
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
@@ -51,11 +51,16 @@ LinkHat = Diff./LinkLengths;
 [s2,~,b2] = chebpts(N2,[0 L], gtype);
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
+% Remove the Chebyshev nodes closest to the links
 [sNoLinks,~] = chebpts(Nx,[0 L], 2);
-sNoLinks(1)=[];
-sNoLinks(end)=[];
-%dnL = 1/(Nx-Nlinks);
-%sNoLinks=(1/2:Nx-Nlinks)'*dnL; % Uniform points are a terrible idea!
+sNoLinks_1=sNoLinks;
+sNoLinks_2=sNoLinks;
+for p=1:size(LinkLocs,1)
+    [~,indmin]=min(abs(sNoLinks_1-LinkLocs(p,1)));
+    sNoLinks_1(indmin)=[];
+    [~,indmin]=min(abs(sNoLinks_2-LinkLocs(p,2)));
+    sNoLinks_2(indmin)=[];
+end
 % When you put extra nodes (Nlinks>1), you're still going to run into instabilties
 % with the polynomials because you are essentially adding a term of degree
 % s^(Nx-1) to make all the conditions come out. Fiber shapes might look
@@ -66,8 +71,8 @@ sNoLinks(end)=[];
 % First set = no links and the first link (does not affect tau's)
 % Second set = those that are master on this filament
 % Third set = those that are slave to the other filament
-AllNodes_1=[sNoLinks;LinkLocs(1:2:end,1);LinkLocs(2:2:end,1)];
-AllNodes_2=[sNoLinks;LinkLocs(1,2);LinkLocs(2:2:end,2);LinkLocs(3:2:end,2)];
+AllNodes_1=[sNoLinks_1;LinkLocs(1:2:end,1);LinkLocs(2:2:end,1)];
+AllNodes_2=[sNoLinks_2;LinkLocs(1,2);LinkLocs(2:2:end,2);LinkLocs(3:2:end,2)];
 ChebToNodes_1 = barymat(AllNodes_1,sX,bX);
 NodesToCheb_1 = ChebToNodes_1^(-1);
 ChebToNodes_2 = barymat(AllNodes_2,sX,bX);
@@ -218,7 +223,7 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('BtrGridConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('ConstrOneLink_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)

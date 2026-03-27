@@ -6,7 +6,7 @@ function CrossLinkedBundle_NotConstr(seed,Nx,dt,Kstiff)
 %dt=1e-4;
 gtype=1;
 addpath(genpath('../'))
-LinkLocs = [0 1];
+LinkLocs = [0.5];
 ell = 0.1;
 Nlinks=length(LinkLocs);
 %close all;
@@ -161,5 +161,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('BundleK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('OneLinkK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end
