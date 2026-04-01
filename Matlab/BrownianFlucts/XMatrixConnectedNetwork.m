@@ -3,12 +3,12 @@
 nFib = 4;
 Nx = 13;
 L = 1;
-rng(1);
+rng(2);
 % Specify the fibers connected, the points where they are connected,
 % the type of connection (branch=0 or cross link=1), and the length of the link
 % Branches
 Branches = [1 0.7 2; 3 0.25 4];
-CrossLinks = [1 0.5 3 0.1; 1 0.8 3 0.45; 2 0.77 3 1; 2 0.47 4 0.2; 3 0.75 4 0.6];
+CrossLinks = [1 0.5 3 0.1; 1 0.8 3 0.45; 2 0.77 3 1; 2 0.47 4 0.2; 3 0.75 4 0.6; 2 0.1 4 0.7];
 tr=randn(1,3);
 Taus = [1 0 0;RotateSeventy([1 0 0]); tr/norm(tr); RotateSeventy(tr/norm(tr))];
 Nlinks = size(CrossLinks,1);
@@ -215,12 +215,12 @@ for iFib=1:nFib
     end
     SlaveNodesFromLinks{iFib}=zeros(nSlave,Nlinks);
     for iSlave=1:nSlave
-        jFib = TheseSlave(1,2);
-        MasterIndex = TheseSlave(1,3);
-        LinkIndex = TheseSlave(1,4);
+        jFib = TheseSlave(iSlave,2);
+        MasterIndex = TheseSlave(iSlave,3);
+        LinkIndex = TheseSlave(iSlave,4);
         SlaveNodesFromMaster{iFib,jFib}(iSlave,MasterIndex)=1;
         if (LinkIndex>0)
-            SlaveNodesFromLinks{iFib}(LinkIndex)=LinkLengths(LinkIndex);
+            SlaveNodesFromLinks{iFib}(iSlave,LinkIndex)=LinkLengths(LinkIndex);
         end
     end
 end
@@ -269,7 +269,7 @@ SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
 ChebMatZeroMean = SubAvg*blkdiag(NodesToChebMats{:})*DOFsToCustomNodes;
 DOFsToChebNodes = [ChebMatZeroMean ones(nFib*Nx,1)];
 XchebZeroMean = DOFsToChebNodes*[DOFs; 0 0 0];
-for iFib=1:nFib
-set(gca,'ColorOrderIndex',iFib)
-scatter3(XchebZeroMean((iFib-1)*Nx+(1:Nx),1),XchebZeroMean((iFib-1)*Nx+(1:Nx),2),XchebZeroMean((iFib-1)*Nx+(1:Nx),3),'filled')
-end
+% for iFib=1:nFib
+% set(gca,'ColorOrderIndex',iFib)
+% scatter3(XchebZeroMean((iFib-1)*Nx+(1:Nx),1),XchebZeroMean((iFib-1)*Nx+(1:Nx),2),XchebZeroMean((iFib-1)*Nx+(1:Nx),3),'filled')
+% end
