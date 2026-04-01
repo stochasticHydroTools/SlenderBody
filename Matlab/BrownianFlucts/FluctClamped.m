@@ -121,7 +121,10 @@ for count=0:stopcount
     Fext(end-1) = ForceRt^2*Eb;
     KWithImp = Ktilde-impcoeff*dt*MWsymTilde*BendForceMat*Ktilde;
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
-    MobC = ConsMat'*((ConsMat*MobK*ConsMat') \ ConsMat);
+    MobC = ConsMat'*pinv(ConsMat*MobK*ConsMat')*ConsMat;
+    %if (rank(ConsMat*MobK*ConsMat')<4)
+    %    keyboard
+    %end
     alphaU = (MobK - MobK*MobC*MobK)*...
         Ktilde'*(BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
     % F1=(BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
