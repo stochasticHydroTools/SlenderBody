@@ -1,12 +1,13 @@
 function CrossLinkedBundle_NotConstr(seed,Nx,dt,Kstiff)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-%seed=2;
-%Nx=13;
-%dt=1e-4;
+%seed=1;
+%Nx=16;
+%dt=1e-5;
+%Kstiff=100;
 gtype=1;
 addpath(genpath('../'))
-LinkLocs = [0.5];
+LinkLocs = [0 1];
 ell = 0.1;
 Nlinks=length(LinkLocs);
 %close all;
@@ -81,8 +82,6 @@ if (makeMovie)
     frameNum=0;
 end
 tStart=tic;
-nConstr=1;
-TalphaU=zeros(1,3);
 
 %% Computations
 for count=0:stopcount
@@ -128,6 +127,8 @@ for count=0:stopcount
     U0 = zeros(3*Nx*nFib,1);
     Fext = reshape(CLForce',[],1);
     % Matrices at time step n 
+    gAll = randn(3*Nx*nFib,1);
+    BEAll = randn(3*Nx*nFib,1);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
         XsXbar = reshape(InvXonNp1Mat*Xt(finds),3,Nx)';
@@ -135,7 +136,7 @@ for count=0:stopcount
         MWsym = LocalDragMob(Xt(finds),DX,MobConst,WTilde_Nx_Inverse);
         MWsymHalf = chol(MWsym)';
         % Obtain Brownian velocity
-        g = randn(3*Nx,1);
+        g = gAll(finds);
         RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
         OmegaTilde = cross(Xs3,RNp1ToN*DX*reshape(RandomVelBM,3,[])');
         Xstilde = rotateTau(Xs3,OmegaTilde(1:N,:),dt/2);
@@ -146,7 +147,11 @@ for count=0:stopcount
  
         % Solve at midpoint
         M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
-        RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf*randn(3*Nx,1);
+        if (impcoeff==1)
+            RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf*BEAll(finds);
+        else
+            RandomVelBE = 0;
+        end
         RandomVel = RandomVelBM + M_RFD + RandomVelBE;
         KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendForceMat*Ktilde;
         MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
@@ -155,11 +160,10 @@ for count=0:stopcount
         newXs = rotateTau(Xs3,Omega,dt);
         Xsp1 = reshape(newXs',[],1);
         XBR_p1 = XsXbar(end,:)'+dt*alphaU(end-2:end);
-        TalphaU = TalphaU+alphaU(end-2:end)';
         Xp1(finds) = XonNp1Mat*[Xsp1;XBR_p1];
     end
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('OneLinkK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('BundleK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
 end

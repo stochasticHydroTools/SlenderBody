@@ -3,9 +3,9 @@ function CrossLinkedBundle(seed,Nx,dt)
 % locations
 
 %% Define constants 
-%seed=30;
-%Nx=13;
-%dt=1e-4;
+%seed=1;
+%Nx=8;
+%dt=1e-5;
 gtype=1;
 addpath(genpath('../'))
 LinkLocs = [0 0; 1 1];
@@ -36,6 +36,9 @@ NLink2 = (Nx-1)-N2;
 impcoeff = 1;
 makeMovie = 0;
 tf = 50;
+if (dt < 9e-7)
+    tf=10;
+end
 Tau0 = [0 1 0];
 Xbar = [0 0 0];
 Locs10 = [-ell/2 -L/2 0]+LinkLocs(:,1)*Tau0;
@@ -223,7 +226,12 @@ for count=0:stopcount
     
     % Solve at midpoint
     M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
-    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*randn(3*Nx*nFib,1);
+    g2=randn(3*Nx*nFib,1);
+    if (impcoeff==1)
+        RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*g2;
+    else
+        RandomVelBE = 0;
+    end
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
