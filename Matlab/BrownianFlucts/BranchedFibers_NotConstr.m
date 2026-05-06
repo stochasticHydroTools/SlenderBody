@@ -1,15 +1,15 @@
-function CrossLinkedBundle_NotConstr(seed,Nx,dt,Kstiff)
+function BranchedFibers_NotConstr(seed,Nx,dt,Kstiff,Kang)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 %seed=1;
 %Nx=16;
 %dt=1e-5;
-%Kstiff=100;
+%Kstiff=1000;
+%Kang=0.2;
 gtype=1;
 addpath(genpath('../'))
-LinkLocs = [0.5];
-ell = 0.1;
-Nlinks=length(LinkLocs);
+BranchLoc = 0.8;
+nBr=length(BranchLoc);
 %close all;
 rng(seed);
 nFib = 2;
@@ -23,12 +23,15 @@ Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
 makeMovie = 0;
-tf = 50;
+tf = 25;
 Kcl=Kstiff;
-Tau0 = [0;1;0];
-Xbar=[-ell/2 ell/2;0 0; 0 0];
-Xs3=repmat(Tau0',nFib*N,1);
-links = [1+2*LinkLocs(:) 4+2*LinkLocs(:) zeros(Nlinks,3)];
+Tau0 = [0 1 0];
+RotAng = 70/180*pi;
+TauBr = Tau0*[cos(RotAng) -sin(RotAng) 0; sin(RotAng) cos(RotAng) 0; 0 0 1]';
+Xbar = [0.234923155196478; -0.235505035831418; 0];
+Xbar(:,2)=-Xbar(:,1);
+Xs3=[repmat(Tau0,N,1);repmat(TauBr,N,1)];
+ell = 0;
 
 % Chebyshev grids
 [s,~,b] = chebpts(N,[0 L], gtype);
@@ -54,9 +57,10 @@ BendingEnergyMatrix_Nx = Eb*stackMatrix(DX^2)'*WTilde_Nx*stackMatrix(DX^2);
 BendForceMat = -BendingEnergyMatrix_Nx;
 BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
 
-Nuni=3;
-su=[0;1/2;1]*L;
+Nuni=11;
+su=(0:0.1:1)'*L;
 Runi = barymat(su,sNx,bNx);
+links = [find(su==BranchLoc) Nuni+1 zeros(nBr,3)];
 
 Xt = zeros(3*nFib*Nx,1);
 for iFib=1:nFib
@@ -71,7 +75,7 @@ ConstrErs = zeros(stopcount,1);
 Xpts=[];
 ee=[];
 Xbars=[];
-mpdist=[];
+MDDist=[];
 LinkErs=[];
 Npl=100;
 [spl,~,~]=chebpts(Npl,[0 L]);
@@ -90,9 +94,11 @@ for count=0:stopcount
         %t
         PtsThisT = reshape(Xt,3,Nx*nFib)';
         DOFs = blkdiag(InvXonNp1Mat(1:3:end,1:3:end),InvXonNp1Mat(1:3:end,1:3:end))*PtsThisT;
+        BrTaus = [barymat(BranchLoc,s,b)*DOFs(1:N,:); barymat(0,s,b)*DOFs(Nx+1:Nx+N,:)];
+        [F,theta] = AngularSpringForce(PtsThisT,Kang,RotAng,barymat(BranchLoc,sNx,bNx),barymat(0,sNx,bNx),DX);
         Xbar = 1/2*(DOFs(Nx,:)+DOFs(2*Nx,:));
         MPs = blkdiag(barymat(L/2,sNx,bNx),barymat(L/2,sNx,bNx))*PtsThisT;
-        [~,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(Nlinks,1),0,0);
+        [~,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(nBr,1),0,0);
         if (makeMovie)
             clf;
             %nexttile
@@ -102,7 +108,7 @@ for count=0:stopcount
                     RplNp1*PtsThisT((iFib-1)*Nx+1:iFib*Nx,3));
                 hold on
             end
-            for pL = 1:Nlinks
+            for pL = 1:nBr
                linkPts=[X1stars(pL,:); X2stars(pL,:)];
                plot3(linkPts(:,1),linkPts(:,2),linkPts(:,3),':ko')
             end
@@ -113,19 +119,26 @@ for count=0:stopcount
             PlotAspect
             movieframes(frameNum)=getframe(f);
         end
+        % Find the closest pt on the branch to the end of the mother
+        MotherEnd = barymat(L,sNx,bNx)*PtsThisT(1:Nx,:);
+        DaughterPts = barymat((0:0.001:1)',sNx,bNx)*PtsThisT(Nx+1:end,:);
+        dispMD = DaughterPts - MotherEnd;
+        [dispMDT,cpt] = min(sqrt(sum(dispMD.*dispMD,2)));
         LinkNorms = sqrt(sum((X1stars-X2stars).*(X1stars-X2stars),2))-ell;
         Xpts=[Xpts;PtsThisT];
         ee=[ee;norm(PtsThisT(end-Nx,:)-PtsThisT(1,:)); norm(PtsThisT(end,:)-PtsThisT(end-Nx+1,:))];
-        mpdist=[mpdist; norm(MPs(1,:)-MPs(2,:))];
-        LinkErs = [LinkErs;LinkNorms/ell];
+        MDDist=[MDDist; dispMDT];
+        LinkErs = [LinkErs;LinkNorms theta*180/pi];
         Xbars = [Xbars; Xbar];
     end  
     
     % Cross linking force
-    [CLForce,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(Nlinks,1),0,0);
+    [CLForce,~,~] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(nBr,1),0,0);
+    [AngCLForce,~] = AngularSpringForce(reshape(Xt,3,Nx*nFib)',Kang,RotAng,...
+        barymat(BranchLoc,sNx,bNx),barymat(0,sNx,bNx),DX);
     Xp1=Xt;
     U0 = zeros(3*Nx*nFib,1);
-    Fext = reshape(CLForce',[],1);
+    Fext = reshape(CLForce'+AngCLForce',[],1);
     % Matrices at time step n 
     gAll = randn(3*Nx*nFib,1);
     BEAll = randn(3*Nx*nFib,1);
@@ -165,5 +178,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('OneLinkK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
+save(strcat('BranchK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist','LinkErs')
 end

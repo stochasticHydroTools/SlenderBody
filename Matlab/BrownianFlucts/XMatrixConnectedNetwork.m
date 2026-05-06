@@ -1,29 +1,30 @@
 % The assumption is that all of the fibers are connected - there is a
 % unique center of mass tracking pt
-nFib = 4;
-Nx = 13;
+nFib = 2;
+Nx = 16;
 L = 1;
 rng(2);
 % Specify the fibers connected, the points where they are connected,
 % the type of connection (branch=0 or cross link=1), and the length of the link
 % Branches
-Branches = [1 0.7 2; 3 0.25 4];
-CrossLinks = [1 0.5 3 0.1; 1 0.8 3 0.45; 2 0.77 3 1; 2 0.47 4 0.2; 3 0.75 4 0.6; 2 0.1 4 0.7];
-tr=randn(1,3);
-Taus = [1 0 0;RotateSeventy([1 0 0]); tr/norm(tr); RotateSeventy(tr/norm(tr))];
+Branches = [];
+CrossLinks = [1 0 2 0; 1 1 2 1];
+%tr=randn(1,3);
+%Taus = [1 0 0;RotateSeventy([1 0 0]); tr/norm(tr); RotateSeventy(tr/norm(tr))];
+Taus = [0 1 0; 0 1 0];
 Nlinks = size(CrossLinks,1);
-LinkHats = [0 1 0].*ones(Nlinks,1); % will be overwritten
+LinkHats = [1 0 0].*ones(Nlinks,1); % will be overwritten
 LinkLengths = 0.1*ones(Nlinks,1);
 
 EndClamped = zeros(1,nFib);
 nSlaveNodes = zeros(1,nFib);
-EndClamped(Branches(:,3))=1;
+%EndClamped(Branches(:,3))=1;
 % Figure out how many DOFs are available
 DOFCount = Nx*ones(1,nFib)-EndClamped;
 % Loop randomly through the non-branched links and assign a master and slave
 % depending on DOF count
 NBranch = size(Branches,1);
-if (length(unique(Branches(:,2)))~=NBranch)
+if (~isempty(Branches) & length(unique(Branches(:,2)))~=NBranch)
     error('Cannot have a branched filament with multiple mothers!')
 end
 Order = randperm(Nlinks);
@@ -250,6 +251,7 @@ Xcustom = DOFsToCustomNodes*DOFs;
 MasterNodesNow=MasterNodesMatrix*DOFs;
 SlaveNodesNow=SlaveNodesMatrix*DOFs;
 X0s=X0s+MasterNodesNow(1,:);
+nexttile(1)
 for iFib=1:nFib
 fpts=X0s(iFib,:)+(0:0.01:1)'*Taus(iFib,:);
 plot3(fpts(:,1),fpts(:,2),fpts(:,3))
@@ -257,6 +259,7 @@ hold on
 set(gca,'ColorOrderIndex',iFib)
 scatter3(Xcustom((iFib-1)*Nx+(1:Nx),1),Xcustom((iFib-1)*Nx+(1:Nx),2),Xcustom((iFib-1)*Nx+(1:Nx),3),'filled')
 end
+PlotAspect
 
 NodesToChebMats = cell(nFib,1);
 for iFib=1:nFib
@@ -269,7 +272,24 @@ SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
 ChebMatZeroMean = SubAvg*blkdiag(NodesToChebMats{:})*DOFsToCustomNodes;
 DOFsToChebNodes = [ChebMatZeroMean ones(nFib*Nx,1)];
 XchebZeroMean = DOFsToChebNodes*[DOFs; 0 0 0];
-% for iFib=1:nFib
-% set(gca,'ColorOrderIndex',iFib)
-% scatter3(XchebZeroMean((iFib-1)*Nx+(1:Nx),1),XchebZeroMean((iFib-1)*Nx+(1:Nx),2),XchebZeroMean((iFib-1)*Nx+(1:Nx),3),'filled')
-% end
+nexttile(2)
+Rpl=barymat((0:0.01:1)',sX,bX);
+for iFib=1:nFib
+set(gca,'ColorOrderIndex',iFib)
+fibpts = Rpl*XchebZeroMean((iFib-1)*Nx+(1:Nx),:);
+plot3(fibpts(:,1),fibpts(:,2),fibpts(:,3))
+hold on
+end
+for iLink=1:Nlinks
+    iFib = CrossLinks(iLink,1);
+    iPt = barymat(CrossLinks(iLink,2),sX,bX)*XchebZeroMean((iFib-1)*Nx+(1:Nx),:);
+    jFib = CrossLinks(iLink,3);
+    jPt = barymat(CrossLinks(iLink,4),sX,bX)*XchebZeroMean((jFib-1)*Nx+(1:Nx),:);
+    pPts=[iPt;jPt];
+    if (abs(LinkLengths(iLink)-0.1)<1e-10)
+        plot3(pPts(:,1),pPts(:,2),pPts(:,3),':m')
+    else
+        plot3(pPts(:,1),pPts(:,2),pPts(:,3),':k')
+    end
+end
+PlotAspect

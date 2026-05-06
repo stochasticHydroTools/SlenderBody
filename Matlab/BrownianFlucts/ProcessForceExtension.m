@@ -1,45 +1,43 @@
 % Langevin dynamics
 nTrial=30;
-Ns=[16 16];
-Force = 3;
+Ns=[16 16 16];
+Force = 10;
 FSqRts = Force;
-dts = [1e-3 2.5e-5];
+dts = [1e-3 1e-4 1e-5];
 MeanExtension = zeros(nTrial,length(dts));
+MeanTay = zeros(nTrial,length(dts));
+Npl=100;
 MeanCorSize = zeros(nTrial,length(dts));
 MeanTauSq=zeros(Npl,3,nTrial,length(dts));
 for iDT=1:length(dts)
 dt=dts(iDT);
 N = Ns(iDT);
-for j=1:nTrial
+for jj=1:nTrial
     % try
     load(strcat('Type1_N',num2str(N),...
-        '_Dt',num2str(dt),'_Seed',num2str(j),'.mat'))
-    % catch
-    % load(strcat('Lp3_N',num2str(N),...
-    %     '_Dt',num2str(dt),'_Seed',num2str(j),'.mat'))
-    % end
+        '_Dt',num2str(dt),'_Seed',num2str(jj),'.mat'))
     nT = length(Xpts)/Nx-1;
-    BurnIn=0.5*nT;
+    BurnIn=0;%0.5*nT;
     nObs = nT-BurnIn;
     for jT=BurnIn+1:nT
         ThesePts = Xpts((jT-1)*Nx+1:jT*Nx,:);
-        TauThis= RNp1ToN*DNp1*ThesePts;
-        MeanTauSq(:,:,j,iDT)=MeanTauSq(:,:,j,iDT)+barymat(spl,s,b)*TauThis.^2/nObs;
-        MeanExtension(j,iDT) = MeanExtension(j,iDT) + ThesePts(end,2)/nObs;
+        TauThis= RplNp1*DNp1*ThesePts;
+        MeanTauSq(:,:,jj,iDT)=MeanTauSq(:,:,jj,iDT)+(TauThis.^2)/nObs;
+        MeanExtension(jj,iDT) = MeanExtension(jj,iDT) + ThesePts(end,2)/nObs;
+        MeanCorSize(jj,iDT)=MeanCorSize(jj,iDT)+MeanOmTurn(jT)/nObs;
     end
-    MeanCorSize(j,iDT)=mean(MeanOmTurn);
 end
 end
-nError = 3;
+nError = 5;
 nPerError = nTrial/nError;
 MeanMeanExtension = zeros(nError,length(dts));
 MeanMeanTau = zeros(Npl,3,nError,length(dts));
-MeanMeanCor = zeros(nError,length(dts));
+MeanMeanEr = zeros(nError,length(dts));
 PlTau = zeros(length(spl),nError,length(dts));
 for k = 1:nError
     MeanMeanExtension(k,:)=mean(MeanExtension((k-1)*nPerError+1:k*nPerError,:));
-    MeanMeanCor(k,:) = mean(MeanCorSize((k-1)*nPerError+1:k*nPerError,:));
     MeanMeanTau(:,:,k,:) = mean(MeanTauSq(:,:,(k-1)*nPerError+1:k*nPerError,:),3);
+    MeanMeanEr(k,:)=mean(MeanCorSize((k-1)*nPerError+1:k*nPerError,:));
     for iT=1:length(dts)
         PlTau(:,k,iT)=mean(MeanMeanTau(:,[1 3],k,iT),2);
     end
@@ -67,12 +65,12 @@ TauTrans = sinh(FSqRts*(L-s)).*sinh(FSqRts*s)/(FSqRts*lp*sinh(FSqRts*L));
 plot(s,TauTrans,'-k')
 hold on
 set(gca,'ColorOrderIndex',1)
+DefColors=get(gca,'ColorOrder');
 for iT=1:length(dts)
-plot(spl,mean(PlTau(:,:,iT),2));
+AvgVec = PlTau(:,:,iT)';
+fill([spl', fliplr(spl')], [mean(AvgVec)-2*std(AvgVec)/sqrt(nError),...
+    fliplr(mean(AvgVec)+2*std(AvgVec)/sqrt(nError))],DefColors(iT,:), 'FaceAlpha', 0.2, 'linestyle', 'none');
 hold on
-set(gca,'ColorOrderIndex',get(gca,'ColorOrderIndex')-1)
-errorbar(spl(iT:5:end),mean(PlTau(iT:5:end,:,iT),2),...
-    2*std(PlTau(iT:5:end,:,iT),[],2)/sqrt(nError),'o','LineWidth',2.0,...
-    'MarkerSize',0.5)
+plot(spl,mean(AvgVec),'-','Color',DefColors(iT,:),'LineWidth',2)
 end
 

@@ -3,7 +3,7 @@
 ForceRt=0;
 seed=1;
 N=16;
-dt=1e-3;
+dt=1e-2;
 gtype=1;
 addpath(genpath('../'))
 %close all;
@@ -12,12 +12,12 @@ Nx = N+1;
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
-kbT = 4.1e-3;
+kbT = 0;%4.1e-3;
 lp = 2*L;
 Eb = 8.2e-3;%lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
-makeMovie = 0;
+makeMovie = 1;
 tf = 1;
 Tau0BC = [0;1;0];
 if (gtype==2)
@@ -140,7 +140,7 @@ for count=0:stopcount
          MWsymTilde*BendMatHalf_Np1*randn(3*Nx,1);
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     U0 = zeros(3*Nx,1);
-    U0(1:3:end)=0;
+    U0(1:3:end)=1;
     Fext = zeros(3*Nx,1);
     Fext(end-1) = ForceRt^2*Eb;
     KWithImp = Ktilde-impcoeff*dt*MWsymTilde*BendForceMat*Ktilde;

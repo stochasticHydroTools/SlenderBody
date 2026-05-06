@@ -1,14 +1,14 @@
-%function CrossLinkedBundle(seed,Nx,dt)
+function BranchedFibers(seed,Nx,dt)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 
 %% Define constants 
-seed=1;
-Nx=16;
-dt=1e-5;
+%seed=30;
+%Nx=13;
+%dt=1e-3;
 gtype=1;
 addpath(genpath('../'))
-LinkLocs = [0 0; 1 1];
+BranchPts = [0.8]; % on fiber #1
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
@@ -16,113 +16,57 @@ kbT = 4.1e-3;
 lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
-ell = 0.1;
 
 %% Initialization
-Nlinks = size(LinkLocs,1);
 rng(seed);
 nFib = 2;
-% With every link you lose 1 tangent vector (between the two fibers)
-NTaus = nFib*Nx - Nlinks -1;
-if (mod(NTaus,2)==0)
-    N1 = NTaus/2;
-    N2 = NTaus/2;
-else
-    N2 = ceil(NTaus/2);
-    N1 = N2 -1;
-end
-NLink1 = (Nx-1)-N1;
-NLink2 = (Nx-1)-N2;
+nBr = length(BranchPts);
+N = Nx-1;
 impcoeff = 1;
 makeMovie = 0;
-tf = 50;
-if (dt < 9e-7)
-    tf=10;
-end
+tf = 25;
 Tau0 = [0 1 0];
+RotAng = 70/180*pi;
+TauBr = Tau0*[cos(RotAng) -sin(RotAng) 0; sin(RotAng) cos(RotAng) 0; 0 0 1]';
 Xbar = [0 0 0];
-Locs10 = [-ell/2 -L/2 0]+LinkLocs(:,1)*Tau0;
-Locs20 = [ell/2 -L/2 0]+LinkLocs(:,2)*Tau0;
-Xs3=repmat(Tau0,NTaus,1);
-Diff=Locs20-Locs10;
-LinkLengths = sqrt(sum(Diff.*Diff,2));
-LinkHat = Diff./LinkLengths;
+Xs3=[repmat(Tau0,N,1);repmat(TauBr,N,1)];
+BranchInds = zeros(1,nBr);
 
 %% Calculation of the X matrix
 % Grids for tangent vectors and integration
-[s,~,~] = chebpts(Nx-1,[0 L],gtype);
-sTru_1=s;
-sTru_2=s;
-for p=1:NLink1
-    [~,indmin]=min(abs(sTru_1-LinkLocs(2*p,1)));
-    sTru_1(indmin)=[];
+[s,~,b] = chebpts(N,[0 L],gtype);
+sTru_Mother=s;
+sTru_Branches=s;
+for p=1:nBr
+    % This assumes branches are not too close together
+    [~,indmin]=min(abs(sTru_Mother-BranchPts(p)));
+    sTru_Mother(indmin)=BranchPts(p);
+    BranchInds(p) = indmin;
 end
-for p=1:NLink2
-    [~,indmin]=min(abs(sTru_2-LinkLocs(2*p+1,2)));
-    sTru_2(indmin)=[];
-end
-[s1,~,b1] = chebpts(N1,[0 L], gtype);
-[s2,~,b2] = chebpts(N2,[0 L], gtype);
+sTru_Branches(1)=0;
+ChebToConstr_Br = barymat(sTru_Branches,s,b);
+ConstrToCheb_Br = ChebToConstr_Br^(-1);
+ChebToConstr_Mother = barymat(sTru_Mother,s,b);
+ConstrToCheb_Mother = ChebToConstr_Mother^(-1);
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
-% Remove the Chebyshev nodes closest to the links
-[sNoLinks,~] = chebpts(Nx,[0 L], 2);
-sNoLinks_1=sNoLinks;
-sNoLinks_2=sNoLinks;
-for p=1:size(LinkLocs,1)
-    [~,indmin]=min(abs(sNoLinks_1-LinkLocs(p,1)));
-    sNoLinks_1(indmin)=[];
-    [~,indmin]=min(abs(sNoLinks_2-LinkLocs(p,2)));
-    sNoLinks_2(indmin)=[];
-end
-% When you put extra nodes (Nlinks>1), you're still going to run into instabilties
-% with the polynomials because you are essentially adding a term of degree
-% s^(Nx-1) to make all the conditions come out. Fiber shapes might look
-% funky because of that. But those oscillations get damped by the bending
-% force, so it should work ok. 
-
-% Order of the nodes
-% First set = no links and the first link (does not affect tau's)
-% Second set = those that are master on this filament
-% Third set = those that are slave to the other filament
-AllNodes_1=[sNoLinks_1;LinkLocs(1:2:end,1);LinkLocs(2:2:end,1)];
-AllNodes_2=[sNoLinks_2;LinkLocs(1,2);LinkLocs(2:2:end,2);LinkLocs(3:2:end,2)];
-ChebToNodes_1 = barymat(AllNodes_1,sX,bX);
-NodesToCheb_1 = ChebToNodes_1^(-1);
-ChebToNodes_2 = barymat(AllNodes_2,sX,bX);
-NodesToCheb_2 = ChebToNodes_2^(-1);
-if (~isempty(null(ChebToNodes_2)) || ~isempty(null(ChebToNodes_1)))
-    error('Cross linker is on a grid point exactly')
-end
-XToLink_1 = barymat(AllNodes_1,sX,bX);
-XToLink_2 = barymat(AllNodes_2,sX,bX);
+BranchPtMat = barymat(BranchPts,sX,bX);
+ZeroMat = barymat(0,sX,bX);
 
 % Set up so that the first links are on top of each other
-XMat_1 = (eye(Nx)-ones(Nx,1).*XToLink_1(Nx-Nlinks+1,:))*pinv(DX)*barymat(sX,s1,b1)*barymat(sTru_1,s1,b1)^(-1);
-XMat_2 = (eye(Nx)-ones(Nx,1).*XToLink_2(Nx-Nlinks+1,:))*pinv(DX)*barymat(sX,s2,b2)*barymat(sTru_2,s2,b2)^(-1);
+XMat_Mother = pinv(DX)*barymat(sX,s,b)*ConstrToCheb_Mother;
+XMat_Br = (eye(Nx)-ones(Nx,1).*ZeroMat)*pinv(DX)*barymat(sX,s,b)*ConstrToCheb_Br;
 
-% Matrices to increment the cross linkers
-altOnes = zeros(NLink1,Nlinks-1);
-altTwos = zeros(NLink2,Nlinks-1);
-for pL=1:NLink1
-    altOnes(pL,2*pL-1)=-LinkLengths(2*pL);
-end
-for pL=1:NLink2
-    altTwos(pL,2*pL)=LinkLengths(2*pL+1);
-end
-DOFsToCustomNodes = [XToLink_1(1:N1+1,:)*XMat_1 zeros(N1+1,N2+Nlinks); ...
-    zeros(NLink1,N1) XToLink_2((Nx-Nlinks+1)+(1:NLink1),:)*XMat_2 LinkLengths(1)*ones(NLink1,1) altOnes; ...
-    zeros(N2+1,N1) XToLink_2(1:N2+1,:)*XMat_2 LinkLengths(1)*ones(N2+1,1) zeros(N2+1,Nlinks-1); ...
-    XToLink_1((Nx-Nlinks+1)+(1:NLink2),:)*XMat_1 zeros(NLink2,N2) zeros(NLink2,1) altTwos];
+DOFsToCustomNodes = [XMat_Mother zeros(Nx,N); ones(Nx,1)*BranchPtMat(1,:)*XMat_Mother XMat_Br];
 
 % Only involves the first link
 AvgMat = 1/(nFib*L)*repmat(wX,1,nFib);
 SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
-ChebMatZeroMean = SubAvg*blkdiag(NodesToCheb_1,NodesToCheb_2)*DOFsToCustomNodes;
+ChebMatZeroMean = SubAvg*DOFsToCustomNodes;
 DOFsToChebNodes = [ChebMatZeroMean ones(nFib*Nx,1)];
 XMat = stackMatrix(DOFsToChebNodes);
-InvXMat = XMat^(-1);
-DOFs = [reshape(Xs3',[],1); reshape(LinkHat',[],1); Xbar'];
+InvXMat = pinv(XMat);%^(-1);
+DOFs = [reshape(Xs3',[],1); Xbar'];
 Xt = XMat* DOFs;
 
 % Bending energy matrix (2Nx grid)
@@ -140,12 +84,21 @@ BendMatHalfAll = blkdiag(BendMatHalf,BendMatHalf);
 % Pre-computations for mobility
 MobConst = -log(eps^2)/(8*pi*mu);
 
+% Need constraint matrix here for the alpha evolution
+ConsMat = zeros(nBr,nFib*N);
+for p=1:nBr
+    ConsMat(p,BranchInds(p))=1;
+    ConsMat(p,p*N+1)=-1;
+end
+ConsMat=stackMatrix(ConsMat);
+ConsMat = [ConsMat zeros(nBr*3,3)];
+
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
-mpdist=[];
+MDDist=[];
 Xbars=[];
 Npl=100;
 [spl,~,~]=chebpts(Npl,[0 L]);
@@ -163,9 +116,6 @@ for count=0:stopcount
     if (mod(count,saveEvery)==0)
         DOFs = InvXMat*Xt;
         PtsThisT = reshape(Xt,3,Nx*nFib)';
-        MPs = blkdiag(barymat(L/2,sX,bX),barymat(L/2,sX,bX))*PtsThisT;
-        LinkedPts = [barymat(LinkLocs(:,1),sX,bX) zeros(Nlinks,Nx); ...
-            zeros(Nlinks,Nx) barymat(LinkLocs(:,2),sX,bX)]*PtsThisT;
         if (makeMovie)
             clf;
             %nexttile
@@ -175,26 +125,27 @@ for count=0:stopcount
                     RplNp1*PtsThisT((iFib-1)*Nx+1:iFib*Nx,3));
                 hold on
             end
-            for pL = 1:Nlinks
-                plot3(LinkedPts(pL:Nlinks:end,1),LinkedPts(pL:Nlinks:end,2),LinkedPts(pL:Nlinks:end,3),':ko')
-            end
             title(sprintf('$t=$ %2.1f',(frameNum-1)*saveEvery*dt),'Interpreter','latex')
             view(2)
             ylim([-1 1])
             xlim([-1 1])
             PlotAspect
-            Locs1=barymat(sTru_1,sX,bX)*PtsThisT(1:Nx,:);
+            Locs1=barymat(sTru_Mother,sX,bX)*PtsThisT(1:Nx,:);
             DOF3=reshape(DOFs,3,[])';
-            Xs1=DOF3(1:N1,:);
+            Xs1=DOF3(1:N,:);
             quiver3(Locs1(:,1),Locs1(:,2),Locs1(:,3),Xs1(:,1),Xs1(:,2),Xs1(:,3),'LineWidth',2,'AutoScaleFactor',0.5)
-            Locs2=barymat(sTru_2,sX,bX)*PtsThisT(Nx+1:2*Nx,:);
-            Xs2=DOF3(N1+1:N1+N2,:);
+            Locs2=barymat(sTru_Branches,sX,bX)*PtsThisT(Nx+1:2*Nx,:);
+            Xs2=DOF3(N+1:2*N,:);
             quiver3(Locs2(:,1),Locs2(:,2),Locs2(:,3),Xs2(:,1),Xs2(:,2),Xs2(:,3),'LineWidth',2,'AutoScaleFactor',0.5)
             movieframes(frameNum)=getframe(f);
         end
+        MotherEnd = barymat(L,sX,bX)*PtsThisT(1:Nx,:);
+        DaughterPts = barymat((0:0.001:1)',sX,bX)*PtsThisT(Nx+1:end,:);
+        dispMD = DaughterPts - MotherEnd;
+        [dispMDT,cpt] = min(sqrt(sum(dispMD.*dispMD,2)));
+        MDDist=[MDDist; dispMDT];
         Xpts=[Xpts;PtsThisT];
         ee=[ee;norm(PtsThisT(end-Nx,:)-PtsThisT(1,:)); norm(PtsThisT(end,:)-PtsThisT(end-Nx+1,:))];
-        mpdist=[mpdist; norm(MPs(1,:)-MPs(2,:))];
         Xbars = [Xbars; DOFs(end-2:end,:)'];
     end  
 
@@ -217,7 +168,6 @@ for count=0:stopcount
     OmegaTilde = KTogetherInv*RandomVelBM;
     Xtilde = updateByRotate(Xt,OmegaTilde,XMat,InvXMat,dt/2);
     Ktilde = KWithLink(Xtilde,XMat,InvXMat);
-    K = KWithLink(Xt,XMat,InvXMat);
     MWsymTilde = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
@@ -227,36 +177,30 @@ for count=0:stopcount
     
     % Solve at midpoint
     M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
-    g2=randn(3*Nx*nFib,1);
-    if (impcoeff==1)
-        RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*g2;
-    else
-        RandomVelBE = 0;
-    end
+    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*randn(3*Nx*nFib,1);
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
     Fext = zeros(3*Nx*nFib,1);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
-    N0 = pinv(K'*(MWsym \ K));
-    TauMat = -XMat'*BendMatAll*XMat;
-    alphaU = MobK*Ktilde'*(BendMatAll*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
+    MobC = ConsMat'*((ConsMat*MobK*ConsMat') \ ConsMat);
+    alphaU = (MobK - MobK*MobC*MobK)*...
+        Ktilde'*(BendMatAll*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
     % Evolve constants by rotating and translating the link
     Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt);
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ConstrOneLink_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
-%end
+save(strcat('Branched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist')
+end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)
-    nTaus = length(Xt)/3-1;
-    TauVelocity = zeros(length(Xt));
-    InvTauVelocity = zeros(length(Xt));
     TausAndXBar = InvXMat*Xt;
+    TauVelocity = zeros(length(TausAndXBar));
+    InvTauVelocity = zeros(length(TausAndXBar));
     Tau3 = reshape(TausAndXBar(1:end-3),3,[])';
     % The matrix for all the taus (incl links) to evolve
-    for iR =1:nTaus
+    for iR =1:size(Tau3,1)
         inds = (iR-1)*3+1:iR*3;
         CMat = CPMatrix(Tau3(iR,:));
         TauVelocity(inds,inds) =  -CMat;
