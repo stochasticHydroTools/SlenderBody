@@ -4,10 +4,10 @@ function CrossLinkedBundle_NotConstr(seed,Nx,dt,Kstiff)
 %seed=1;
 %Nx=16;
 %dt=1e-5;
-%Kstiff=100;
+%Kstiff=1000;
 gtype=1;
 addpath(genpath('../'))
-LinkLocs = [0.5];
+LinkLocs = [0 1];
 ell = 0.1;
 Nlinks=length(LinkLocs);
 %close all;
@@ -17,13 +17,13 @@ N = Nx - 1; % Number of off-grid tangent vector constraints
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
-kbT = 4.1e-3;
+kbT = 0;%4.1e-3;
 lp = 2*L;
-Eb = lp*kbT; % pN*um^2 (Lp=17 um)
+Eb = 0.01;%lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
-makeMovie = 0;
-tf = 50;
+makeMovie = 1;
+tf = 2;
 Kcl=Kstiff;
 Tau0 = [0;1;0];
 Xbar=[-ell/2 ell/2;0 0; 0 0];
@@ -125,6 +125,8 @@ for count=0:stopcount
     [CLForce,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(Nlinks,1),0,0);
     Xp1=Xt;
     U0 = zeros(3*Nx*nFib,1);
+    U0(1:3:end)=Xt(1:3:end);
+    U0(2:3:end)=-Xt(2:3:end);
     Fext = reshape(CLForce',[],1);
     % Matrices at time step n 
     gAll = randn(3*Nx*nFib,1);
@@ -135,6 +137,19 @@ for count=0:stopcount
         Xs3 = XsXbar(1:Nx-1,:);
         MWsym = LocalDragMob(Xt(finds),DX,MobConst,WTilde_Nx_Inverse);
         MWsymHalf = chol(MWsym)';
+        
+        % Timescales
+        % K=KonNp1(Xs3,XonNp1Mat,I);
+        % Cbar = (XonNp1Mat \ K);
+        % N0 = pinv(K'*(MWsym \ K));
+        % Nhat0 = Cbar*N0*Cbar';
+        % TauMat = -XonNp1Mat'*BendForceMat*XonNp1Mat;
+        % MobInv = pinv(Nhat0);
+        % MobInv = 1/2*(MobInv+MobInv');
+        % TauMat = 1/2*(TauMat+TauMat');
+        % % Generalized eigenvectors
+        % [V,Lam] = eig(MobInv,TauMat);
+
         % Obtain Brownian velocity
         g = gAll(finds);
         RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
@@ -165,5 +180,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('OneLinkK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
+save(strcat('BundleK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
 end

@@ -1,12 +1,12 @@
-% kbT = 4.1e-3;
-% lpstar = 10;
-% L = 2;
-% Eb = lpstar*L*kbT;
-% eps = 1e-3;
-% gam0=0*1.6e4*kbT/L^3;
-% IdForM = 0;
-% N = 24;
-% upsamp = 0;
+kbT = 4.1e-3;
+lpstar = 10;
+L = 2;
+Eb = lpstar*L*kbT;
+eps = 1e-3;
+gam0=0*1.6e4*kbT/L^3;
+IdForM = 0;
+N = 24;
+upsamp = 0;
 % if (eps == 1e-3)
 % if (N==12)
 %     eigThres = 3.2/L;
@@ -24,9 +24,9 @@
 %     eigThres = 0.34/L;
 % end
 % end
-% CurvedX0=0;
-% PenaltyForceInsteadOfFlow = 1;
-% RectangularCollocation = 0;
+CurvedX0=0;
+PenaltyForceInsteadOfFlow = 1;
+RectangularCollocation = 0;
 a = eps*L;
 mu=1;           % Viscosity
 nFib=1;

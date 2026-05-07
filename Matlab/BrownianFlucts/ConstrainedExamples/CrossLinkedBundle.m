@@ -1,11 +1,11 @@
-%function CrossLinkedBundle(seed,Nx,dt)
+function CrossLinkedBundle(seed,Nx,dt)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 
 %% Define constants 
-seed=1;
-Nx=16;
-dt=1e-5;
+%seed=1;
+%Nx=16;
+%dt=1e-3;
 gtype=1;
 addpath(genpath('../'))
 LinkLocs = [0 0; 1 1];
@@ -34,8 +34,8 @@ end
 NLink1 = (Nx-1)-N1;
 NLink2 = (Nx-1)-N2;
 impcoeff = 1;
-makeMovie = 0;
-tf = 50;
+makeMovie = 1;
+tf = 2;
 if (dt < 9e-7)
     tf=10;
 end
@@ -236,18 +236,35 @@ for count=0:stopcount
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
+    %U0(1:3:end)=Xt(1:3:end);
+    %U0(2:3:end)=-Xt(2:3:end);
     Fext = zeros(3*Nx*nFib,1);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
-    N0 = pinv(K'*(MWsym \ K));
-    TauMat = -XMat'*BendMatAll*XMat;
+    % Cbar = (XMat \ K);
+    % N0 = pinv(K'*(MWsym \ K));
+    % Nhat0 = Cbar*N0*Cbar';
+    % TauMat = -XMat'*BendMatAll*XMat;
+    % MobInv = pinv(Nhat0);
+    % MobInv = 1/2*(MobInv+MobInv');
+    % TauMat = 1/2*(TauMat+TauMat');
+    % % Generalized eigenvectors
+    % [V,Lam] = eig(MobInv,TauMat);
+    % %V = V(:,1:2*N+3);
+    % %Lam = Lam(1:2*N+3,1:2*N+3);
+    % % Check normalization
+    % nzation=diag(V'*TauMat*V);
+    % V = V./sqrt(nzation)';
+    % [Timescales,Inds] = sort(diag(Lam),'descend');
+    % V=V(:,Inds);
+    % Lam = diag(Timescales);
     alphaU = MobK*Ktilde'*(BendMatAll*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
     % Evolve constants by rotating and translating the link
     Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt);
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ConstrOneLink_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
-%end
+save(strcat('ConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)
     nTaus = length(Xt)/3-1;
