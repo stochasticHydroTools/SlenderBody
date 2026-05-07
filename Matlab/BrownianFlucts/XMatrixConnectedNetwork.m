@@ -1,295 +1,148 @@
-% The assumption is that all of the fibers are connected - there is a
-% unique center of mass tracking pt
-nFib = 2;
-Nx = 16;
+% Compute the matrix X assuming a network which is NON-CYCLIC
+% Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
+% type). Type=0 for branch, 1 for cross link. 
+
+% Split this into two functions
+% function [G,DOFs,TangentVectorNodes,IntegrationMatrix] =
+% InitializeConnectedNetwork(Connections,nFib,N,L,ell)
+% function [X,XMat]=XMatrixConnectedNetwork(G,DOFs,IntegrationMatrix)
+nFib = 10;
+N = 15;
+Nx = N+1;
 L = 1;
-rng(2);
-% Specify the fibers connected, the points where they are connected,
-% the type of connection (branch=0 or cross link=1), and the length of the link
-% Branches
-Branches = [];
-CrossLinks = [1 0 2 0; 1 1 2 1];
-%tr=randn(1,3);
-%Taus = [1 0 0;RotateSeventy([1 0 0]); tr/norm(tr); RotateSeventy(tr/norm(tr))];
-Taus = [0 1 0; 0 1 0];
-Nlinks = size(CrossLinks,1);
-LinkHats = [1 0 0].*ones(Nlinks,1); % will be overwritten
-LinkLengths = 0.1*ones(Nlinks,1);
-
-EndClamped = zeros(1,nFib);
-nSlaveNodes = zeros(1,nFib);
-%EndClamped(Branches(:,3))=1;
-% Figure out how many DOFs are available
-DOFCount = Nx*ones(1,nFib)-EndClamped;
-% Loop randomly through the non-branched links and assign a master and slave
-% depending on DOF count
-NBranch = size(Branches,1);
-if (~isempty(Branches) & length(unique(Branches(:,2)))~=NBranch)
-    error('Cannot have a branched filament with multiple mothers!')
-end
-Order = randperm(Nlinks);
-for iL=1:Nlinks
-    iLink = Order(iL);
-    iFib = CrossLinks(iLink,1);
-    jFib = CrossLinks(iLink,3);
-    if (DOFCount(jFib)<DOFCount(iFib))
-        CrossLinks(iLink,:)=[CrossLinks(iLink,3:4) CrossLinks(iLink,1:2)];
+ell = 0.1;
+Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; 4 0.5 5 0 0; ...
+    1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; 8 0.5 9 0 0; 9 0.5 10 0.1 1];
+% Check list
+for p=1:size(Connections,1)
+    if (Connections(p,4)==0 && Connections(p,5)~=0)
+        warning('Cannot have a branch away from s=0 on daughter, at connection number %d',p)
+        Connections(p,5)=0;
     end
-    SlaveFib = CrossLinks(iLink,3);
-    DOFCount(SlaveFib)=DOFCount(SlaveFib)-1;
+end
+NLinks = nnz(Connections(:,5));
+DOFs = zeros(nFib*N+NLinks+1,3);
+X = zeros(Nx*nFib,3);
+
+% Make connected graph
+G = graph(Connections(:,1),Connections(:,3));
+if (G.hascycles)
+    error('Directed graph cannot have cycles!')
+end
+% Identify "end" nodes (leaf nodes where the branch terminates)
+nodes_degree = degree(G);
+nodes_end = find(nodes_degree == 1);
+node_start = 1;
+
+% Extract each branch path
+paths = {};
+for i = 1:numel(nodes_end)
+    target = nodes_end(i);
+    if target ~= node_start
+        % Find the shortest path (branch) to that end node
+        paths{end+1} = shortestpath(G, node_start, target);
+    end
 end
 
-% Step 1: define the auxilary grid of positional nodes which includes the
-% ones constrained by CLs
-MasterNodes = cell(nFib,1);
-[sX,wX,bX] = chebpts(Nx,[0 L], 2);
+% Default Chebyshev points for position and tangents (will be overwritten)
+[s,w,b]=chebpts(N,[0 L],1);
+[sX,wX,bX]=chebpts(Nx,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
-for iFib=1:nFib
-    MasterNodes{iFib}=sX;
-end
-% Remove the Chebyshev nodes closest to the links and branches
-for iLink=1:Nlinks
-    MasterFib = CrossLinks(iLink,1);
-    MasterPt = CrossLinks(iLink,2);
-    SlaveFib = CrossLinks(iLink,3);
-    SlavePt = CrossLinks(iLink,4);
-    [~,indmin]=min(abs(MasterNodes{MasterFib}-MasterPt));
-    MasterNodes{MasterFib}(indmin)=[];
-    [~,indmin]=min(abs(MasterNodes{SlaveFib}-SlavePt));
-    MasterNodes{SlaveFib}(indmin)=[];
-end
-for iBr=1:NBranch
-    Mother = Branches(iBr,1);
-    MotherPt = Branches(iBr,2);
-    Daughter = Branches(iBr,3);
-    [~,indmin]=min(abs(MasterNodes{Mother}-MotherPt));
-    MasterNodes{Mother}(indmin)=[];
-    MasterNodes{Daughter}(1)=[];
-end
-
-% Add link pts
-SlaveNodes = cell(nFib,1);
-for iLink=1:Nlinks
-    MasterFib = CrossLinks(iLink,1);
-    MasterPt = CrossLinks(iLink,2);
-    SlaveFib = CrossLinks(iLink,3);
-    SlavePt = CrossLinks(iLink,4);
-    MasterNodes{MasterFib}=[MasterNodes{MasterFib};MasterPt];
-    SlaveNodes{SlaveFib}=[SlaveNodes{SlaveFib};SlavePt MasterFib length(MasterNodes{MasterFib}) iLink];
-end
-for iBr=1:NBranch
-    Mother = Branches(iBr,1);
-    MotherPt = Branches(iBr,2);
-    Daughter = Branches(iBr,3);
-    MasterNodes{Mother}=[MasterNodes{Mother};MotherPt];
-    SlaveNodes{Daughter}=[0 Mother length(MasterNodes{Mother}) -1; SlaveNodes{Daughter}];
-end
-
-% Step 2: define the grid for the tangent vectors
 TangentVectorNodes = cell(nFib,1);
-[sTau,~] = chebpts(Nx-1,[0 L], 1);
-[~,FixedFib]=min(nSlaveNodes); % Fix one of the fibers
+IntegrationMatrix = cell(nFib,1);
 for iFib=1:nFib
-    TangentVectorNodes{iFib}=sTau;
-    nSlaveNodes(iFib)=length(SlaveNodes{iFib}(:,1));
-end
-% First remove tangent vectors closest to the SLAVE nodes
-for iFib=1:nFib
-    SlavePts = SlaveNodes{iFib};
-    stSlave=2;
-    if (iFib==FixedFib)
-        stSlave=1;
+    tNodes=s;
+    % Find all the connections involving iFib
+    Branches = Connections(Connections(:,5)==0,:);
+    BranchPts = [Branches(Branches(:,1)==iFib,2); Branches(Branches(:,3)==iFib,4)];
+    for iPt=1:length(BranchPts)
+        [~,indmin]=min(abs(tNodes(1:N+1-iPt)-BranchPts(iPt)));
+        tNodes(indmin)=[];
+        tNodes=[tNodes;BranchPts(iPt)];
     end
-    for iP=stSlave:nSlaveNodes(iFib)
-        [~,indmin]=min(abs(TangentVectorNodes{iFib}-SlavePts(iP,1)));
-        TangentVectorNodes{iFib}(indmin)=[];
-    end
+    TangentVectorNodes{iFib}=tNodes;
+    ChebToConstr_Br = barymat(tNodes,s,b);
+    IntegrationMatrix{iFib}=pinv(DX)*barymat(sX,s,b)*barymat(tNodes,s,b)^(-1);
 end
-% Now deal with the branches 
-for iBr=1:NBranch
-    Mother = Branches(iBr,1);
-    MotherPt = Branches(iBr,2);
-    Daughter = Branches(iBr,3);
-    [~,indmin]=min(abs(TangentVectorNodes{Mother}-MotherPt));
-    TangentVectorNodes{Mother}(indmin)=MotherPt;
-    [~,indmin]=min(abs(TangentVectorNodes{Daughter}));
-    TangentVectorNodes{Daughter}(indmin)=0;
-end
-   
-% The number of tangent vectors is 1 less than the number of master nodes - 
-% now integrate the tangent vectors to get the position at the master
-% nodes. Set the integration constant so that the first slave node is on
-% top of its master (keeping the filament with the fewest number of slave
-% nodes fixed). 
-
-% Compute master nodes
-MasterFirstSlaveFromTau = cell(nFib,1);
-StartNodeByFib = zeros(nFib,1);
-StartNodeByFib(1)=1;
-nTaus = zeros(nFib,1);
-for iFib=1:nFib
-    sTauFib = TangentVectorNodes{iFib};
-    nTaus(iFib) = length(sTauFib);
-    [sint,~,bint]=chebpts(nTaus(iFib),[0 L],1);
-    if (iFib==FixedFib)
-        MasterFirstSlaveFromTau{iFib}=barymat(MasterNodes{iFib},sX,bX)*pinv(DX)*...
-            barymat(sX,sint,bint)*barymat(sTauFib,sint,bint)^(-1);
-        StartNodeByFib(iFib+1) = StartNodeByFib(iFib)+length(MasterNodes{iFib});
-    else
-        AllNodesThis = [MasterNodes{iFib};SlaveNodes{iFib}(1)];
-        MasterFirstSlaveFromTau{iFib}=(barymat(AllNodesThis,sX,bX)-barymat(AllNodesThis(end,:),sX,bX))*pinv(DX)*...
-            barymat(sX,sint,bint)*barymat(sTauFib,sint,bint)^(-1);
-        StartNodeByFib(iFib+1) = StartNodeByFib(iFib)+length(MasterNodes{iFib})+1;
-    end
-end
-MasterNodesMatrix = [blkdiag(MasterFirstSlaveFromTau{:}) zeros(sum(nTaus+1),Nlinks); ...
-    zeros(Nlinks,sum(nTaus)) eye(Nlinks)];
-
-% Compute a starting configuration based on tangent vectors and first slave
-% nodes (fibers are initially straight). This then gives you the length of
-% the links which are not free
-FirstSlaves=[];
-for iFib=1:nFib
-    if (iFib~=FixedFib)
-        FirstSlaves=[FirstSlaves; iFib SlaveNodes{iFib}(1,:)];
-    end
-end
-FoundInitial=zeros(1,nFib);
-X0s=zeros(nFib,3);
-MotherFibs = FixedFib;
-FoundInitial(FixedFib)=1;
-while (any(~FoundInitial))
-    % Set everyone who is slave to mother
-    for iM=1:length(MotherFibs)
-        MotherFib = MotherFibs(iM);
-        IndsToSet=find(FirstSlaves(:,3)==MotherFib);
-        SetSlave = eye(size(MasterNodesMatrix,1));
-        for jF=1:length(IndsToSet)
-            RowInd = IndsToSet(jF);
-            jFib = FirstSlaves(RowInd,1);
-            LinkIndex=FirstSlaves(RowInd,5);
-            MotherPt = X0s(MotherFib,:)+Taus(MotherFib,:)*MasterNodes{MotherFib}(FirstSlaves(RowInd,4));
-            if (LinkIndex<1) % a branch
-                X0s(jFib,:) = MotherPt;
-                % Set the corresponding entry in master nodes matrix
-                SetSlave(StartNodeByFib(jFib):StartNodeByFib(jFib+1)-1,...
-                    StartNodeByFib(MotherFib)-1+FirstSlaves(RowInd,4))=1;
-            else % a cross link
-                LinkPt = MotherPt + LinkLengths(LinkIndex)*LinkHats(LinkIndex,:);
-                X0s(jFib,:) = LinkPt - Taus(jFib,:)*FirstSlaves(RowInd,2);
-                % Set the corresponding entry in master nodes matrix
-                SetSlave(StartNodeByFib(jFib):StartNodeByFib(jFib+1)-1,...
-                    StartNodeByFib(MotherFib)-1+FirstSlaves(RowInd,4))=1;
-                SetSlave(StartNodeByFib(jFib):StartNodeByFib(jFib+1)-1,...
-                    StartNodeByFib(end)-1+LinkIndex)=LinkLengths(LinkIndex);
-            end
-            FoundInitial(jFib)=1;
+% 
+% Chebyshev points of first filament
+taus = zeros(nFib,3);
+taus(1,:)=[0 1 0];
+DOFs(1:N,:)=repmat(taus(1,:),N,1);
+X(1:Nx,:) = IntegrationMatrix{1}*DOFs(1:N,:);
+XMat = eye(nFib*N+NLinks+1 + Nx*nFib); % The positions in the top and DOFs in the bottom
+XMat(1:Nx,nFib*Nx+(1:N))=IntegrationMatrix{1};
+nPaths=length(paths);
+LinkNum=0;
+for iPath=1:nPaths
+    FilsInPath = paths{iPath};
+    for j=2:length(FilsInPath)
+        jFib = FilsInPath(j);
+        Upstream = FilsInPath(j-1);
+        % Find the corresponding row in the connection matrix
+        Row = find((Connections(:,1)==jFib & Connections(:,3)==Upstream) | ...
+            (Connections(:,3)==jFib & Connections(:,1)==Upstream));
+        ConnRow = Connections(Row,:);
+        if (ConnRow(1)==jFib)
+            FixPt = ConnRow(2);
+            MotherPt = ConnRow(4);
+        else
+            MotherPt = ConnRow(2);
+            FixPt = ConnRow(4);
         end
-        MasterNodesMatrix = SetSlave*MasterNodesMatrix;
-    end
-    MotherFibs =  FirstSlaves(IndsToSet,1);
-end
-
-% From the initial configuration, recompute the link lengths and hats (has
-% to be (slave - master))
-for iLink=1:Nlinks
-    SlaveFib = CrossLinks(iLink,3);
-    SlavePt = X0s(SlaveFib,:)+Taus(SlaveFib,:)*CrossLinks(iLink,4);
-    MasterFib = CrossLinks(iLink,1);
-    MasterPt = X0s(MasterFib,:)+Taus(MasterFib,:)*CrossLinks(iLink,2);
-    R = SlavePt-MasterPt;
-    LinkLengths(iLink) = norm(R);
-    LinkHats(iLink,:) = R/norm(R);
-end
-
-% Compute slave nodes
-SlaveNodesFromMaster = cell(nFib,nFib);
-SlaveNodesFromLinks = cell(nFib,1); 
-for iFib=1:nFib
-    TheseSlave = SlaveNodes{iFib};
-    if (iFib~=FixedFib)
-        TheseSlave = TheseSlave(2:end,:);
-    end
-    nSlave = length(TheseSlave(:,1));
-    for jFib=1:nFib
-        SlaveNodesFromMaster{iFib,jFib}=zeros(nSlave,length(MasterNodes{jFib})+(jFib~=FixedFib));
-    end
-    SlaveNodesFromLinks{iFib}=zeros(nSlave,Nlinks);
-    for iSlave=1:nSlave
-        jFib = TheseSlave(iSlave,2);
-        MasterIndex = TheseSlave(iSlave,3);
-        LinkIndex = TheseSlave(iSlave,4);
-        SlaveNodesFromMaster{iFib,jFib}(iSlave,MasterIndex)=1;
-        if (LinkIndex>0)
-            SlaveNodesFromLinks{iFib}(iSlave,LinkIndex)=LinkLengths(LinkIndex);
+        % Figure out if it's a branch or cross link
+        if (ConnRow(5)==0) % branch
+            taus(jFib,:)=RotateSeventy(taus(Upstream,:));
+        else % Cross link
+            LinkNum=LinkNum+1;
+            nRand = randn(2,3);
+            taus(jFib,:)=nRand(1,:)/norm(nRand(1,:));
+            LinkVec =nRand(2,:)/norm(nRand(2,:));
+            DOFs(N*nFib+LinkNum,:)=LinkVec;
         end
+        DOFs((jFib-1)*N+(1:N),:)= repmat(taus(jFib,:),N,1);
+        X((jFib-1)*Nx+(1:Nx),:) = IntegrationMatrix{jFib}*DOFs((jFib-1)*N+(1:N),:);
+        XFactor = eye(nFib*N+NLinks+1 + Nx*nFib);
+        XFactor((jFib-1)*Nx+(1:Nx),Nx*nFib+(jFib-1)*N+(1:N))=IntegrationMatrix{jFib};
+        XMat = XFactor*XMat;
+        X((jFib-1)*Nx+(1:Nx),:) = X((jFib-1)*Nx+(1:Nx),:)-barymat(FixPt,sX,bX)*X((jFib-1)*Nx+(1:Nx),:)+ ...
+            barymat(MotherPt,sX,bX)*X((Upstream-1)*Nx+(1:Nx),:);
+        XFactor = eye(nFib*N+NLinks+1 + Nx*nFib);
+        XFactor((jFib-1)*Nx+(1:Nx),(jFib-1)*Nx+(1:Nx))=eye(Nx)-repmat(barymat(FixPt,sX,bX),Nx,1);
+        XFactor((jFib-1)*Nx+(1:Nx),(Upstream-1)*Nx+(1:Nx)) = repmat(barymat(MotherPt,sX,bX),Nx,1);
+        if (ConnRow(5)>0)
+            X((jFib-1)*Nx+(1:Nx),:)=X((jFib-1)*Nx+(1:Nx),:)+LinkVec*ell;
+            XFactor((jFib-1)*Nx+(1:Nx),Nx*nFib+N*nFib+LinkNum)=ell;
+        end
+        XMat = XFactor*XMat;
     end
 end
-% The DOFs are [tau1, tau2, ..., tauN, Link1, Link2, LinkM, Xbar]
-SlaveNodesMatrix = [cell2mat(SlaveNodesFromMaster) cell2mat(SlaveNodesFromLinks)]*MasterNodesMatrix;
-DOFsToCustomNodes = zeros(nFib*Nx,sum(nTaus)+Nlinks);
-LastIndMaster=0;
-LastIndSlave=0;
-for iFib=1:nFib
-    nSlave = nSlaveNodes(iFib)-(iFib~=FixedFib);
-    nMaster = Nx-nSlave;
-    % Master nodes first
-    DOFsToCustomNodes((iFib-1)*Nx+(1:nMaster),:)=MasterNodesMatrix(LastIndMaster+(1:nMaster),:);
-    DOFsToCustomNodes((iFib-1)*Nx+nMaster+(1:nSlave),:)=SlaveNodesMatrix(LastIndSlave+(1:nSlave),:);
-    LastIndMaster=LastIndMaster+nMaster;
-    LastIndSlave=LastIndSlave+nSlave;
-end
-
-DOFs = [];
-for iFib=1:nFib
-    DOFs = [DOFs; repmat(Taus(iFib,:),nTaus(iFib),1)];
-end
-DOFs = [DOFs; LinkHats];
-
-Xcustom = DOFsToCustomNodes*DOFs;
-
-MasterNodesNow=MasterNodesMatrix*DOFs;
-SlaveNodesNow=SlaveNodesMatrix*DOFs;
-X0s=X0s+MasterNodesNow(1,:);
-nexttile(1)
-for iFib=1:nFib
-fpts=X0s(iFib,:)+(0:0.01:1)'*Taus(iFib,:);
-plot3(fpts(:,1),fpts(:,2),fpts(:,3))
-hold on
-set(gca,'ColorOrderIndex',iFib)
-scatter3(Xcustom((iFib-1)*Nx+(1:Nx),1),Xcustom((iFib-1)*Nx+(1:Nx),2),Xcustom((iFib-1)*Nx+(1:Nx),3),'filled')
-end
-PlotAspect
-
-NodesToChebMats = cell(nFib,1);
-for iFib=1:nFib
-    TotalNodes = [MasterNodes{iFib};SlaveNodes{iFib}(:,1)];
-    ChebToNodes = barymat(TotalNodes,sX,bX);
-    NodesToChebMats{iFib} = ChebToNodes^(-1);
-end
+XMat = XMat(1:Nx*nFib,Nx*nFib+1:end);
 AvgMat = 1/(nFib*L)*repmat(wX,1,nFib);
 SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
-ChebMatZeroMean = SubAvg*blkdiag(NodesToChebMats{:})*DOFsToCustomNodes;
-DOFsToChebNodes = [ChebMatZeroMean ones(nFib*Nx,1)];
-XchebZeroMean = DOFsToChebNodes*[DOFs; 0 0 0];
-nexttile(2)
-Rpl=barymat((0:0.01:1)',sX,bX);
+XMat = SubAvg*XMat;
+XMat(:,end)=1;
+
+% Remove the average
+AvgPt = zeros(1,3);
 for iFib=1:nFib
-set(gca,'ColorOrderIndex',iFib)
-fibpts = Rpl*XchebZeroMean((iFib-1)*Nx+(1:Nx),:);
-plot3(fibpts(:,1),fibpts(:,2),fibpts(:,3))
-hold on
+    AvgPt = AvgPt+1/(L*nFib)*wX*X((iFib-1)*Nx+(1:Nx),:);
 end
-for iLink=1:Nlinks
-    iFib = CrossLinks(iLink,1);
-    iPt = barymat(CrossLinks(iLink,2),sX,bX)*XchebZeroMean((iFib-1)*Nx+(1:Nx),:);
-    jFib = CrossLinks(iLink,3);
-    jPt = barymat(CrossLinks(iLink,4),sX,bX)*XchebZeroMean((jFib-1)*Nx+(1:Nx),:);
-    pPts=[iPt;jPt];
-    if (abs(LinkLengths(iLink)-0.1)<1e-10)
-        plot3(pPts(:,1),pPts(:,2),pPts(:,3),':m')
-    else
-        plot3(pPts(:,1),pPts(:,2),pPts(:,3),':k')
-    end
+X = X-AvgPt + DOFs(end,:);
+
+X2 = XMat*DOFs;
+max(abs(X-X2))
+
+for iFib=1:nFib
+    plot3(X((iFib-1)*Nx+(1:Nx),1),X((iFib-1)*Nx+(1:Nx),2),X((iFib-1)*Nx+(1:Nx),3))
+    hold on
 end
-PlotAspect
+
+for iConn=1:size(Connections,1)
+    iFib = Connections(iConn,1);
+    iS = Connections(iConn,2);
+    jFib = Connections(iConn,3);
+    jS = Connections(iConn,4);
+    pts = [barymat(iS,sX,bX)*X((iFib-1)*Nx+(1:Nx),:); barymat(jS,sX,bX)*X((jFib-1)*Nx+(1:Nx),:)];
+    plot3(pts(:,1),pts(:,2),pts(:,3),':ko')
+end
