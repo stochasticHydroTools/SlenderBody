@@ -1,16 +1,21 @@
-% Dense matrix operations
-%function BranchedFibers(seed,Nx,dt)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-
 %% Define constants 
-%seed=30;
-%Nx=13;
-%dt=1e-3;
-gtype=1;
 addpath(genpath('../'))
-BranchPts = [0.8]; % on fiber #1
-L = 1;   % microns
+seed=30;
+nFib = 10;
+N = 15;
+Nx = N+1;
+L = 1;
+ell = 0.1;
+% List of connections between filaments (fiber1, s1, fiber2, s2,
+% type). Type=0 for branch, 1 for cross link. 
+Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
+    4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
+    8 0.5 9 0 0; 9 0.5 10 0.1 1];
+% Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
+%     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0 0; ...
+%     8 0.5 9 0 0; 9 0.5 10 0 0];
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -20,57 +25,31 @@ mu = 1;
 
 %% Initialization
 rng(seed);
-nFib = 2;
-nBr = length(BranchPts);
-N = Nx-1;
 impcoeff = 1;
-makeMovie = 0;
+makeMovie = 1;
+dt = 1e-3;
 tf = 25;
-Tau0 = [0 1 0];
-RotAng = 70/180*pi;
-TauBr = Tau0*[cos(RotAng) -sin(RotAng) 0; sin(RotAng) cos(RotAng) 0; 0 0 1]';
-Xbar = [0 0 0];
-Xs3=[repmat(Tau0,N,1);repmat(TauBr,N,1)];
-BranchInds = zeros(1,nBr);
 
-%% Calculation of the X matrix
-% Grids for tangent vectors and integration
-[s,~,b] = chebpts(N,[0 L],gtype);
-sTru_Mother=s;
-sTru_Branches=s;
-for p=1:nBr
-    % This assumes branches are not too close together
-    [~,indmin]=min(abs(sTru_Mother-BranchPts(p)));
-    sTru_Mother(indmin)=BranchPts(p);
-    BranchInds(p) = indmin;
-end
-sTru_Branches(1)=0;
-ChebToConstr_Br = barymat(sTru_Branches,s,b);
-ConstrToCheb_Br = ChebToConstr_Br^(-1);
-ChebToConstr_Mother = barymat(sTru_Mother,s,b);
-ConstrToCheb_Mother = ChebToConstr_Mother^(-1);
-[sX,wX,bX]=chebpts(Nx,[0 L],2);
-DX = diffmat(Nx,[0 L],'chebkind2');
-BranchPtMat = barymat(BranchPts,sX,bX);
-ZeroMat = barymat(0,sX,bX);
+[paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,ConsMat,...
+    NodesByBranch] = InitializeConnectedNetwork(Connections,nFib,N,L);
+ConsMat=stackMatrix(ConsMat);
 
-% Set up so that the first links are on top of each other
-XMat_Mother = pinv(DX)*barymat(sX,s,b)*ConstrToCheb_Mother;
-XMat_Br = (eye(Nx)-ones(Nx,1).*ZeroMat)*pinv(DX)*barymat(sX,s,b)*ConstrToCheb_Br;
-
-DOFsToCustomNodes = [XMat_Mother zeros(Nx,N); ones(Nx,1)*BranchPtMat(1,:)*XMat_Mother XMat_Br];
-
-% Only involves the first link
-AvgMat = 1/(nFib*L)*repmat(wX,1,nFib);
-SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
-ChebMatZeroMean = SubAvg*DOFsToCustomNodes;
-DOFsToChebNodes = [ChebMatZeroMean ones(nFib*Nx,1)];
-XMat = stackMatrix(DOFsToChebNodes);
-InvXMat = pinv(XMat);%^(-1);
-DOFs = [reshape(Xs3',[],1); Xbar'];
-Xt = XMat* DOFs;
+% Initialize X and X inverse functions
+[X,XMat]=XConnectedNetwork(Connections,nFib,N,L,ell,...
+    paths,DOFs,IntegrationMatrix,1);
+XMat = stackMatrix(XMat);
+InvXMat = pinv(XMat);
+XFcn = @(dof3d) XConnectedNetwork(Connections,nFib,N,L,ell,...
+    paths,dof3d,IntegrationMatrix,0);
+XInvFcn = @(x3d) XInvConnectedNetwork(Connections,nFib,N,L,ell,...
+    paths,x3d,DiffMatrix);
+XTrFcn = @(lams) XTrConnectedNetwork(Connections,nFib,N,L,ell,...
+        paths,lams,IntegrationMatrix);
+Xt = reshape(X',[],1);
 
 % Bending energy matrix (2Nx grid)
+[sX,wX,bX] = chebpts(Nx,[0 L],2);
+DX = diffmat(Nx,[0 L],'chebkind2');
 [s2Nx, w2x, ~] = chebpts(2*Nx, [0 L], 2);
 W2Nx = diag(w2x);
 R_Nx_To_2Nx = barymat(s2Nx,sX,bX);
@@ -80,19 +59,17 @@ WTilde_Nx_Inverse = WTilde_Nx^(-1);
 BendingEnergyMatrix_Nx = Eb*stackMatrix(DX^2)'*WTilde_Nx*stackMatrix(DX^2);
 BendForceMat = -BendingEnergyMatrix_Nx;
 BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
-BendMatAll = blkdiag(BendForceMat,BendForceMat);
-BendMatHalfAll = blkdiag(BendMatHalf,BendMatHalf);
+BendMatAll = [];
+BendMatHalfAll = [];
+for iFib=1:nFib
+    BendMatAll = blkdiag(BendMatAll, BendForceMat);
+    BendMatHalfAll = blkdiag(BendMatHalfAll,BendMatHalf);
+end
 % Pre-computations for mobility
 MobConst = -log(eps^2)/(8*pi*mu);
-
-% Need constraint matrix here for the alpha evolution
-ConsMat = zeros(nBr,nFib*N);
-for p=1:nBr
-    ConsMat(p,BranchInds(p))=1;
-    ConsMat(p,p*N+1)=-1;
-end
-ConsMat=stackMatrix(ConsMat);
-ConsMat = [ConsMat zeros(nBr*3,3)];
+MobFcn = @(x1d) LocalDragMob(x1d,DX,MobConst,WTilde_Nx_Inverse);
+ApplyBigC = @(x,Xt) ApplyBigCMatrix(x,Xt,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
+        BendForceMat,impcoeff*dt,nFib);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
@@ -119,8 +96,8 @@ for count=0:stopcount
         PtsThisT = reshape(Xt,3,Nx*nFib)';
         if (makeMovie)
             clf;
-            %nexttile
             frameNum=frameNum+1;
+            % Fibers
             for iFib=1:nFib
                 plot3(RplNp1*PtsThisT((iFib-1)*Nx+1:iFib*Nx,1),RplNp1*PtsThisT((iFib-1)*Nx+1:iFib*Nx,2),...
                     RplNp1*PtsThisT((iFib-1)*Nx+1:iFib*Nx,3));
@@ -128,43 +105,38 @@ for count=0:stopcount
             end
             title(sprintf('$t=$ %2.1f',(frameNum-1)*saveEvery*dt),'Interpreter','latex')
             view(2)
-            ylim([-1 1])
-            xlim([-1 1])
+            %ylim([-1 1])
+            %xlim([-1 1])
             PlotAspect
-            Locs1=barymat(sTru_Mother,sX,bX)*PtsThisT(1:Nx,:);
-            DOF3=reshape(DOFs,3,[])';
-            Xs1=DOF3(1:N,:);
-            quiver3(Locs1(:,1),Locs1(:,2),Locs1(:,3),Xs1(:,1),Xs1(:,2),Xs1(:,3),'LineWidth',2,'AutoScaleFactor',0.5)
-            Locs2=barymat(sTru_Branches,sX,bX)*PtsThisT(Nx+1:2*Nx,:);
-            Xs2=DOF3(N+1:2*N,:);
-            quiver3(Locs2(:,1),Locs2(:,2),Locs2(:,3),Xs2(:,1),Xs2(:,2),Xs2(:,3),'LineWidth',2,'AutoScaleFactor',0.5)
+            % Connections
+            for iConn=1:size(Connections,1)
+                iFib = Connections(iConn,1);
+                iS = Connections(iConn,2);
+                jFib = Connections(iConn,3);
+                jS = Connections(iConn,4);
+                pts = [barymat(iS,sX,bX)*PtsThisT((iFib-1)*Nx+(1:Nx),:); ...
+                    barymat(jS,sX,bX)*PtsThisT((jFib-1)*Nx+(1:Nx),:)];
+                plot3(pts(:,1),pts(:,2),pts(:,3),':ko')
+            end
             movieframes(frameNum)=getframe(f);
         end
-        MotherEnd = barymat(L,sX,bX)*PtsThisT(1:Nx,:);
-        DaughterPts = barymat((0:0.001:1)',sX,bX)*PtsThisT(Nx+1:end,:);
-        dispMD = DaughterPts - MotherEnd;
-        [dispMDT,cpt] = min(sqrt(sum(dispMD.*dispMD,2)));
-        MDDist=[MDDist; dispMDT];
         Xpts=[Xpts;PtsThisT];
-        ee=[ee;norm(PtsThisT(end-Nx,:)-PtsThisT(1,:)); norm(PtsThisT(end,:)-PtsThisT(end-Nx+1,:))];
-        Xbars = [Xbars; DOFs(end-2:end,:)'];
     end  
 
     % Matrices at time step n 
     [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat);
     MWsym = zeros(nFib*3*Nx);
-    MWsymHalf = zeros(nFib*3*Nx);
+    RandomVelBM = zeros(nFib*3*Nx,1);
+    g = randn(3*Nx*nFib,1);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWsymOne = LocalDragMob(Xt(finds),DX,MobConst,WTilde_Nx_Inverse);
+        MWsymOne = MobFcn(Xt(finds));
         MWsymHalfOne = chol(MWsymOne)';
         MWsym(finds,finds)=MWsymOne;
-        MWsymHalf(finds,finds)=MWsymHalfOne;
+        % Obtain Brownian velocity
+        RandomVelBM(finds) = sqrt(2*kbT/dt)*MWsymHalfOne*g(finds);
     end
-    % Obtain Brownian velocity
-    g = randn(3*Nx*nFib,1);
-    RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
-
+    
     % Advance to midpoint
     OmegaTilde = KTogetherInv*RandomVelBM;
     Xtilde = updateByRotate(Xt,OmegaTilde,XMat,InvXMat,dt/2);
@@ -183,17 +155,33 @@ for count=0:stopcount
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
     Fext = zeros(3*Nx*nFib,1);
+    % Form Big matrix
+    [Nxx,Ndd] = size(Ktilde);
+    Ncc = size(ConsMat,1);
+    x=randn(960,1);
+    BigMatrix = [-MWsymTilde KWithImp zeros(Nxx,Ncc); ...
+        Ktilde' zeros(Ndd) ConsMat'; zeros(Ncc,Nxx) ConsMat zeros(Ncc)];
+    Ax = ApplyBigC(x,Xtilde);
+    Ax2 = BigMatrix*x;
+    max(abs(Ax-Ax2))
+    RHSAll = [MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0; zeros(Ndd+Ncc,1)];
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
     MobC = ConsMat'*((ConsMat*MobK*ConsMat') \ ConsMat);
     alphaU = (MobK - MobK*MobC*MobK)*...
         Ktilde'*(BendMatAll*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
+    alphaU2 = lsqminnorm(BigMatrix,RHSAll);
+    %[alphaU3,flag,~,~,rv] = gmres(@(y)ApplyBigC(y,Xtilde),RHSAll,[],[],100);
+    Lambda1 = MWsymTilde \ (KWithImp*alphaU-RHSAll(1:Nxx));
+    Gamma1 = (ConsMat*MobK*ConsMat') \ (ConsMat*MobK*Ktilde'*RHSAll(1:Nxx));
+    Lambda = alphaU2(1:Nxx);
+    Gamma = alphaU2(end-Ncc+1:end);
+    alphaU2 = alphaU2(Nxx+1:Nxx+Ndd);
     % Evolve constants by rotating and translating the link
     Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt);
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
 save(strcat('Branched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist')
-end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat)
     TausAndXBar = InvXMat*Xt;
