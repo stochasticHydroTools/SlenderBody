@@ -2,13 +2,14 @@
 % Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
-    ConstrMat,NodesByBranch] = InitializeConnectedNetwork(Connections,nFib,N,L)
+    ConstrMat,NodesByBranch,PairwiseXMats] = ...
+    InitializeConnectedNetwork(Connections,nFib,N,L,ell)
     Nx = N+1;
     % Check list
     for p=1:size(Connections,1)
-        if (Connections(p,4)==0 && Connections(p,5)~=0)
+        if (Connections(p,5)==0 && Connections(p,4)~=0)
             warning('Cannot have a branch away from s=0 on daughter, at connection number %d',p)
-            Connections(p,5)=0;
+            Connections(p,4)=0;
         end
     end
     NLinks = nnz(Connections(:,5));
@@ -38,7 +39,7 @@ function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
     
     % Default Chebyshev points for position and tangents (will be overwritten)
     [s,~,b]=chebpts(N,[0 L],1);
-    [sX,~,bX]=chebpts(Nx,[0 L],2);
+    [sX,wX,bX]=chebpts(Nx,[0 L],2);
     DX = diffmat(Nx,[0 L],'chebkind2');
     nReplaced = zeros(nFib,1);
     TangentVectorNodes = cell(nFib,1);
@@ -89,6 +90,7 @@ function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
     DOFs(1:N,:)=repmat(taus(1,:),N,1);
     nPaths=length(paths);
     LinkNum=0;
+    prevsn=-1;
     for iPath=1:nPaths
         FilsInPath = paths{iPath};
         for j=2:length(FilsInPath)
@@ -100,7 +102,8 @@ function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
             ConnRow = Connections(Row,:);
             % Figure out if it's a branch or cross link
             if (ConnRow(5)==0) % branch
-                taus(jFib,:)=rotate(taus(Upstream,:),70/180*pi*[0 0 1]);
+                prevsn=-1*prevsn;
+                taus(jFib,:)=rotate(taus(Upstream,:),prevsn*70/180*pi*[0 0 1]);
             else % Cross link
                 LinkNum=LinkNum+1;
                 nRand = [randn(2,2) zeros(2,1)];
@@ -109,6 +112,26 @@ function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
                 DOFs(N*nFib+LinkNum,:)=LinkVec;
             end
             DOFs((jFib-1)*N+(1:N),:)= repmat(taus(jFib,:),N,1);
+            if (ConnRow(1)==jFib)
+                FixPt = ConnRow(2);
+                MotherPt = ConnRow(4);
+            else
+                MotherPt = ConnRow(2);
+                FixPt = ConnRow(4);
+            end
+            % Pairwise integration matrices (for the prconditioner)
+            DOFsToCustomNodes = [IntegrationMatrix{Upstream} zeros(Nx,N); ...
+                ones(Nx,1).*barymat(MotherPt,sX,bX)*IntegrationMatrix{Upstream} ...
+                (eye(Nx)-repmat(barymat(FixPt,sX,bX),Nx,1))*IntegrationMatrix{jFib}];
+            if (ConnRow(5)>0)
+                DOFsToCustomNodes(Nx+1:end,end+1) = ell;
+            end
+            % Only involves the first link
+            AvgMat = 1/(2*L)*repmat(wX,1,2);
+            SubAvg = eye(Nx*2)-repmat(ones(Nx,1),2,1).*AvgMat;
+            ChebMatZeroMean = SubAvg*DOFsToCustomNodes;
+            DOFsToChebNodes = [ChebMatZeroMean ones(2*Nx,1)];
+            PairwiseXMats{iPath,j-1} = stackMatrix(DOFsToChebNodes);
         end
     end
 end
