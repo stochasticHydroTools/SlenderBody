@@ -2,7 +2,7 @@
 % Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
-    ConstrMat,NodesByBranch,PairwiseXMats] = ...
+    NodesByBranch,PairwiseXMats] = ...
     InitializeConnectedNetwork(Connections,nFib,N,L,ell)
     Nx = N+1;
     % Check list
@@ -15,7 +15,6 @@ function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
     NLinks = nnz(Connections(:,5));
     nBr = length(Connections(:,5))-NLinks;
     DOFs = zeros(nFib*N+NLinks+1,3);
-    ConstrMat = zeros(nBr,nFib*N+NLinks+1);
     
     % Make connected graph
     G = graph(Connections(:,1),Connections(:,3));
@@ -69,8 +68,6 @@ function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
         jNodes(N+1-nReplaced(jFib))=jS;
         TangentVectorNodes{iFib}=iNodes;
         TangentVectorNodes{jFib}=jNodes;
-        ConstrMat(iBr,N*(iFib-1)+N+1-nReplaced(iFib))=1;
-        ConstrMat(iBr,N*(jFib-1)+N+1-nReplaced(jFib))=-1;
         NodesByBranch = [NodesByBranch; N*(iFib-1)+N+1-nReplaced(iFib) ...
             N*(jFib-1)+N+1-nReplaced(jFib)];
     end
@@ -125,13 +122,26 @@ function [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
                 (eye(Nx)-repmat(barymat(FixPt,sX,bX),Nx,1))*IntegrationMatrix{jFib}];
             if (ConnRow(5)>0)
                 DOFsToCustomNodes(Nx+1:end,end+1) = ell;
+            else
+                masterpt = find(TangentVectorNodes{Upstream}==MotherPt);
+                slavept = N+find(TangentVectorNodes{jFib}==FixPt);
+                AssignMat = eye(N*2+1);
+                for iBr=1:size(NodesByBranch,1)
+                    AssignMat(slavept,:)=0;
+                    AssignMat(slavept,masterpt)=1;
+                end
+                AssignMat(:,slavept)=[];
+                AssignMat=stackMatrix(AssignMat);
             end
             % Only involves the first link
             AvgMat = 1/(2*L)*repmat(wX,1,2);
             SubAvg = eye(Nx*2)-repmat(ones(Nx,1),2,1).*AvgMat;
             ChebMatZeroMean = SubAvg*DOFsToCustomNodes;
             DOFsToChebNodes = [ChebMatZeroMean ones(2*Nx,1)];
-            PairwiseXMats{iPath,j-1} = stackMatrix(DOFsToChebNodes);
+            PairwiseXMats{iPath,j-1,1} = stackMatrix(DOFsToChebNodes);
+            if (ConnRow(5)==0)
+                PairwiseXMats{iPath,j-1,2} = AssignMat;
+            end
         end
     end
 end

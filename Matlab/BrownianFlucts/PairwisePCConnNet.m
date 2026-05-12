@@ -1,21 +1,18 @@
-function x = PairwisePCConnNet(RHS,X1D,XInvFcn,MobFcn,NodesByBranch,...
-    PairwiseXMats,paths,Connections,BendForceMat,impcodt,nFib,ell)
+function x = PairwisePCConnNet(RHS,PrecompPCMats,paths,Connections,NodesByBranch,nFib,Nx)
 
-    Nxx = length(X1D);
-    Nx = Nxx/(3*nFib);
+    Nxx = 3*Nx*nFib;
     N = Nx - 1;
-    Ncc = size(NodesByBranch,1)*3;
-    Ndd = length(RHS)-Nxx-Ncc;
+    BranchedFibs = Connections(Connections(:,5)==0,3);
+    NFreeTaus = N*ones(nFib,1);
+    NFreeTaus(BranchedFibs)=NFreeTaus(BranchedFibs)-1;
+    TauIndices = [0;cumsum(NFreeTaus)];
+    Ndd = length(RHS)-Nxx;
     
     Lam_All = zeros(Nxx,1);
     alphaU_All = zeros(Ndd,1);
-    Gamma_All = zeros(Ncc,1);
     
-    X3 = reshape(X1D,3,[])';
-    DOFs = XInvFcn(X3);
     U = RHS(1:Nxx);
     V = RHS(Nxx+(1:Ndd));
-    W = RHS(Nxx+Ndd+(1:Ncc));
    
     % Go connection by connection, the total solution is then a
     % superposition
@@ -27,92 +24,54 @@ function x = PairwisePCConnNet(RHS,X1D,XInvFcn,MobFcn,NodesByBranch,...
             jFib = FilsInPath(j);
             Upstream = FilsInPath(j-1);
             upInds = ((Upstream-1)*3*Nx+1:Upstream*3*Nx)';
-            upIndsTau = ((Upstream-1)*3*N+1:Upstream*3*N)';
+            upIndsTau = (3*TauIndices(Upstream)+1:3*TauIndices(Upstream+1))';
             jInds = ((jFib-1)*3*Nx+1:jFib*3*Nx)';
-            jIndsTau= ((jFib-1)*3*N+1:jFib*3*N)';
+            jIndsTau= (3*TauIndices(jFib)+1:3*TauIndices(jFib+1))';
             UThis = U([upInds;jInds]);
-            VThis = V([upIndsTau;jIndsTau]);
+            if (length(upIndsTau)<3*N)
+                % Add the upstream nodes
+                UpConn = find(ceil(NodesByBranch(:,2)/N)==Upstream);
+                UpNode = NodesByBranch(UpConn,1);
+                UpFib = ceil(UpNode/N);
+                UpNode = UpNode-(UpFib-1)*N;
+                Vindex = 3*(TauIndices(UpFib)+UpNode)+(-2:0)';
+                upIndsTau = [upIndsTau;Vindex];
+            else
+            end
+            VThis = V([upIndsTau; jIndsTau]);
 
             % Find the corresponding row in the connection matrix
             Row = find((Connections(:,1)==jFib & Connections(:,3)==Upstream) | ...
                 (Connections(:,3)==jFib & Connections(:,1)==Upstream));
             ConnRow = Connections(Row,:);
-            XMat=PairwiseXMats{iPath,j-1};
 
-            TheseTaus = DOFs([(Upstream-1)*N+1:Upstream*N;...
-                (jFib-1)*N+1:jFib*N]',:);
             if (ConnRow(5)>0) % Cross link
                 LinkNum=LinkNum+1;
-                TheseTaus = [TheseTaus; DOFs(nFib*N+LinkNum,:)];
                 VThis=[VThis; V(3*nFib*N+3*(LinkNum-1)+(1:3))];
             end
             VThis=[VThis;V(end-2:end)];
 
-            K =  KWithLink(XMat,TheseTaus);
-            M = blkdiag(MobFcn(X1D(upInds)),MobFcn(X1D(jInds)));
-            KWithImp = K-impcodt*M*blkdiag(BendForceMat,BendForceMat)*K;
-        
-            if ~isempty(NodesByBranch)
-                BranchedFibs = ceil(NodesByBranch/N);
-                BranchInd = find((BranchedFibs(:,1)==Upstream & BranchedFibs(:,2)==jFib) | ...
-                    (BranchedFibs(:,2)==Upstream & BranchedFibs(:,1)==jFib));
-            else
-                BranchInd=[];
-            end
-            if (~isempty(BranchInd))
-                IndOnI = NodesByBranch(BranchInd,1)-(Upstream-1)*N;
-                IndOnJ = NodesByBranch(BranchInd,2)-(jFib-1)*N;
-                if (BranchedFibs(BranchInd,2)==Upstream)
-                    IndOnI = NodesByBranch(BranchInd,2)-(Upstream-1)*N;
-                    IndOnJ = NodesByBranch(BranchInd,1)-(jFib-1)*N;
-                end
-                B = zeros(1,2*N+1);
-                B(N+IndOnJ)=-1;
-                B(IndOnI)=1;
-                B = stackMatrix(B);
-                BigSys = [-M KWithImp zeros(6*Nx,3); K' zeros(3*(2*N+1)) B'; ...
-                    zeros(3,6*Nx) B zeros(3)];
-                WThis = W(3*(BranchInd-1)+(1:3));
-            else
-                BigSys = [-M KWithImp; K' zeros(6*Nx)];
-                WThis=[];
-            end
-            
             % Solve system
             % Schur complement (slightly faster)
-            % NMat = pinv(K'*(M\KWithImp));
-            % KprimeMinvU = K' * (M \ UThis);
-            % Gam = (B*NMat*B') \ (B*NMat*KprimeMinvU - WThis+B*NMat*VThis);
-            % alphaU = NMat*(KprimeMinvU-B'*Gam+VThis);
-            % Lam = M \ (KWithImp*alphaU - UThis);
-            % x1=[Lam;alphaU;Gam];
+            NMat = PrecompPCMats{iPath,j-1,1};
+            M = PrecompPCMats{iPath,j-1,2};
+            K = PrecompPCMats{iPath,j-1,3};
+            KWithImp = PrecompPCMats{iPath,j-1,4};
+            KprimeMinvU = K' * (M \ UThis);
+            alphaU = NMat*(KprimeMinvU+VThis);
+            Lam = M \ (KWithImp*alphaU - UThis);
 
-            x1=lsqminnorm(BigSys,[UThis;VThis;WThis]);
-            Lam_All([upInds;jInds])=Lam_All([upInds;jInds])+x1(1:6*Nx);
-            alphaU_All([upIndsTau;jIndsTau])=alphaU_All([upIndsTau;jIndsTau])+...
-                x1(6*Nx+1:6*Nx+6*N);
-            if (~isempty(BranchInd))
-                Gamma_All(3*(BranchInd-1)+(1:3))=x1(end-2:end);
-                U0 = x1(end-5:end-3);
+            Lam_All([upInds;jInds])=Lam_All([upInds;jInds])+Lam;
+            if (ConnRow(5)>0)
+                alphaU_All([upIndsTau;jIndsTau])=alphaU_All([upIndsTau;jIndsTau])+...
+                    alphaU(1:end-6);
+                alphaU_All(nFib*3*N+(LinkNum-1)*3+(1:3))=alphaU(end-5:end-3);
             else
-                alphaU_All(nFib*3*N+(LinkNum-1)*3+(1:3))=x1(6*Nx+6*N+(1:3));
-                U0 = x1(end-2:end);
+                alphaU_All([upIndsTau;jIndsTau])=alphaU_All([upIndsTau;jIndsTau])+...
+                    alphaU(1:end-3);
             end
-            alphaU_All(end-2:end)=alphaU_All(end-2:end)+U0;
+            alphaU_All(end-2:end)=alphaU_All(end-2:end)+alphaU(end-2:end);
         end
     end
-    x=[Lam_All;alphaU_All;Gamma_All];
-end
-
-function KTogether = KWithLink(XMat,Tau3)
-    TauVelocity = zeros(3*size(Tau3,1)+3);
-    % The matrix for all the taus (incl links) to evolve
-    for iR =1:size(Tau3,1)
-        inds = (iR-1)*3+1:iR*3;
-        CMat = CPMatrix(Tau3(iR,:));
-        TauVelocity(inds,inds) =  -CMat;
-    end
-    % The COM
-    TauVelocity(end-2:end,end-2:end)=eye(3);
-    KTogether = XMat*TauVelocity;
+    x=[Lam_All;alphaU_All];
 end

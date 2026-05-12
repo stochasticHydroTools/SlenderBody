@@ -34,8 +34,10 @@ function [Clf,X1stars,X2stars] = getCLforceEn(links,X,Runi, K, rls,g,Ld)
         X2stars(iL,:)=X2star;
         prefac = (norm(X1star-X2star)-rl)*(X1star-X2star)/norm(X1star-X2star);
         R1 = Runi(fib1pt,:);
+        if (norm(X1star-X2star)>0)
         Clf(inds1,:)=Clf(inds1,:)-K*prefac.*R1';
         R2 = Runi(fib2pt,:);
         Clf(inds2,:)=Clf(inds2,:)+K*prefac.*R2';
+        end
     end
 end
