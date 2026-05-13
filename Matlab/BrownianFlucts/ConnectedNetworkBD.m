@@ -13,7 +13,7 @@ ell = 0.1;
 %     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
 %     8 0.5 9 0 0; 9 0.5 10 0.1 1];
 %nFib=10;
-nFib=20;
+nFib=2;
 Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 Connections(2:3:end,5)=1;
 NLinks = sum(Connections(:,5));
@@ -29,8 +29,8 @@ mu = 1;
 rng(seed);
 impcoeff = 1;
 makeMovie = 1;
-dt = 1e-3;
-tf = 1e-2;
+dt = 1e-4;
+tf = 1e-3;
 
 [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
     NodesByBranch,PairwiseXMats] = ...
@@ -152,9 +152,7 @@ for count=0:stopcount
         OmegaTilde(iR,:)=cross(DOFs(iR,:),OmegaTilde(iR,:));
     end
     if (~isempty(NodesByBranch))
-    AvgOmBranch = 1/2*(OmegaTilde(NodesByBranch(:,1),:)+OmegaTilde(NodesByBranch(:,2),:));
-    OmegaTilde(NodesByBranch(:,1),:)=AvgOmBranch;
-    OmegaTilde(NodesByBranch(:,2),:)=AvgOmBranch;
+        OmegaTilde(NodesByBranch(:,2),:)=OmegaTilde(NodesByBranch(:,1),:);
     end
     TauBarTilde = updateByRotate(DOFs,reshape(OmegaTilde',[],1),dt/2);
     Xtilde = reshape(XFcn(TauBarTilde)',[],1);

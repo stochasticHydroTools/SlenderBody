@@ -4,8 +4,8 @@ function ConnectedNetworkBDDirect(seed,Nx,dt)
 %% Define constants 
 addpath(genpath('../'))
 %seed=30;
+%Nx = 16;
 N = Nx-1;
-%Nx = N+1;
 L = 1;
 ell = 0.1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
@@ -13,9 +13,6 @@ ell = 0.1;
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
 %     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
 %     8 0.5 9 0 0; 9 0.5 10 0.1 1];
-% Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
-%     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0 0; ...
-%     8 0.5 9 0 0; 9 0.5 10 0 0];
 nFib=2;
 Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 Connections(2:3:end,5)=1;
@@ -30,7 +27,7 @@ mu = 1;
 rng(seed);
 impcoeff = 1;
 makeMovie = 0;
-%dt = 1e-3;
+%dt = 1e-4;
 tf = 25;
 
 [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
@@ -39,7 +36,7 @@ tf = 25;
 
 % Initialize X and X inverse functions
 [X,XMat]=XConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,DOFs,IntegrationMatrix,1);
+    paths,DOFs,IntegrationMatrix,0);
 XMat = stackMatrix(XMat);
 % Alternative def of X^-1
 LinkInds = find(Connections(:,5)==1);
@@ -59,15 +56,18 @@ end
 InvXMat(end,:)=1/(nFib*L)*repmat(wX,1,nFib);
 InvXMat = stackMatrix(InvXMat);
 AssignMat = eye(N*nFib+NLinks+1);
+InvAssignMat = eye(N*nFib+NLinks+1);
 for iBr=1:size(NodesByBranch,1)
     AssignMat(NodesByBranch(iBr,2),:)=0;
     AssignMat(NodesByBranch(iBr,2),NodesByBranch(iBr,1))=1;
 end
 if ~isempty(NodesByBranch)
 AssignMat(:,NodesByBranch(:,2))=[];
+InvAssignMat(NodesByBranch(:,2),:)=[];
 end
 AssignMat=stackMatrix(AssignMat);
-InvAssignMat = pinv(AssignMat);
+InvAssignMat=stackMatrix(InvAssignMat);
+
 % XFcn = @(dof3d) XConnectedNetwork(Connections,nFib,N,L,ell,...
 %     paths,dof3d,IntegrationMatrix,0);
 % XInvFcn = @(x3d) XInvConnectedNetwork(Connections,nFib,N,L,ell,...
@@ -106,7 +106,6 @@ saveEvery=max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
 MDDist=[];
-Xbars=[];
 Npl=100;
 [spl,~,~]=chebpts(Npl,[0 L]);
 RplNp1 = barymat(spl,sX,bX);
@@ -121,7 +120,6 @@ tStart=tic;
 for count=0:stopcount
     t=count*dt;
     if (mod(count,saveEvery)==0)
-        DOFs = InvXMat*Xt;
         PtsThisT = reshape(Xt,3,Nx*nFib)';
         if (makeMovie)
             clf;
@@ -155,10 +153,11 @@ for count=0:stopcount
         [dispMDT,cpt] = min(sqrt(sum(dispMD.*dispMD,2)));
         MDDist=[MDDist; dispMDT];
         Xpts=[Xpts;PtsThisT];
+        ee=[ee;norm(PtsThisT(1,:)-PtsThisT(Nx,:));norm(PtsThisT(Nx+1,:)-PtsThisT(2*Nx,:))];
     end  
 
     % Matrices at time step n 
-    [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
+    [~,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
         AssignMat,InvAssignMat);
     MWsym = zeros(nFib*3*Nx);
     RandomVelBM = zeros(nFib*3*Nx,1);
@@ -194,9 +193,8 @@ for count=0:stopcount
     Fext = zeros(3*Nx*nFib,1);
     %[Nxx,Ndd] = size(Ktilde);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
-    %RHSAll = [MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0; zeros(Ndd,1)];
-    alphaUProj = MobK*Ktilde'*(BendMatAll*Xt+ Fext + ...
-        MWsymTilde \ (RandomVel + U0));
+    RHSU = MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0;
+    alphaUProj = MobK*Ktilde'*(MWsymTilde \ (RHSU));
     %LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSAll(1:Nxx));
     alphaU = AssignMat*alphaUProj;
 
@@ -204,7 +202,7 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('BranchedN_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist')
+save(strcat('BranchedN_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist','ee')
 end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
