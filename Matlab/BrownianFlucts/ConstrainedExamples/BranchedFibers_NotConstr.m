@@ -7,7 +7,7 @@ function BranchedFibers_NotConstr(seed,Nx,dt,Kstiff,Kang)
 %Kstiff=1000;
 %Kang=0.2;
 gtype=1;
-addpath(genpath('../'))
+addpath(genpath('../../'))
 BranchLoc = 0.8;
 nBr=length(BranchLoc);
 %close all;
@@ -22,7 +22,7 @@ lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 1;
 impcoeff = 1;
-makeMovie = 0;
+makeMovie = 1;
 tf = 25;
 Kcl=Kstiff;
 Tau0 = [0 1 0];
@@ -66,7 +66,7 @@ Xt = zeros(3*nFib*Nx,1);
 for iFib=1:nFib
     Xt(3*Nx*(iFib-1)+1:3*Nx*iFib) = XonNp1Mat* [reshape(Xs3(N*(iFib-1)+1:N*iFib,:)',[],1);Xbar(:,iFib)];
 end
-saveEvery=max(1,floor(1e-2/dt+1e-10));
+saveEvery=max(1,floor(1e-4/dt+1e-10));
 MobConst = -log(eps^2)/(8*pi*mu);
 
 %% Initialization 
