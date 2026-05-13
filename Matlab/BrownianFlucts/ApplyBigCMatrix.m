@@ -50,9 +50,11 @@ function Ax = ApplyBigCMatrix(x,X1D,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
         KTLam(iTau,:)=cross(DOFs(iTau,:),XTLam(iTau,:));
     end
     % Assign the branch nodes
-    KTLam(NodesByBranch(:,1),:)=KTLam(NodesByBranch(:,1),:)+...
-        KTLam(NodesByBranch(:,2),:);
-    KTLam(NodesByBranch(:,2),:)=[];
+    if (~isempty(NodesByBranch))
+        KTLam(NodesByBranch(:,1),:)=KTLam(NodesByBranch(:,1),:)+...
+            KTLam(NodesByBranch(:,2),:);
+        KTLam(NodesByBranch(:,2),:)=[];
+    end
     Eq2 = reshape(KTLam',[],1);
     
     Ax=[Eq1;Eq2];

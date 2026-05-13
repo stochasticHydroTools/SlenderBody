@@ -47,7 +47,7 @@ function x = PairwisePCConnNet(RHS,PrecompPCMats,paths,Connections,NodesByBranch
 
             if (ConnRow(5)>0) % Cross link
                 LinkNum=LinkNum+1;
-                VThis=[VThis; V(3*nFib*N+3*(LinkNum-1)+(1:3))];
+                VThis=[VThis; V(3*TauIndices(end)+3*(LinkNum-1)+(1:3))];
             end
             VThis=[VThis;V(end-2:end)];
 
@@ -65,7 +65,8 @@ function x = PairwisePCConnNet(RHS,PrecompPCMats,paths,Connections,NodesByBranch
             if (ConnRow(5)>0)
                 alphaU_All([upIndsTau;jIndsTau])=alphaU_All([upIndsTau;jIndsTau])+...
                     alphaU(1:end-6);
-                alphaU_All(nFib*3*N+(LinkNum-1)*3+(1:3))=alphaU(end-5:end-3);
+                alphaU_All(3*TauIndices(end)+3*(LinkNum-1)+(1:3))=...
+                    alphaU(end-5:end-3);
             else
                 alphaU_All([upIndsTau;jIndsTau])=alphaU_All([upIndsTau;jIndsTau])+...
                     alphaU(1:end-3);

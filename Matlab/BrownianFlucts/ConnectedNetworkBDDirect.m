@@ -15,9 +15,9 @@ ell = 0.1;
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
 %     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0 0; ...
 %     8 0.5 9 0 0; 9 0.5 10 0 0];
-nFib=3;
+nFib=20;
 Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
-%Connections(:,5)=1;
+Connections(2:3:end,5)=1;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -28,7 +28,7 @@ mu = 1;
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 0;
+makeMovie = 1;
 dt = 1e-3;
 tf = 1e-2;
 
@@ -57,12 +57,14 @@ for iLink=1:NLinks
 end
 InvXMat(end,:)=1/(nFib*L)*repmat(wX,1,nFib);
 InvXMat = stackMatrix(InvXMat);
-AssignMat = eye(N*nFib+1);
+AssignMat = eye(N*nFib+NLinks+1);
 for iBr=1:size(NodesByBranch,1)
     AssignMat(NodesByBranch(iBr,2),:)=0;
     AssignMat(NodesByBranch(iBr,2),NodesByBranch(iBr,1))=1;
 end
+if ~isempty(NodesByBranch)
 AssignMat(:,NodesByBranch(:,2))=[];
+end
 AssignMat=stackMatrix(AssignMat);
 InvAssignMat = pinv(AssignMat);
 XFcn = @(dof3d) XConnectedNetwork(Connections,nFib,N,L,ell,...

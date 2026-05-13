@@ -13,9 +13,9 @@ ell = 0.1;
 %     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
 %     8 0.5 9 0 0; 9 0.5 10 0.1 1];
 %nFib=10;
-nFib=3;
+nFib=20;
 Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
-%Connections(3:3:end,5)=Connections(3:3:end,5)+1;
+Connections(2:3:end,5)=1;
 NLinks = sum(Connections(:,5));
 NBranch = length(Connections(:,5))-NLinks;
 rtrue = 4e-3; % 4 nm radius
@@ -151,9 +151,11 @@ for count=0:stopcount
     for iR =1:size(OmegaTilde,1)-1
         OmegaTilde(iR,:)=cross(DOFs(iR,:),OmegaTilde(iR,:));
     end
+    if (~isempty(NodesByBranch))
     AvgOmBranch = 1/2*(OmegaTilde(NodesByBranch(:,1),:)+OmegaTilde(NodesByBranch(:,2),:));
     OmegaTilde(NodesByBranch(:,1),:)=AvgOmBranch;
     OmegaTilde(NodesByBranch(:,2),:)=AvgOmBranch;
+    end
     TauBarTilde = updateByRotate(DOFs,reshape(OmegaTilde',[],1),dt/2);
     Xtilde = reshape(XFcn(TauBarTilde)',[],1);
 
