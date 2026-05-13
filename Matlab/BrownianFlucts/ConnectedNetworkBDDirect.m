@@ -1,10 +1,11 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
+function ConnectedNetworkBDDirect(seed,Nx,dt)
 %% Define constants 
 addpath(genpath('../'))
-seed=30;
-N = 15;
-Nx = N+1;
+%seed=30;
+N = Nx-1;
+%Nx = N+1;
 L = 1;
 ell = 0.1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
@@ -15,7 +16,7 @@ ell = 0.1;
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
 %     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0 0; ...
 %     8 0.5 9 0 0; 9 0.5 10 0 0];
-nFib=20;
+nFib=2;
 Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 Connections(2:3:end,5)=1;
 rtrue = 4e-3; % 4 nm radius
@@ -28,9 +29,9 @@ mu = 1;
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 1;
-dt = 1e-3;
-tf = 1e-2;
+makeMovie = 0;
+%dt = 1e-3;
+tf = 25;
 
 [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
     NodesByBranch] = InitializeConnectedNetwork(Connections,nFib,N,L,ell);
@@ -67,12 +68,12 @@ AssignMat(:,NodesByBranch(:,2))=[];
 end
 AssignMat=stackMatrix(AssignMat);
 InvAssignMat = pinv(AssignMat);
-XFcn = @(dof3d) XConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,dof3d,IntegrationMatrix,0);
-XInvFcn = @(x3d) XInvConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,x3d,DiffMatrix);
-XTrFcn = @(lams) XTrConnectedNetwork(Connections,nFib,N,L,ell,...
-        paths,lams,IntegrationMatrix);
+% XFcn = @(dof3d) XConnectedNetwork(Connections,nFib,N,L,ell,...
+%     paths,dof3d,IntegrationMatrix,0);
+% XInvFcn = @(x3d) XInvConnectedNetwork(Connections,nFib,N,L,ell,...
+%     paths,x3d,DiffMatrix);
+% XTrFcn = @(lams) XTrConnectedNetwork(Connections,nFib,N,L,ell,...
+%         paths,lams,IntegrationMatrix);
 Xt = reshape(X',[],1);
 
 % Bending energy matrix (2Nx grid)
@@ -96,12 +97,12 @@ end
 % Pre-computations for mobility
 MobConst = -log(eps^2)/(8*pi*mu);
 MobFcn = @(x1d) LocalDragMob(x1d,DX,MobConst,WTilde_Nx_Inverse);
-ApplyBigC = @(x,Xt) ApplyBigCMatrix(x,Xt,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
-        BendForceMat,impcoeff*dt,nFib);
+% ApplyBigC = @(x,Xt) ApplyBigCMatrix(x,Xt,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
+%         BendForceMat,impcoeff*dt,nFib);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
-saveEvery=1;%max(1,floor(1e-2/dt+1e-10));
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
 MDDist=[];
@@ -191,19 +192,20 @@ for count=0:stopcount
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
     Fext = zeros(3*Nx*nFib,1);
-    [Nxx,Ndd] = size(Ktilde);
+    %[Nxx,Ndd] = size(Ktilde);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
-    RHSAll = [MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0; zeros(Ndd,1)];
+    %RHSAll = [MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0; zeros(Ndd,1)];
     alphaUProj = MobK*Ktilde'*(BendMatAll*Xt+ Fext + ...
         MWsymTilde \ (RandomVel + U0));
-    LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSAll(1:Nxx));
+    %LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSAll(1:Nxx));
     alphaU = AssignMat*alphaUProj;
 
     Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt);
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('Branched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist')
+save(strcat('BranchedN_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist')
+end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
     AssignMat,InvAssignMat)
