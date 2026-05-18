@@ -23,7 +23,7 @@ eps = rtrue/L;
 kbT = 4.1e-3;
 lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
-mu = 1;
+mu = 0.6;
 
 %% Initialization
 rng(seed);

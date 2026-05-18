@@ -4,7 +4,7 @@ function SingleFreeFilament(seed,Nx,dt)
 N = Nx-1;
 %dt=1e-4;
 gtype=1;
-addpath(genpath('../../'))
+addpath(genpath('../'))
 %close all;
 rng(seed);
 L = 1;   % microns
@@ -44,7 +44,7 @@ BendForceMat = -BendingEnergyMatrix_Np1;
 BendMatHalf_Np1 = real(BendingEnergyMatrix_Np1^(1/2));
 
 Xt = XonNp1Mat*[reshape(Xs3',[],1); 0; 0; 0];
-saveEvery=10;%max(1,floor(1e-2/dt+1e-10));
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 MobConst = -log(eps^2)/(8*pi*mu);
 
 %% Initialization 
@@ -119,17 +119,6 @@ for count=0:stopcount
     delta = 1e-5;
     XsPlus = rotateTau(Xs3,reshape(OmRFD(1:3*N),3,[])',delta);
     XPlus = XonNp1Mat*[reshape(XsPlus',[],1); zeros(3,1)];
-    KPlus = KonNp1(XsPlus,XonNp1Mat,repmat(eye(3),N+1,1));
-    TauVelocity = zeros(3*N+3);
-    % The matrix for all the taus (incl links) to evolve
-    for iR =1:size(XsPlus,1)
-        inds = (iR-1)*3+1:iR*3;
-        CMat = CPMatrix(XsPlus(iR,:));
-        TauVelocity(inds,inds) =  -CMat;
-    end
-    % The COM
-    TauVelocity(end-2:end,end-2:end)=eye(3);
-    KPlusInv = -TauVelocity*InvXonNp1Mat;
     MWSymPlus = LocalDragMob(XPlus,DNp1,MobConst,WTilde_Np1_Inverse);
     M_RFD = kbT/delta*(MWSymPlus-MWsym)*KInv'*g3;
 

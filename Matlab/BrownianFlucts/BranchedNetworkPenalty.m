@@ -1,11 +1,11 @@
-function BranchedNetworkPenalty(seed,Nx,dt,Kstiff,Kang)
+function BranchedNetworkPenalty(seed,Nx,dt)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 %seed=1;
 %Nx=8;
 %dt=1e-3;
-%Kstiff=10;
-%Kang=0.002;
+Kstiff=0.01/dt;
+Kang=2e-6/dt;
 gtype=1;
 addpath(genpath('../'))
 BranchLoc = 0.8;
@@ -35,7 +35,7 @@ RotAng = 70/180*pi;
     NodesByBranch,PairwiseXMats] = ...
     InitializeConnectedNetwork(Connections,nFib,N,L,ell);
 X=XConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,DOFs,IntegrationMatrix,1);
+    paths,DOFs,IntegrationMatrix,0);
 Xt = reshape(X',[],1);
 
 % Chebyshev grids
