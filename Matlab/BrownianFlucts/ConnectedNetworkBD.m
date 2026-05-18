@@ -15,7 +15,7 @@ ell = 0.1;
 %nFib=10;
 nFib=2;
 Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
-Connections(2:3:end,5)=1;
+%Connections(2:3:end,5)=1;
 NLinks = sum(Connections(:,5));
 NBranch = length(Connections(:,5))-NLinks;
 rtrue = 4e-3; % 4 nm radius
@@ -29,8 +29,8 @@ mu = 1;
 rng(seed);
 impcoeff = 1;
 makeMovie = 1;
-dt = 1e-4;
-tf = 1e-3;
+dt = 1e-3;
+tf = 0.1;
 
 [paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
     NodesByBranch,PairwiseXMats] = ...
@@ -45,6 +45,8 @@ XInvFcn = @(x3d) XInvConnectedNetwork(Connections,nFib,N,L,ell,...
     paths,x3d,DiffMatrix);
 XTrFcn = @(lams) XTrConnectedNetwork(Connections,nFib,N,L,ell,...
         paths,lams,IntegrationMatrix);
+XInvTrFcn = @(dof3d) XInvTrConnectedNetwork(Connections,nFib,N,L,ell,...
+        paths,dof3d,DiffMatrix);
 DOFs = XInvFcn(X);
 Xt = reshape(X',[],1);
 Nxx = 3*Nx*nFib;
@@ -151,8 +153,21 @@ for count=0:stopcount
     for iR =1:size(OmegaTilde,1)-1
         OmegaTilde(iR,:)=cross(DOFs(iR,:),OmegaTilde(iR,:));
     end
+    OmInitial=OmegaTilde;
     if (~isempty(NodesByBranch))
         OmegaTilde(NodesByBranch(:,2),:)=OmegaTilde(NodesByBranch(:,1),:);
+        OmInitial(NodesByBranch(:,2),:)=[];
+    end
+    CGRHS = ApplyKT(RandomVelBM,DOFs,NodesByBranch,XTrFcn);
+    Om2 = cgs(@(x) ApplyKTK(x,DOFs,NodesByBranch,XFcn,XTrFcn),CGRHS,...
+        1e-6,1000,[],[],reshape(OmInitial',[],1));
+    OmegaTilde=reshape(Om2,3,[])';
+    % Assign branch nodes
+    for iBr=1:NBranch
+        masternode = NodesByBranch(iBr,1);
+        slavenode = NodesByBranch(iBr,2);
+        OmegaTilde = [OmegaTilde(1:slavenode-1,:); OmegaTilde(masternode,:); ...
+            OmegaTilde(slavenode:end,:)];
     end
     TauBarTilde = updateByRotate(DOFs,reshape(OmegaTilde',[],1),dt/2);
     Xtilde = reshape(XFcn(TauBarTilde)',[],1);
@@ -207,6 +222,56 @@ function DOFsNew = updateByRotate(DOFs,alphaU,dt)
     DOFsNew(1:end-1,:) = rotateTau(DOFs(1:end-1,:),Omega,dt);
     % Add the constant
     DOFsNew(end,:)=DOFs(end,:)+dt*alphaU(end-2:end)';
+end
+
+function KTKx = ApplyKTK(x,DOFs,NodesByBranch,XFcn,XTrFcn)
+    [nBranch,~]=size(NodesByBranch);
+    NTau = size(DOFs,1)-1;
+    % Compute Kx
+    alphaU = reshape(x,3,[])';
+    % Assign branch nodes
+    for iBr=1:nBranch
+        masternode = NodesByBranch(iBr,1);
+        slavenode = NodesByBranch(iBr,2);
+        alphaU = [alphaU(1:slavenode-1,:); alphaU(masternode,:); ...
+            alphaU(slavenode:end,:)];
+    end
+    CTau = alphaU;
+    for iTau=1:NTau
+        CTau(iTau,:)=cross(alphaU(iTau,:),DOFs(iTau,:));
+    end
+    KAlpha=XFcn(CTau);
+    KTKx=ApplyKT(KAlpha,DOFs,NodesByBranch,XTrFcn);
+end
+
+function KTx = ApplyKT(x,DOFs,NodesByBranch,XTrFcn)
+    if (size(x,2)==1)
+        x = reshape(x,3,[])';
+    end
+    XTLam = XTrFcn(x);
+    KTLam = XTLam;
+    NTau = size(DOFs,1)-1;
+    for iTau=1:NTau
+        KTLam(iTau,:)=cross(DOFs(iTau,:),XTLam(iTau,:));
+    end
+    % Assign the branch nodes
+    if (~isempty(NodesByBranch))
+        KTLam(NodesByBranch(:,1),:)=KTLam(NodesByBranch(:,1),:)+...
+            KTLam(NodesByBranch(:,2),:);
+        KTLam(NodesByBranch(:,2),:)=[];
+    end
+    KTx = reshape(KTLam',[],1);
+end
+
+function x = KPC(U,XInvFcn,DOFs,NodesByBranch)
+    Omega = XInvFcn(reshape(U,3,[])');
+    for iR =1:size(Omega,1)-1
+        Omega(iR,:)=cross(DOFs(iR,:),Omega(iR,:));
+    end
+    if (~isempty(NodesByBranch))
+        Omega(NodesByBranch(:,2),:)=[];
+    end
+    x = reshape(Omega',[],1);
 end
 
 

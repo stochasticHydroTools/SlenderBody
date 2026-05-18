@@ -71,11 +71,6 @@ function [X,XMat]=XConnectedNetwork(Connections,nFib,N,L,ell,...
     end
     X = X-AvgPt + DOFs(end,:);
 
-    if (nargout>1)
-        X2 = XMat*DOFs;
-        max(abs(X-X2))
-    end
-
     if (makePlot)
         figure;
         for iFib=1:nFib

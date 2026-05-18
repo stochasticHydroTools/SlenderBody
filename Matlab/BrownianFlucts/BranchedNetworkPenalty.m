@@ -1,17 +1,17 @@
-%function BranchedNetworkPenalty(seed,Nx,dt,Kstiff,Kang)
+function BranchedNetworkPenalty(seed,Nx,dt,Kstiff,Kang)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-seed=1;
-Nx=16;
-dt=1e-3;
-Kstiff=10;
-Kang=0.002;
+%seed=1;
+%Nx=8;
+%dt=1e-3;
+%Kstiff=10;
+%Kang=0.002;
 gtype=1;
 addpath(genpath('../'))
-BranchLoc = 0.5;
+BranchLoc = 0.8;
 %close all;
 rng(seed);
-nFib=20;
+nFib=2;
 Connections = [(1:nFib-1)' BranchLoc*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 %Connections(3:3:end,5)=Connections(3:3:end,5)+1;
 NLinks = sum(Connections(:,5));
@@ -23,10 +23,10 @@ eps = rtrue/L;
 kbT = 4.1e-3;
 lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
-mu = 1;
+mu = 0.6;
 impcoeff = 1;
-makeMovie = 1;
-tf = 0.1;
+makeMovie =0;
+tf = 25;
 Kcl=Kstiff;
 ell = 0;
 RotAng = 70/180*pi;
@@ -158,6 +158,17 @@ for count=0:stopcount
         % Obtain Brownian velocity
         g = gAll(finds);
         RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
+        TauVelocity = zeros(3*N+3);
+        % The matrix for all the taus (incl links) to evolve
+        for iR =1:size(Xs3,1)
+            inds = (iR-1)*3+1:iR*3;
+            CMat = CPMatrix(Xs3(iR,:));
+            TauVelocity(inds,inds) =  -CMat;
+        end
+        TauVelocity(end-2:end,end-2:end)=eye(3);
+        % The COM
+        KInv = -TauVelocity*InvXonNp1Mat;
+
         OmegaTilde = cross(Xs3,RNp1ToN*DX*reshape(RandomVelBM,3,[])');
         Xstilde = rotateTau(Xs3,OmegaTilde(1:N,:),dt/2);
         Xdr = XsXbar(end,:)'+dt/2*AvgMat*RandomVelBM;
@@ -166,7 +177,14 @@ for count=0:stopcount
         MWsymTilde = LocalDragMob(Xtilde,DX,MobConst,WTilde_Nx_Inverse);
  
         % Solve at midpoint
-        M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
+        %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
+        g3 = randn(3*N+3,1);
+        OmRFD = g3;
+        delta = 1e-5;
+        XsPlus = rotateTau(Xs3,reshape(OmRFD(1:3*N),3,[])',delta);
+        XPlus = XonNp1Mat*[reshape(XsPlus',[],1); zeros(3,1)];
+        MWSymPlus = LocalDragMob(XPlus,DX,MobConst,WTilde_Nx_Inverse);
+        M_RFD = kbT/delta*(MWSymPlus-MWsym)*KInv'*g3;
         if (impcoeff==1)
             RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf*BEAll(finds);
         else
@@ -185,5 +203,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-%save(strcat('BranchK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist','LinkErs')
-%end
+save(strcat('BranchK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist','LinkErs')
+end

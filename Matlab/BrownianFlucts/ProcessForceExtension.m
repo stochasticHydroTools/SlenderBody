@@ -1,30 +1,37 @@
 % Langevin dynamics
-nTrial=30;
+nTrial=100;
 Ns=[16 16 16];
-Force = 10;
+L=1;
+lp=2;
+Force = 3;
 FSqRts = Force;
 dts = [1e-3 1e-4 1e-5];
 MeanExtension = zeros(nTrial,length(dts));
 MeanTay = zeros(nTrial,length(dts));
-Npl=100;
+Npl=101;
 MeanCorSize = zeros(nTrial,length(dts));
 MeanTauSq=zeros(Npl,3,nTrial,length(dts));
 for iDT=1:length(dts)
 dt=dts(iDT);
 N = Ns(iDT);
+Nx = N+1;
+[sX,wX,bX]=chebpts(Nx,[0 L]);
+DX = diffmat(Nx,1,[0 L],'chebkind2');
+spl=(0:Npl-1)'/(Npl-1);
+Rpl = barymat(spl,sX,bX);
 for jj=1:nTrial
     % try
-    load(strcat('Type1_N',num2str(N),...
+    load(strcat('ClampedType1_N',num2str(N),...
         '_Dt',num2str(dt),'_Seed',num2str(jj),'.mat'))
     nT = length(Xpts)/Nx-1;
     BurnIn=0;%0.5*nT;
     nObs = nT-BurnIn;
     for jT=BurnIn+1:nT
         ThesePts = Xpts((jT-1)*Nx+1:jT*Nx,:);
-        TauThis= RplNp1*DNp1*ThesePts;
+        TauThis= Rpl*DX*ThesePts;
         MeanTauSq(:,:,jj,iDT)=MeanTauSq(:,:,jj,iDT)+(TauThis.^2)/nObs;
         MeanExtension(jj,iDT) = MeanExtension(jj,iDT) + ThesePts(end,2)/nObs;
-        MeanCorSize(jj,iDT)=MeanCorSize(jj,iDT)+MeanOmTurn(jT)/nObs;
+        %MeanCorSize(jj,iDT)=MeanCorSize(jj,iDT)+MeanOmTurn(jT)/nObs;
     end
 end
 end

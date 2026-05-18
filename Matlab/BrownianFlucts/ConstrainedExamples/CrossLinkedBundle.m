@@ -7,7 +7,7 @@ function CrossLinkedBundle(seed,Nx,dt)
 %Nx=16;
 %dt=1e-3;
 gtype=1;
-addpath(genpath('../'))
+addpath(genpath('../../'))
 LinkLocs = [0 0; 1 1];
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
