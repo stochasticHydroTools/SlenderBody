@@ -90,6 +90,7 @@ if (makeMovie)
 end
 tStart=tic;
 NewtonTime=0;
+MeanMRFD=zeros(3*Nx,1);
 
 %% Computations
 for count=0:stopcount
@@ -118,7 +119,7 @@ for count=0:stopcount
     XTrk = XsXTrk(end,:)';
     Xs3 = XsXTrk(1:N,:);
     MWsym = LocalDragMob(Xt,DNp1,MobConst,WTilde_Np1_Inverse);
-    MWsymHalf = real(MWsym^(1/2));
+    MWsymHalf = chol(MWsym)';
     % Obtain Brownian velocity
     TauVelocity = zeros(3*N+3);
     % The matrix for all the taus (incl links) to evolve
@@ -142,9 +143,10 @@ for count=0:stopcount
     
     %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
     deltaRFD = 1e-5;
-    WRFD = randn(3*Nx,1); % This is Delta X on the N+1 grid
-    TauPlus = rotateTau(Xs3,reshape(WRFD(1:3*N),3,[])',deltaRFD);
-    XPlus = XonNp1Mat*[reshape(TauPlus',[],1);XTrk];
+    WRFD=randn(3*Nx,1);
+    OmRFD =WRFD; % This is Delta X on the N+1 grid
+    TauPlus = rotateTau(Xs3,reshape(OmRFD(1:3*N),3,[])',deltaRFD);
+    XPlus = XonNp1Mat*[reshape(TauPlus',[],1);XTrk+deltaRFD*OmRFD(end-2:end)];
     MWsymPlus = LocalDragMob(XPlus,DNp1,MobConst,WTilde_Np1_Inverse);
     M_RFD = kbT/deltaRFD*(MWsymPlus-MWsym)*KInv'*WRFD;
 
@@ -168,7 +170,9 @@ for count=0:stopcount
     % Lambda = Sol2(1:3*Nx);
     % alphaU1 = Sol2(3*Nx+1:6*Nx);
     % Gamma = Sol2(6*Nx+1:end);
-    % max(abs(alphaU1-alphaU))
+    % if (max(abs(alphaU1-alphaU)) > 1e-6)
+    %     keyboard
+    % end
     Omega = reshape(alphaU(1:3*N),3,N)';
     newXs = rotateTau(Xs3,Omega,dt);
     Xsp1 = reshape(newXs',[],1);
@@ -188,8 +192,9 @@ for count=0:stopcount
     end
     NewtonTime = NewtonTime+toc(tNewt);
     Xt=Xp1;
+    MeanMRFD=MeanMRFD+M_RFD;
 end
 MeanOmTurn=mean(MeanOmTurn);
 Totaltime=toc(tStart);
-save(strcat('ClampBType',num2str(gtype),'_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MeanOmTurn')
+save(strcat('ClampBType',num2str(gtype),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MeanOmTurn')
 end
