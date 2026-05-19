@@ -1,9 +1,10 @@
-function FluctClamped(seed,ForceRt,N,dt)
+function FluctClamped(seed,ForceRt,Nx,dt)
 % Single fluctuating clamped filament
 %ForceRt=0;
 %seed=1;
 %N=16;
 %dt=1e-3;
+N = Nx-1;
 gtype=1;
 addpath(genpath('../../'))
 %close all;
@@ -34,7 +35,6 @@ else
     ChebToConstr = eye(N);
     ConstrToCheb = eye(N);
 end
-Nx = N + 1;
 [sNp1,~,bNp1]=chebpts(Nx,[0 L],2);
 DNp1 = diffmat(Nx,[0 L],'chebkind2');
 RToNp1 = barymat(sNp1,s,b);
@@ -150,5 +150,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ClampedType',num2str(gtype),'_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','ee')
+save(strcat('Clamped_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','ee')
 end
