@@ -6,7 +6,7 @@ function CrossLinkedBundle_NotConstr(seed,Nx,dt,Nlinks)
 %dt=1e-5;
 Kstiff=0.01/dt;
 gtype=1;
-addpath(genpath('../'))
+addpath(genpath('../../'))
 ell = 0.1;
 if (Nlinks==1)
     LinkLocs = [0.5];
@@ -125,11 +125,9 @@ for count=0:stopcount
     end  
     
     % Cross linking force
-    [CLForce,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(Nlinks,1),0,0);
+    [CLForce,~,~] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(Nlinks,1),0,0);
     Xp1=Xt;
     U0 = zeros(3*Nx*nFib,1);
-    U0(1:3:end)=Xt(1:3:end);
-    U0(2:3:end)=-Xt(2:3:end);
     Fext = reshape(CLForce',[],1);
     % Matrices at time step n 
     gAll = randn(3*Nx*nFib,1);
@@ -163,7 +161,7 @@ for count=0:stopcount
  
         % Solve at midpoint
         %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
-        g3 = randn(3*N+3,1);
+        g3 = randn(3*Nx,1);
         OmRFD = g3;
         delta = 1e-5;
         XsPlus = rotateTau(Xs3,reshape(OmRFD(1:3*N),3,[])',delta);

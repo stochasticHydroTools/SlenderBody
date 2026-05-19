@@ -27,7 +27,7 @@ Nlinks = size(LinkLocs,1);
 rng(seed);
 nFib = 2;
 % With every link you lose 1 tangent vector (between the two fibers)
-NTaus = nFib*Nx - Nlinks -1;
+NTaus = nFib*(Nx-1) - Nlinks +1;
 if (mod(NTaus,2)==0)
     N1 = NTaus/2;
     N2 = NTaus/2;
@@ -38,7 +38,7 @@ end
 NLink1 = (Nx-1)-N1;
 NLink2 = (Nx-1)-N2;
 impcoeff = 1;
-makeMovie = 1;
+makeMovie = 0;
 tf = 25;
 Tau0 = [0 1 0];
 Xbar = [0 0 0];
@@ -200,7 +200,7 @@ for count=0:stopcount
     end  
 
     % Matrices at time step n 
-    [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat);
+    [~,KInv] = KWithLink(Xt,XMat,InvXMat);
     MWsym = zeros(nFib*3*Nx);
     MWsymHalf = zeros(nFib*3*Nx);
     for iFib=1:nFib
@@ -215,10 +215,9 @@ for count=0:stopcount
     RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
 
     % Advance to midpoint
-    OmegaTilde = KTogetherInv*RandomVelBM;
+    OmegaTilde = KInv*RandomVelBM;
     Xtilde = updateByRotate(Xt,OmegaTilde,XMat,InvXMat,dt/2);
     Ktilde = KWithLink(Xtilde,XMat,InvXMat);
-    K = KWithLink(Xt,XMat,InvXMat);
     MWsymTilde = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
@@ -227,18 +226,23 @@ for count=0:stopcount
     end
     
     % Solve at midpoint
-    M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
-    g2=randn(3*Nx*nFib,1);
-    if (impcoeff==1)
-        RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*g2;
-    else
-        RandomVelBE = 0;
+    g2 = randn(3*Nx*nFib,1);
+    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*g2;
+    g3 = randn(3*Nx*nFib,1);
+    delta = 1e-5;
+    XPlus = updateByRotate(Xt,g3,XMat,InvXMat,delta);
+    [~,KInvPlus] = KWithLink(XPlus,XMat,InvXMat);
+    MWSymPlus = zeros(nFib*3*Nx);
+    for iFib=1:nFib
+        finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
+        MWPlusOne = LocalDragMob(XPlus(finds),DX,MobConst,WTilde_Nx_Inverse);
+        MWSymPlus(finds,finds)=MWPlusOne;
     end
+    M_RFD = kbT/delta*(MWSymPlus*KInvPlus'-MWsym*KInv')*g3;
+
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
-    %U0(1:3:end)=Xt(1:3:end);
-    %U0(2:3:end)=-Xt(2:3:end);
     Fext = zeros(3*Nx*nFib,1);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
     alphaU = MobK*Ktilde'*(BendMatAll*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
