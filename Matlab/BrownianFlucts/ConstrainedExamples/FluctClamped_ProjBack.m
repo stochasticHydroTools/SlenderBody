@@ -1,24 +1,23 @@
-%function FluctClamped_ProjBack(seed,ForceRt,N,dt)
+function FluctClamped_ProjBack(seed,ForceRt,Nx,dt,gtype)
 % Single fluctuating clamped filament
-ForceRt=0;
-seed=1;
-N=16;
-dt=1e-2;
-gtype=1;
-addpath(genpath('../'))
+%ForceRt=0;
+%seed=1;
+%dt=1e-2;
+%gtype=2;
+addpath(genpath('../../'))
 %close all;
 rng(seed);
-Nx = N+1;
+N = Nx - 1;
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
-kbT = 0;%4.1e-3;
+kbT = 4.1e-3;
 lp = 2*L;
-Eb = 8.2e-3;%lp*kbT; % pN*um^2 (Lp=17 um)
-mu = 1;
+Eb = lp*kbT; % pN*um^2 (Lp=17 um)
+mu = 0.6;
 impcoeff = 1;
-makeMovie = 1;
-tf = 1;
+makeMovie = 0;
+tf = 25;
 Tau0BC = [0;1;0];
 if (gtype==2)
     TrkLoc = 0;
@@ -66,7 +65,7 @@ ConsMat = [stackMatrix(barymat(0,sNp1,bNp1)); ...
     stackMatrix([barymat(0,s,b) 0])*InvXonNp1Mat;...
     stackMatrix([barymat(L,s,b) 0])*InvXonNp1Mat];
 Constr=[0;0;0;Tau0BC;Tau0BC];
-if (gtype==2) % if enforcing extensibility at same place, one of the constraints is redundant
+if (gtype==2) % if enforcing inextensibility at same place, one of the constraints is redundant
 ConsMat([5 8],:)=[];
 Constr([5 8])=[];
 end
@@ -80,6 +79,7 @@ nNewtonIts=zeros(stopcount,1);
 MeanOmTurn = zeros(stopcount,1);
 ConstrErs = zeros(stopcount,1);
 Xpts=[];
+ee=[];
 Npl=100;
 [spl,wpl,bpl]=chebpts(Npl,[0 L]);
 RplNp1 = barymat(spl,sNp1,bNp1);
@@ -111,6 +111,7 @@ for count=0:stopcount
             movieframes(frameNum)=getframe(f);
         end
         Xpts=[Xpts;PtsThisT];
+        ee=[ee;norm(PtsThisT(1,:)-PtsThisT(end,:))];
     end
     % Evolve system
     XsXTrk = reshape(InvXonNp1Mat*Xt,3,Nx)';
@@ -119,7 +120,17 @@ for count=0:stopcount
     MWsym = LocalDragMob(Xt,DNp1,MobConst,WTilde_Np1_Inverse);
     MWsymHalf = real(MWsym^(1/2));
     % Obtain Brownian velocity
-    K = KonNp1(Xs3,XonNp1Mat,I);
+    TauVelocity = zeros(3*N+3);
+    % The matrix for all the taus (incl links) to evolve
+    for iR =1:size(Xs3,1)
+        inds = (iR-1)*3+1:iR*3;
+        CMat = CPMatrix(Xs3(iR,:));
+        TauVelocity(inds,inds) =  -CMat;
+    end
+    TauVelocity(end-2:end,end-2:end)=eye(3);
+    % The COM
+    KInv = -TauVelocity*InvXonNp1Mat;
+
     g = randn(3*Nx,1);
     RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
     % Advance to midpoint
@@ -128,19 +139,18 @@ for count=0:stopcount
     Ktilde = KonNp1(Xstilde,XonNp1Mat,I);
     Xtilde = XonNp1Mat*[reshape(Xstilde',[],1);XTrk];
     MWsymTilde = LocalDragMob(Xtilde,DNp1,MobConst,WTilde_Np1_Inverse);
-    M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
-    % deltaRFD = 1e-5;
-    % WRFD = randn(3*Nx,1); % This is Delta X on the N+1 grid
-    % OmegaPlus = cross(Xs3,RNp1ToN*DNp1*reshape(WRFD,3,[])');
-    % TauPlus = rotateTau(Xs3,deltaRFD*OmegaPlus(1:N,:),1);
-    % XPlus = XonNp1Mat*[reshape(TauPlus',[],1);XTrk];
-    % MWsymPlus = LocalDragMob(XPlus,DNp1,MobConst,WTilde_Np1_Inverse);
-    % M_RFD = kbT/deltaRFD*(MWsymPlus-MWsym)*WRFD;
-    RandomVelBE = sqrt(kbT)*...
-         MWsymTilde*BendMatHalf_Np1*randn(3*Nx,1);
+    
+    %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
+    deltaRFD = 1e-5;
+    WRFD = randn(3*Nx,1); % This is Delta X on the N+1 grid
+    TauPlus = rotateTau(Xs3,reshape(WRFD(1:3*N),3,[])',deltaRFD);
+    XPlus = XonNp1Mat*[reshape(TauPlus',[],1);XTrk];
+    MWsymPlus = LocalDragMob(XPlus,DNp1,MobConst,WTilde_Np1_Inverse);
+    M_RFD = kbT/deltaRFD*(MWsymPlus-MWsym)*KInv'*WRFD;
+
+    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf_Np1*randn(3*Nx,1);
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     U0 = zeros(3*Nx,1);
-    U0(1:3:end)=1;
     Fext = zeros(3*Nx,1);
     Fext(end-1) = ForceRt^2*Eb;
     KWithImp = Ktilde-impcoeff*dt*MWsymTilde*BendForceMat*Ktilde;
@@ -158,9 +168,7 @@ for count=0:stopcount
     % Lambda = Sol2(1:3*Nx);
     % alphaU1 = Sol2(3*Nx+1:6*Nx);
     % Gamma = Sol2(6*Nx+1:end);
-    % if (max(abs(alphaU1-alphaU))>0.5)
-    %     keyboard
-    % end
+    % max(abs(alphaU1-alphaU))
     Omega = reshape(alphaU(1:3*N),3,N)';
     newXs = rotateTau(Xs3,Omega,dt);
     Xsp1 = reshape(newXs',[],1);
@@ -172,17 +180,16 @@ for count=0:stopcount
     if (Correct && ConstrErs(count+1)>0)
         % Solve for the "closest" X that satisfies constraints
         ogXp1 = Xp1;
-        [Xp1tilde,nNewtonIts(count+1)] = ...
+        [Xp1,nNewtonIts(count+1)] = ...
            SolveOptimProblem(Xp1,XonNp1Mat,WTilde_Np1,...
            InvXonNp1Mat,ConsMat,Constr,Xt);
-        Xp1 = ogXp1-repmat(ogXp1(1:3),Nx,1);
         sqDiff = (Xp1-ogXp1)'*WTilde_Np1*(Xp1-ogXp1);
-        sqDiff1 = (Xp1tilde-ogXp1)'*WTilde_Np1*(Xp1tilde-ogXp1);
         MeanOmTurn(count+1)=sqrt(sqDiff);
     end
     NewtonTime = NewtonTime+toc(tNewt);
     Xt=Xp1;
 end
+MeanOmTurn=mean(MeanOmTurn);
 Totaltime=toc(tStart);
-%save(strcat('Type2_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-%end
+save(strcat('ClampBType',num2str(gtype),'_N',num2str(N),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MeanOmTurn')
+end

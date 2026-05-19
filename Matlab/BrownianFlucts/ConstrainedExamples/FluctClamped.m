@@ -14,7 +14,7 @@ eps = rtrue/L;
 kbT = 4.1e-3;
 lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
-mu = 1;
+mu = 0.6;
 impcoeff = 1;
 makeMovie = 0;
 tf = 25;
@@ -100,6 +100,16 @@ for count=0:stopcount
     Xs3 = reshape(InvXonNp1Mat*Xt,3,[])';
     MWsym = LocalDragMob(Xt,DNp1,MobConst,WTilde_Np1_Inverse);
     MWsymHalf = real(MWsym^(1/2));
+    TauVelocity = zeros(3*N);
+    % The matrix for all the taus (incl links) to evolve
+    for iR =1:size(Xs3,1)
+        inds = (iR-1)*3+1:iR*3;
+        CMat = CPMatrix(Xs3(iR,:));
+        TauVelocity(inds,inds) =  -CMat;
+    end
+    % The COM
+    KInv = -TauVelocity*InvXonNp1Mat;
+    KInv([1:3;3*N-2:3*N],:)=[];
 
     % Obtain Brownian velocity
     g = randn(3*Nx,1);
@@ -116,7 +126,14 @@ for count=0:stopcount
     Ktilde(:,[1:3;3*N-2:3*N])=[];
 
     % Set up and solve system
-    M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
+    deltaRFD = 1e-5;
+    WRFD = randn(3*(N-2),1); % This is Delta X on the N+1 grid
+    WRFDom= [zeros(3,1); WRFD; zeros(3,1)];
+    TauPlus = rotateTau(Xs3,reshape(WRFDom(1:3*N),3,[])',deltaRFD);
+    XPlus = XonNp1Mat*reshape(TauPlus',[],1);
+    MWsymPlus = LocalDragMob(XPlus,DNp1,MobConst,WTilde_Np1_Inverse);
+    M_RFD = kbT/deltaRFD*(MWsymPlus-MWsym)*KInv'*WRFD;
+
     RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf_Np1*randn(3*Nx,1);
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     U0 = zeros(3*Nx,1);
