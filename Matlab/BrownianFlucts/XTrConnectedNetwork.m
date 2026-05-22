@@ -1,48 +1,65 @@
-function XTLam=XTrConnectedNetwork(Connections,nFib,N,L,ell,...
-   paths,Lams,IntegrationMatrix)
+function XTLam=XTrConnectedNetwork(Lams,MasterConnections,SlaveConnections,...
+    Nx,nFib,L,RegGridMatrix,IntegrationMatrix)
     % Apply X^T to X:
-    Nx = N+1;
-    SubAvgTX = zeros(Nx*nFib+1,3);
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
-    NLinks = nnz(Connections(:,5));
+    SubAvgTX = zeros(Nx*nFib+1,3);
+    TauStart = ones(nFib,1);
+    for iFib=1:nFib
+        TauStart(iFib+1)=TauStart(iFib)+size(IntegrationMatrix{iFib},2);
+    end
+    NLinks = nnz(SlaveConnections(:,5))+nnz(MasterConnections(:,5));
     LinkNum=NLinks;
-    nPaths=length(paths);
     for jFib=1:nFib
         SubAvgTX((jFib-1)*Nx+(1:Nx),:)=Lams((jFib-1)*Nx+(1:Nx),:)-...
             1/(L*nFib)*wX'.*sum(Lams);
     end
     SubAvgTX(end,:)=sum(Lams);
-    XTLam = zeros(N*nFib+NLinks+1,3);
-    XTLam(end,:)=SubAvgTX(end,:);
-    for iPath=nPaths:-1:1
-        FilsInPath = paths{iPath};
-        for j=length(FilsInPath):-1:2
-            jFib = FilsInPath(j);
-            Upstream = FilsInPath(j-1);
-            dInds = (jFib-1)*Nx+(1:Nx);
-            mInds = (Upstream-1)*Nx+(1:Nx);
-            % Find the corresponding row in the connection matrix
-            Row = find((Connections(:,1)==jFib & Connections(:,3)==Upstream) | ...
-                (Connections(:,3)==jFib & Connections(:,1)==Upstream));
-            ConnRow = Connections(Row,:);
-            if (ConnRow(1)==jFib)
-                FixPt = ConnRow(2);
-                MotherPt = ConnRow(4);
-            else
-                MotherPt = ConnRow(2);
-                FixPt = ConnRow(4);
-            end
-            if (ConnRow(5)>0)
-                XTLam(N*nFib+LinkNum,:)=ell*sum(SubAvgTX(dInds,:));
-                LinkNum=LinkNum-1;
-            end
-            SubAvgTX(mInds,:)=SubAvgTX(mInds,:)...
-                    +sum(SubAvgTX(dInds,:)).*barymat(MotherPt,sX,bX)';
-            SubAvgTX(dInds,:)=SubAvgTX(dInds,:)...
-                -sum(SubAvgTX(dInds,:)).*barymat(FixPt,sX,bX)';
-            XTLam((jFib-1)*N+(1:N),:)=IntegrationMatrix{jFib}'*SubAvgTX(dInds,:);
-            
-        end
+    % Map to regular Chebyshev grid
+    for iFib=1:nFib
+        XInds=Nx*(iFib-1)+(1:Nx);
+        SubAvgTX(XInds,:) = RegGridMatrix{iFib}'*SubAvgTX(XInds,:);
     end
-    XTLam(1:N,:)=IntegrationMatrix{1}'*SubAvgTX(1:Nx,:);
+    XTLam = zeros(TauStart(end)+NLinks,3);
+    XTLam(end,:)=SubAvgTX(end,:);
+    % Slave connections 
+    for iC=size(SlaveConnections,1):-1:1
+        ConnRow = SlaveConnections(iC,:);
+        UpFib = ConnRow(1);
+        PtOnUp = ConnRow(2);
+        DownFib = ConnRow(3);
+        PtOnDown = ConnRow(4);
+        XInd = Nx*(DownFib-1)+PtOnDown;
+        XIndUp =  Nx*(UpFib-1)+PtOnUp;
+        XTLam(TauStart(end)-1+LinkNum,:)=ConnRow(6)*SubAvgTX(XInd,:);
+        SubAvgTX(XIndUp,:)=SubAvgTX(XIndUp,:)+SubAvgTX(XInd,:);
+        LinkNum=LinkNum-1;
+    end
+
+    % Master connections
+    for iC=size(MasterConnections,1):-1:1
+        ConnRow = MasterConnections(iC,:);
+        UpFib = ConnRow(1);
+        PtOnUp = ConnRow(2);
+        DownFib = ConnRow(3);
+        PtOnDown = ConnRow(4);
+        DOFInds = TauStart(DownFib):TauStart(DownFib+1)-1;
+        LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==DownFib,4));
+        XInds = Nx*(DownFib-1)+(1:Nx);
+        XIndUp =  Nx*(UpFib-1)+PtOnUp;
+        if (ConnRow(5)>0)
+            XTLam(TauStart(end)-1+LinkNum,:)=ConnRow(6)*sum(SubAvgTX(XInds(LeadIndices),:));
+            LinkNum=LinkNum-1;
+        end
+        SubAvgTX(XIndUp,:)=SubAvgTX(XIndUp,:)+sum(SubAvgTX(XInds(LeadIndices),:));
+        SubAvgTX(XInds(PtOnDown),:)=SubAvgTX(XInds(PtOnDown),:)-sum(SubAvgTX(XInds(LeadIndices),:));
+        XTLam(DOFInds,:)=IntegrationMatrix{DownFib}'*SubAvgTX(XInds(LeadIndices),:);
+    end
+
+    % End with the master filament
+    AnchorFil = MasterConnections(1,1);
+    DOFInds = TauStart(AnchorFil):TauStart(AnchorFil+1)-1;
+    % Remove slave nodes on first filament
+    LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==AnchorFil,4));
+    XInds = Nx*(AnchorFil-1)+LeadIndices;
+    XTLam(DOFInds,:) = IntegrationMatrix{AnchorFil}'*SubAvgTX(XInds,:);
 end

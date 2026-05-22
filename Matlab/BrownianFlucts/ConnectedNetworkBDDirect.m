@@ -1,20 +1,21 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-function ConnectedNetworkBDDirect(seed,Nx,dt)
+%function ConnectedNetworkBDDirect(seed,Nx,dt)
 %% Define constants 
 addpath(genpath('../'))
-%seed=1;
-%Nx = 8;
+seed=1;
+Nx = 8;
 N = Nx-1;
 L = 1;
 ell = 0.1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
-% Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
-%     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
-%     8 0.5 9 0 0; 9 0.5 10 0.1 1];
-nFib=2;
-Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
+Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
+    4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
+    8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1; 10 1 1 0 1; ...
+    9 1 1 0.25 1];
+nFib=10;
+%Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 %Connections(2:3:end,5)=1;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
@@ -26,17 +27,24 @@ mu = 0.6;
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 0;
-%dt=1e-3;
+makeMovie = 1;
+dt=1e-4;
 tf =25;
 
-[paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
-    NodesByBranch] = InitializeConnectedNetwork(Connections,nFib,N,L,ell);
+[DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
+  TangentVectorNodes,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
+    InitializeConnectedNetwork(Connections,nFib,N,L,ell);
 [sX,wX,bX]=chebpts(Nx,[0 L]);
 
 % Initialize X and X inverse functions
-[X,XMat]=XConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,DOFs,IntegrationMatrix,0);
+[X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
+    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,1);
+Lam=randn(Nx*nFib,3);
+XTLam1=XMat'*Lam;
+XTLam2=XTrConnectedNetwork(Lam,MasterConnections,SlaveConnections,...
+    Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
+max(abs(XTLam1-XTLam2))
+return
 XMat = stackMatrix(XMat);
 % Alternative def of X^-1
 LinkInds = find(Connections(:,5)==1);
@@ -227,8 +235,8 @@ end
 %FDAll=FDAll/(count+1);
 %SDAll=SDAll/(count+1);
 Totaltime=toc(tStart);
-save(strcat('BranchedP_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-end
+%save(strcat('BranchedP_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+%end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
     AssignMat,InvAssignMat,NodesByBranch)
@@ -261,11 +269,12 @@ function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
         brInds = 3*NodesByBranch(iBr,1)+(-2:0);
         OmegaFromProjections(brInds,brInds)=ActOmega*InvertMe^(-1);
     end
+    brInds=[];
     for iBr=1:size(NodesByBranch,1)
-        brInds = 3*NodesByBranch(iBr,2)+(-2:0);
-        OmegaFromProjections(brInds,:)=[];
-        OmegaFromProjections(:,brInds)=[];
+        brInds = [brInds;3*NodesByBranch(iBr,2)+(-2:0)];
     end
+    OmegaFromProjections(brInds,:)=[];
+    OmegaFromProjections(:,brInds)=[];
     KTogetherInv=OmegaFromProjections*KTogetherInv;
 end
 
