@@ -5,7 +5,6 @@
 addpath(genpath('../'))
 seed=1;
 Nx = 8;
-N = Nx-1;
 L = 1;
 ell = 0.1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
@@ -32,57 +31,49 @@ dt=1e-4;
 tf =25;
 
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
-  TangentVectorNodes,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
-    InitializeConnectedNetwork(Connections,nFib,N,L,ell);
-[sX,wX,bX]=chebpts(Nx,[0 L]);
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell);
 
 % Initialize X and X inverse functions
 [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
     Nx,nFib,L,RegGridMatrix,IntegrationMatrix,1);
-Lam=randn(Nx*nFib,3);
-XTLam1=XMat'*Lam;
-XTLam2=XTrConnectedNetwork(Lam,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
-max(abs(XTLam1-XTLam2))
-return
+[DOFs2,XInvMat] = XInvConnectedNetwork(X,MasterConnections,...
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
 XMat = stackMatrix(XMat);
-% Alternative def of X^-1
-LinkInds = find(Connections(:,5)==1);
-NLinks=length(LinkInds);
-InvXMat = zeros(nFib*N+NLinks+1,Nx*nFib);
-for iFib=1:nFib
-    InvXMat((iFib-1)*N+1:iFib*N,(iFib-1)*Nx+1:iFib*Nx)=DiffMatrix{iFib};
+InvXMat = stackMatrix(XInvMat);
+% Lam=randn(size(X));
+% XTLam1=XMat'*Lam;
+% XTLam2=XTrConnectedNetwork(Lam,MasterConnections,SlaveConnections,...
+%     Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
+% max(abs(XTLam1-XTLam2))
+% 
+% max(abs(DOFs2-DOFs))
+% max(max(abs(XInvMat*XMat-eye(size(XMat,2)))))
+% Om = randn(size(DOFs));
+% XInvTD = XInvTrConnectedNetwork(Om,MasterConnections,...
+%     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
+% max(abs(XInvTD-XInvMat'*Om))
+
+% Matrices to assign taus for the branch node
+AssignMat = eye(size(DOFs,1));
+for iBr=1:size(BranchIndices,1)
+    AssignMat(BranchIndices(iBr,2),:)=0;
+    AssignMat(BranchIndices(iBr,2),BranchIndices(iBr,1))=1;
 end
-for iLink=1:NLinks
-    iFib = Connections(LinkInds(iLink),1);
-    iS = Connections(LinkInds(iLink),2);
-    jFib = Connections(LinkInds(iLink),3);
-    jS = Connections(LinkInds(iLink),4);
-    InvXMat(N*nFib+iLink,(iFib-1)*Nx+1:iFib*Nx)=-barymat(iS,sX,bX)/ell;
-    InvXMat(N*nFib+iLink,(jFib-1)*Nx+1:jFib*Nx)=barymat(jS,sX,bX)/ell;
-end
-InvXMat(end,:)=1/(nFib*L)*repmat(wX,1,nFib);
-InvXMat = stackMatrix(InvXMat);
-AssignMat = eye(N*nFib+NLinks+1);
-InvAssignMat = eye(N*nFib+NLinks+1);
-for iBr=1:size(NodesByBranch,1)
-    AssignMat(NodesByBranch(iBr,2),:)=0;
-    AssignMat(NodesByBranch(iBr,2),NodesByBranch(iBr,1))=1;
-    InvAssignMat(NodesByBranch(iBr,1),NodesByBranch(iBr,2))=1;
-end
-if ~isempty(NodesByBranch)
-AssignMat(:,NodesByBranch(:,2))=[];
-InvAssignMat(NodesByBranch(:,2),:)=[];
+if ~isempty(BranchIndices)
+    AssignMat(:,BranchIndices(:,2))=[];
 end
 AssignMat=stackMatrix(AssignMat);
-InvAssignMat=stackMatrix(InvAssignMat);
 
-% XFcn = @(dof3d) XConnectedNetwork(Connections,nFib,N,L,ell,...
-%     paths,dof3d,IntegrationMatrix,0);
-% XInvFcn = @(x3d) XInvConnectedNetwork(Connections,nFib,N,L,ell,...
-%     paths,x3d,DiffMatrix);
-% XTrFcn = @(lams) XTrConnectedNetwork(Connections,nFib,N,L,ell,...
-%         paths,lams,IntegrationMatrix);
+% Initialize X and X inverse functions
+XFcn = @(dof3d) XConnectedNetwork(dof3d,MasterConnections,...
+    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,0);
+XInvFcn = @(x3d) XInvConnectedNetwork(x3d,MasterConnections,...
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
+XTrFcn = @(lam3d) XTrConnectedNetwork(lam3d,MasterConnections,...
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
+XInvTrFcn = @(Om3d) XInvTrConnectedNetwork(Om3d,MasterConnections,...
+     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
 Xt = reshape(X',[],1);
 
 % Bending energy matrix (2Nx grid)
@@ -170,7 +161,7 @@ for count=0:stopcount
 
     % Matrices at time step n 
     [K,KInv] = KWithLink(Xt,XMat,InvXMat,...
-        AssignMat,InvAssignMat,NodesByBranch);
+        AssignMat,BranchIndices);
     MWsym = zeros(nFib*3*Nx);
     RandomVelBM = zeros(nFib*3*Nx,1);
     g = randn(3*Nx*nFib,1);
@@ -185,9 +176,12 @@ for count=0:stopcount
     
     % Advance to midpoint
     OmegaTilde = KInv*RandomVelBM;
+    % Iterative version
+    OmegaTilde2 = KInvApplyConnNet(RandomVelBM,Xt,XInvFcn,BranchIndices);
     OmAll = AssignMat*OmegaTilde;
     Xtilde = updateByRotate(Xt,OmAll,XMat,InvXMat,dt/2);
-    Ktilde = KWithLink(Xtilde,XMat,InvXMat,AssignMat,InvAssignMat,NodesByBranch);
+    [Ktilde,KInvTilde] = KWithLink(Xtilde,XMat,InvXMat,...
+        AssignMat,BranchIndices);
     MWsymTilde = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
@@ -200,11 +194,12 @@ for count=0:stopcount
     RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*g2;
 
     %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
-    g3 = randn(3*(nFib*N-size(NodesByBranch,1)+NLinks+1),1);
+    g3 = randn(size(AssignMat,2),1);
     OmM = AssignMat*g3;
     delta = 1e-5;
     XPlus = updateByRotate(Xt,OmM,XMat,InvXMat,delta);
-    [KPlus,KInvPlus] = KWithLink(XPlus,XMat,InvXMat,AssignMat,InvAssignMat,NodesByBranch);
+    [KPlus,KInvPlus] = KWithLink(XPlus,XMat,InvXMat,...
+        AssignMat,BranchIndices);
     MWSymPlus = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
@@ -227,6 +222,19 @@ for count=0:stopcount
     RHSU = MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0;
     alphaUProj = MobK*Ktilde'*(MWsymTilde \ RHSU);
     %LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSU);
+    U1 = Ktilde*alphaUProj;
+    U2 = KApplyConnNet(alphaUProj,Xtilde,XFcn,XInvFcn,BranchIndices);
+    r=randn(3*Nx*nFib,1);
+    KTLam = KTApplyConnNet(r,Xtilde,XTrFcn,XInvFcn,BranchIndices);
+    KTLam2 = reshape(Ktilde'*r,3,[])';
+    max(abs(KTLam-KTLam2))
+    KInvLam = KInvApplyConnNet(r,Xtilde,XInvFcn,BranchIndices);
+    KInvLam2 = reshape(KInvTilde*r,3,[])';
+    max(abs(KInvLam-KInvLam2))
+    r=randn(size(K,2),1);
+    KmTOm = KInvTApplyConnNet(r,Xtilde,XInvTrFcn,XInvFcn,BranchIndices);
+    KmTOm2 = reshape(KInvTilde'*r,3,[])';
+    max(abs(KmTOm-KmTOm2))
     alphaU = AssignMat*alphaUProj;
 
     Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt);
@@ -239,7 +247,7 @@ Totaltime=toc(tStart);
 %end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
-    AssignMat,InvAssignMat,NodesByBranch)
+    AssignMat,BranchIndices)
     TausAndXBar = InvXMat*Xt;
     Tau3 = reshape(TausAndXBar(1:end-3),3,[])';
     TauVelocity = zeros(3*size(Tau3,1)+3);
@@ -255,23 +263,23 @@ function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
     TauVelocity(end-2:end,end-2:end)=eye(3);
     InvTauVelocity(end-2:end,end-2:end)=eye(3);
     KTogether = XMat*TauVelocity*AssignMat;
-    KTogetherInv = InvAssignMat*InvTauVelocity*InvXMat;
+    KTogetherInv = AssignMat'*InvTauVelocity*InvXMat;
     OmegaFromProjections = eye(length(TausAndXBar));
-    for iBr=1:size(NodesByBranch,1)
+    for iBr=1:size(BranchIndices,1)
         % Construct local ONB
-        tauM = Tau3(NodesByBranch(iBr,1),:);
-        tauD = Tau3(NodesByBranch(iBr,2),:);
+        tauM = Tau3(BranchIndices(iBr,1),:);
+        tauD = Tau3(BranchIndices(iBr,2),:);
         crossMD = cross(tauM,tauD);
         % 3 x 3 matrix going from P1Omega+P2Omega -> (Omega1,Omega2,Omega3)
         InvertMe = [tauM'-tauD'*dot(tauM,tauD) tauD'-tauM'*dot(tauD,tauM) ...
             2*crossMD'];
         ActOmega = [tauM' tauD' crossMD'];
-        brInds = 3*NodesByBranch(iBr,1)+(-2:0);
+        brInds = 3*BranchIndices(iBr,1)+(-2:0);
         OmegaFromProjections(brInds,brInds)=ActOmega*InvertMe^(-1);
     end
     brInds=[];
-    for iBr=1:size(NodesByBranch,1)
-        brInds = [brInds;3*NodesByBranch(iBr,2)+(-2:0)];
+    for iBr=1:size(BranchIndices,1)
+        brInds = [brInds;3*BranchIndices(iBr,2)+(-2:0)'];
     end
     OmegaFromProjections(brInds,:)=[];
     OmegaFromProjections(:,brInds)=[];

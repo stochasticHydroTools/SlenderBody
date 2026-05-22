@@ -1,10 +1,9 @@
-% Initialize assuming a network which is NON-CYCLIC
 % Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
-  TangentVectorNodes,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
-  InitializeConnectedNetwork(Connections,nFib,N,L,ell)
-    Nx = N+1;
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
+  InitializeConnectedNetwork(Connections,nFib,Nx,L,ell)
+    N = Nx-1;
     % Check list
     for p=1:size(Connections,1)
         if (Connections(p,5)==0 && Connections(p,4)~=0)
@@ -23,13 +22,11 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     
     % Make connected graph
     G = graph(Connections(:,1),Connections(:,3));
-    % Find minimal spanning tree (including edge nodes)
-    BranchInds = [Connections(BrInd,1) Connections(BrInd,3)];
-    % 2. Force inclusion of specific edges (e.g., edge between 1 and 3)
-    % Find the index of the edge you want to force
+    % 2. Force inclusion of branches
     forcedEdgeIdx=[];
     for iBr=1:nBr
-        forcedEdgeIdx = [forcedEdgeIdx; findedge(G, Connections(BrInd(iBr),1), Connections(BrInd(iBr),3))];
+        forcedEdgeIdx = [forcedEdgeIdx; ...
+            findedge(G, Connections(BrInd(iBr),1), Connections(BrInd(iBr),3))];
     end
     % 3. Compute the MST
     G.Edges.Weight(forcedEdgeIdx) = -inf; % Set weight to -infinity to force inclusion
@@ -120,23 +117,6 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         TangentVectorNodes{iFib}=s;
         ConstrainedPosNodes{iFib}=sX;
     end
-    % Go through the connections and start replacing the default nodes
-    for iC=1:size(MasterConnections,1)
-        iFib = MasterConnections(iC,1);
-        iS = MasterConnections(iC,2);
-        jFib = MasterConnections(iC,3);
-        jS = MasterConnections(iC,4);
-        % Replace the positional nodes
-        [ConstrainedPosNodes,nXReplaced] = ReplaceNode(ConstrainedPosNodes,nXReplaced,iFib,iS);
-        [ConstrainedPosNodes,nXReplaced] = ReplaceNode(ConstrainedPosNodes,nXReplaced,jFib,jS);
-        MasterConnections(iC,2)=Nx+1-nXReplaced(iFib);
-        MasterConnections(iC,4)=Nx+1-nXReplaced(jFib);
-        % If a branch, replace the tangent vectors too
-        if (MasterConnections(iC,5)==0)
-            [TangentVectorNodes,nTauReplaced] = ReplaceNode(TangentVectorNodes,nTauReplaced,iFib,iS);
-            [TangentVectorNodes,nTauReplaced] = ReplaceNode(TangentVectorNodes,nTauReplaced,jFib,jS);
-        end
-    end
     % Slave connections: the positional nodes get replaced, and the tangent
     % vectors get removed on the slave fiber only
     for iC=1:size(SlaveConnections,1)
@@ -152,6 +132,35 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         % For the slave filament only - remove the tangent vector
         TangentVectorNodes = RemoveNode(TangentVectorNodes,nTauReplaced,jFib,jS);
     end
+
+    TauStart = ones(nFib+1,1);
+    for iFib=1:nFib
+        TauStart(iFib+1)=TauStart(iFib)+length(TangentVectorNodes{iFib});
+    end
+
+    % Go through the connections and start replacing the default nodes
+    iBr=0;
+    BranchIndices=[];
+    for iC=1:size(MasterConnections,1)
+        iFib = MasterConnections(iC,1);
+        iS = MasterConnections(iC,2);
+        jFib = MasterConnections(iC,3);
+        jS = MasterConnections(iC,4);
+        % Replace the positional nodes
+        [ConstrainedPosNodes,nXReplaced] = ReplaceNode(ConstrainedPosNodes,nXReplaced,iFib,iS);
+        [ConstrainedPosNodes,nXReplaced] = ReplaceNode(ConstrainedPosNodes,nXReplaced,jFib,jS);
+        MasterConnections(iC,2)=Nx+1-nXReplaced(iFib);
+        MasterConnections(iC,4)=Nx+1-nXReplaced(jFib);
+        % If a branch, replace the tangent vectors too
+        if (MasterConnections(iC,5)==0)
+            iBr=iBr+1;
+            [TangentVectorNodes,nTauReplaced] = ReplaceNode(TangentVectorNodes,nTauReplaced,iFib,iS);
+            BranchIndices(iBr,1) = TauStart(iFib)+length(TangentVectorNodes{iFib})-nTauReplaced(iFib);
+            [TangentVectorNodes,nTauReplaced] = ReplaceNode(TangentVectorNodes,nTauReplaced,jFib,jS);
+            BranchIndices(iBr,2) = TauStart(jFib)+length(TangentVectorNodes{jFib})-nTauReplaced(jFib);
+        end
+    end
+
     
     % Integration matrix: takes the tangent vector nodes and maps them to
     % the LEAD nodes
@@ -160,7 +169,6 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     IntegrationMatrix = cell(nFib,1);
     DiffMatrix = cell(nFib,1);
     RegGridMatrix = cell(nFib,1);
-    TauStart = ones(nFib+1,1);
     for iFib=1:nFib
         sTau = TangentVectorNodes{iFib};
         NTau = length(sTau);
@@ -173,7 +181,6 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         IntegrationMatrix{iFib}=barymat(sLead,sRegX,bRegX)*pinv(DX)*barymat(sRegX,sRegTau,bRegTau)...
             *barymat(TangentVectorNodes{iFib},sRegTau,bRegTau)^(-1);
         DiffMatrix{iFib}=barymat(sTau,sRegX,bRegX)*DX*barymat(sLead,sRegX,bRegX)^(-1);
-        TauStart(iFib+1)=TauStart(iFib)+NTau;
         RegGridMatrix{iFib}=barymat(ConstrainedPosNodes{iFib},sX,bX)^(-1);
     end
 

@@ -2,22 +2,20 @@
 % locations
 %% Define constants 
 addpath(genpath('../'))
-seed=30;
-N = 15;
-Nx = N+1;
+seed=1;
+Nx = 8;
 L = 1;
 ell = 0.1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
-    8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1];
+    8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1; 10 1 1 0 1; ...
+    9 1 1 0.25 1];
 nFib=10;
 %nFib=2;
 %Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 %Connections(2:3:end,5)=1;
-NLinks = sum(Connections(:,5));
-NBranch = length(Connections(:,5))-NLinks;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -29,28 +27,22 @@ mu = 0.6;
 rng(seed);
 impcoeff = 1;
 makeMovie = 1;
-dt = 1e-3;
-tf = 0.1;
+dt=1e-4;
+tf =25;
 
-[paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
-    NodesByBranch,PairwiseXMats] = ...
-    InitializeConnectedNetwork(Connections,nFib,N,L,ell);
+[DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell);
 
 % Initialize X and X inverse functions
-X=XConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,DOFs,IntegrationMatrix,1);
-XFcn = @(dof3d) XConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,dof3d,IntegrationMatrix,0);
-XInvFcn = @(x3d) XInvConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,x3d,DiffMatrix);
-XTrFcn = @(lams) XTrConnectedNetwork(Connections,nFib,N,L,ell,...
-        paths,lams,IntegrationMatrix);
-XInvTrFcn = @(dof3d) XInvTrConnectedNetwork(Connections,nFib,N,L,ell,...
-        paths,dof3d,DiffMatrix);
-DOFs = XInvFcn(X);
-Xt = reshape(X',[],1);
-Nxx = 3*Nx*nFib;
-Ndd = 3*(nFib*N-NBranch+NLinks+1);
+XFcn = @(dof3d) XConnectedNetwork(dof3d,MasterConnections,...
+    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,0);
+XInvFcn = @(x3d) XInvConnectedNetwork(x3d,MasterConnections,...
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
+XTrFcn = @(lam3d) XTrConnectedNetwork(lam3d,MasterConnections,...
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
+XInvTrFcn = @(Om3d) XInvTrConnectedNetwork(Om3d,MasterConnections,...
+     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
 
 % Bending energy matrix (2Nx grid)
 [sX,wX,bX] = chebpts(Nx,[0 L],2);
@@ -68,12 +60,12 @@ BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
 % Pre-computations for mobility
 MobConst = -log(eps^2)/(8*pi*mu);
 MobFcn = @(x1d) LocalDragMob(x1d,DX,MobConst,WTilde_Nx_Inverse);
-ApplyBigC = @(x,Xt) ApplyBigCMatrix(x,Xt,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
-        BendForceMat,impcoeff*dt,nFib);
-PrecompPCMat = @(Xt) PrecomputePairwisePC(Xt,XInvFcn,MobFcn,...
-    PairwiseXMats,paths,Connections,BendForceMat,impcoeff*dt,nFib);
-PairPC = @(b,PrecompMats) PairwisePCConnNet(b,PrecompMats,...
-    paths,Connections,NodesByBranch,nFib,Nx);
+% ApplyBigC = @(x,Xt) ApplyBigCMatrix(x,Xt,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
+%         BendForceMat,impcoeff*dt,nFib);
+% PrecompPCMat = @(Xt) PrecomputePairwisePC(Xt,XInvFcn,MobFcn,...
+%     PairwiseXMats,paths,Connections,BendForceMat,impcoeff*dt,nFib);
+% PairPC = @(b,PrecompMats) PairwisePCConnNet(b,PrecompMats,...
+%     paths,Connections,NodesByBranch,nFib,Nx);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
@@ -223,56 +215,3 @@ function DOFsNew = updateByRotate(DOFs,alphaU,dt)
     % Add the constant
     DOFsNew(end,:)=DOFs(end,:)+dt*alphaU(end-2:end)';
 end
-
-function KTKx = ApplyKTK(x,DOFs,NodesByBranch,XFcn,XTrFcn)
-    [nBranch,~]=size(NodesByBranch);
-    NTau = size(DOFs,1)-1;
-    % Compute Kx
-    alphaU = reshape(x,3,[])';
-    % Assign branch nodes
-    for iBr=1:nBranch
-        masternode = NodesByBranch(iBr,1);
-        slavenode = NodesByBranch(iBr,2);
-        alphaU = [alphaU(1:slavenode-1,:); alphaU(masternode,:); ...
-            alphaU(slavenode:end,:)];
-    end
-    CTau = alphaU;
-    for iTau=1:NTau
-        CTau(iTau,:)=cross(alphaU(iTau,:),DOFs(iTau,:));
-    end
-    KAlpha=XFcn(CTau);
-    KTKx=ApplyKT(KAlpha,DOFs,NodesByBranch,XTrFcn);
-end
-
-function KTx = ApplyKT(x,DOFs,NodesByBranch,XTrFcn)
-    if (size(x,2)==1)
-        x = reshape(x,3,[])';
-    end
-    XTLam = XTrFcn(x);
-    KTLam = XTLam;
-    NTau = size(DOFs,1)-1;
-    for iTau=1:NTau
-        KTLam(iTau,:)=cross(DOFs(iTau,:),XTLam(iTau,:));
-    end
-    % Assign the branch nodes
-    if (~isempty(NodesByBranch))
-        KTLam(NodesByBranch(:,1),:)=KTLam(NodesByBranch(:,1),:)+...
-            KTLam(NodesByBranch(:,2),:);
-        KTLam(NodesByBranch(:,2),:)=[];
-    end
-    KTx = reshape(KTLam',[],1);
-end
-
-function x = KPC(U,XInvFcn,DOFs,NodesByBranch)
-    Omega = XInvFcn(reshape(U,3,[])');
-    for iR =1:size(Omega,1)-1
-        Omega(iR,:)=cross(DOFs(iR,:),Omega(iR,:));
-    end
-    if (~isempty(NodesByBranch))
-        Omega(NodesByBranch(:,2),:)=[];
-    end
-    x = reshape(Omega',[],1);
-end
-
-
-
