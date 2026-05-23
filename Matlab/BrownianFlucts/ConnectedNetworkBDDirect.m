@@ -13,6 +13,9 @@ Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
     8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1; 10 1 1 0 1; ...
     9 1 1 0.25 1];
+% Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
+%     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
+%     8 0.5 9 0 0; 9 0.5 10 0.1 1];
 nFib=10;
 %Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 %Connections(2:3:end,5)=1;
@@ -189,10 +192,6 @@ for count=0:stopcount
         MWsymTilde(finds,finds)=MWsymTildeOne;
     end
     
-    % Solve at midpoint
-    g2 = randn(3*Nx*nFib,1);
-    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*g2;
-
     %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
     g3 = randn(size(AssignMat,2),1);
     OmM = AssignMat*g3;
@@ -208,6 +207,10 @@ for count=0:stopcount
     end
     M_RFD = kbT/delta*(MWSymPlus*KInvPlus'-MWsym*KInv')*g3;
 
+    % Solve at midpoint
+    g2 = randn(3*Nx*nFib,1);
+    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalfAll*g2;
+
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
@@ -221,21 +224,14 @@ for count=0:stopcount
     %SDAll=SDAll+SecondDrift;
     RHSU = MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0;
     alphaUProj = MobK*Ktilde'*(MWsymTilde \ RHSU);
-    %LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSU);
-    U1 = Ktilde*alphaUProj;
-    U2 = KApplyConnNet(alphaUProj,Xtilde,XFcn,XInvFcn,BranchIndices);
-    r=randn(3*Nx*nFib,1);
-    KTLam = KTApplyConnNet(r,Xtilde,XTrFcn,XInvFcn,BranchIndices);
-    KTLam2 = reshape(Ktilde'*r,3,[])';
-    max(abs(KTLam-KTLam2))
-    KInvLam = KInvApplyConnNet(r,Xtilde,XInvFcn,BranchIndices);
-    KInvLam2 = reshape(KInvTilde*r,3,[])';
-    max(abs(KInvLam-KInvLam2))
-    r=randn(size(K,2),1);
-    KmTOm = KInvTApplyConnNet(r,Xtilde,XInvTrFcn,XInvFcn,BranchIndices);
-    KmTOm2 = reshape(KInvTilde'*r,3,[])';
-    max(abs(KmTOm-KmTOm2))
+    LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSU);
+    RHS=[RHSU;zeros(size(K,2),1)];
+    alphaLamPC = PrecomputePairwisePC(RHS,Xtilde,XInvFcn,MobFcn,...
+        MasterConnections,SlaveConnections,IntegrationMatrix, ...
+        ConstrainedPosNodes, TangentVectorNodes,BendForceMat,impcoeff*dt,L,nFib);
+    return
     alphaU = AssignMat*alphaUProj;
+    
 
     Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt);
     Xt=Xp1;

@@ -8,14 +8,13 @@ L = 1;
 ell = 0.1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
-Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
-    4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
-    8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1; 10 1 1 0 1; ...
-    9 1 1 0.25 1];
-nFib=10;
-%nFib=2;
-%Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
-%Connections(2:3:end,5)=1;
+% Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
+%     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
+%     8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1; 10 1 1 0 1; ...
+%     9 1 1 0.25 1];
+nFib=25;
+Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
+Connections(2:3:end,5)=1;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -33,6 +32,7 @@ tf =25;
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
   TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
     InitializeConnectedNetwork(Connections,nFib,Nx,L,ell);
+nAlphas = 3*(size(DOFs,1)-sum(MasterConnections(:,5)==0));
 
 % Initialize X and X inverse functions
 XFcn = @(dof3d) XConnectedNetwork(dof3d,MasterConnections,...
@@ -43,6 +43,10 @@ XTrFcn = @(lam3d) XTrConnectedNetwork(lam3d,MasterConnections,...
     SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
 XInvTrFcn = @(Om3d) XInvTrConnectedNetwork(Om3d,MasterConnections,...
      SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
+KFcn = @(alpha,x) KApplyConnNet(alpha,x,XFcn,XInvFcn,BranchIndices);
+KTFcn =  @(Lam,x) KTApplyConnNet(Lam,x,XTrFcn,XInvFcn,BranchIndices);
+KInvFcn = @(U,x) KInvApplyConnNet(U,x,XInvFcn,BranchIndices);
+KTInvFcn = @(alpha,x)  KInvTApplyConnNet(alpha,x,XInvTrFcn,XInvFcn,BranchIndices);
 
 % Bending energy matrix (2Nx grid)
 [sX,wX,bX] = chebpts(Nx,[0 L],2);
@@ -60,8 +64,8 @@ BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
 % Pre-computations for mobility
 MobConst = -log(eps^2)/(8*pi*mu);
 MobFcn = @(x1d) LocalDragMob(x1d,DX,MobConst,WTilde_Nx_Inverse);
-% ApplyBigC = @(x,Xt) ApplyBigCMatrix(x,Xt,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
-%         BendForceMat,impcoeff*dt,nFib);
+ApplyAMat = @(x,Xt) ApplyBigMatrix(x,Xt,MobFcn,KFcn,KTFcn, ...
+    BendForceMat,impcoeff*dt,nFib);
 % PrecompPCMat = @(Xt) PrecomputePairwisePC(Xt,XInvFcn,MobFcn,...
 %     PairwiseXMats,paths,Connections,BendForceMat,impcoeff*dt,nFib);
 % PairPC = @(b,PrecompMats) PairwisePCConnNet(b,PrecompMats,...
@@ -141,55 +145,49 @@ for count=0:stopcount
     end
     
     % Advance to midpoint
-    OmegaTilde = XInvFcn(reshape(RandomVelBM,3,[])');
-    for iR =1:size(OmegaTilde,1)-1
-        OmegaTilde(iR,:)=cross(DOFs(iR,:),OmegaTilde(iR,:));
-    end
-    OmInitial=OmegaTilde;
-    if (~isempty(NodesByBranch))
-        OmegaTilde(NodesByBranch(:,2),:)=OmegaTilde(NodesByBranch(:,1),:);
-        OmInitial(NodesByBranch(:,2),:)=[];
-    end
-    CGRHS = ApplyKT(RandomVelBM,DOFs,NodesByBranch,XTrFcn);
-    Om2 = cgs(@(x) ApplyKTK(x,DOFs,NodesByBranch,XFcn,XTrFcn),CGRHS,...
-        1e-6,1000,[],[],reshape(OmInitial',[],1));
-    OmegaTilde=reshape(Om2,3,[])';
-    % Assign branch nodes
-    for iBr=1:NBranch
-        masternode = NodesByBranch(iBr,1);
-        slavenode = NodesByBranch(iBr,2);
-        OmegaTilde = [OmegaTilde(1:slavenode-1,:); OmegaTilde(masternode,:); ...
-            OmegaTilde(slavenode:end,:)];
-    end
-    TauBarTilde = updateByRotate(DOFs,reshape(OmegaTilde',[],1),dt/2);
+    OmegaTilde = KInvFcn(RandomVelBM, Xt);
+    OmegaTilde = AssignBranchNodes(OmegaTilde,BranchIndices);
+    TauBarTilde = updateByRotate(DOFs,OmegaTilde,dt/2);
     Xtilde = reshape(XFcn(TauBarTilde)',[],1);
 
+    % RFD and other RHS velocities
+    g3 = randn(nAlphas,1);
+    OmRFD=AssignBranchNodes(reshape(g3,3,[])',BranchIndices);
+    delta = 1e-5;
+    TauBarPlus = updateByRotate(DOFs,OmRFD,delta);
+    XPlus = reshape(XFcn(TauBarPlus)',[],1);
+    KInvTOm = reshape(KTInvFcn(g3,Xt)',[],1);
+    KInvTOmPlus = reshape(KTInvFcn(g3,XPlus)',[],1);
+    M_RFD = zeros(3*Nx*nFib,1);
     Fext = zeros(3*Nx*nFib,1);
+    U0 = zeros(3*Nx*nFib,1);
     MTildeF = zeros(nFib*3*Nx,1);
-    M_RFD = zeros(nFib*3*Nx,1);
     RandomVelBE = zeros(nFib*3*Nx,1);
     g2 = randn(3*Nx*nFib,1);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWsymTildeOne = MobFcn(Xtilde(finds));
-        MWsymOne = MobFcn(Xt(finds));
-        M_RFD(finds) = (MWsymTildeOne-MWsymOne)*(MWsymOne \ RandomVelBM(finds));
-        RandomVelBE(finds) = sqrt(kbT)*MWsymTildeOne*BendMatHalf*g2(finds);
-        MTildeF(finds)=MWsymTildeOne*(BendForceMat*Xt(finds)+Fext(finds));
+        MWPlusOne = MobFcn(XPlus(finds));
+        MW = MobFcn(Xt(finds));
+        MWTilde = MobFcn(Xtilde(finds));
+        M_RFD(finds) = kbT/delta*(MWPlusOne*KInvTOmPlus(finds)...
+            -MW*KInvTOm(finds));
+        RandomVelBE(finds) = sqrt(kbT)*MWTilde*BendMatHalf*g2(finds);
+        MTildeF(finds)=MWTilde*(BendForceMat*Xt(finds)+Fext(finds));
     end
-    U0 = zeros(3*Nx*nFib,1);
-    %U0(1:3:end)=Xt(1:3:end);
-    %U0(2:3:end)=-Xt(2:3:end);
     RHSVel = RandomVelBM + M_RFD + RandomVelBE + MTildeF + U0;
-    RHSAll = [RHSVel; zeros(Ndd,1)];
+    RHSAll = [RHSVel; zeros(nAlphas,1)];
 
     % Iterative (not exact - errors could accumulate(?))
-    %tic
-    PrecompMats = PrecompPCMat(Xtilde);
-    [AllxG,flag,~,~,rv] = gmres(@(y)ApplyBigC(y,Xtilde),RHSAll,...
-       [],1e-10,100,@(b) PairPC(b,PrecompMats));
-    norm(ApplyBigC(AllxG,Xtilde)-RHSAll)/norm(RHSAll)
+    tic
+    %PrecompMats = PrecompPCMat(Xtilde);
+    Precon = @(RHS) PrecomputePairwisePC(RHS,Xtilde,XInvFcn,MobFcn,...
+        MasterConnections,SlaveConnections,IntegrationMatrix, ...
+        ConstrainedPosNodes, TangentVectorNodes,BendForceMat,impcoeff*dt,L,nFib);
+    [AllxG,flag,~,~,rv] = gmres(@(y)ApplyAMat(y,Xtilde),RHSAll,...
+       [],1e-10,100,Precon);
+    norm(ApplyAMat(AllxG,Xtilde)-RHSAll)/norm(RHSAll)
     length(rv)
+    return
     Lambda = AllxG(1:Nxx);
     alphaU = reshape(AllxG(Nxx+1:end),3,[])';
     %toc
@@ -210,8 +208,43 @@ end
 function DOFsNew = updateByRotate(DOFs,alphaU,dt)
     DOFsNew = 0*DOFs;
     % Update the tangent vectors
-    Omega = reshape(alphaU(1:end-3),3,[])';
-    DOFsNew(1:end-1,:) = rotateTau(DOFs(1:end-1,:),Omega,dt);
+    if (size(alphaU,2)==1)
+        alphaU = reshape(alphaU,3,[])';
+    end
+    DOFsNew(1:end-1,:) = rotateTau(DOFs(1:end-1,:),alphaU(1:end-1,:),dt);
     % Add the constant
-    DOFsNew(end,:)=DOFs(end,:)+dt*alphaU(end-2:end)';
+    DOFsNew(end,:)=DOFs(end,:)+dt*alphaU(end,:);
 end
+
+% Apply the big matrix
+% Input: vector of (Lambda,alphaU)
+% Output: [-M*Lambda+K*alphaU; K'*Lambda 0]
+% (without explicitly forming matrices)
+function Ax = ApplyBigMatrix(x,X1D,MobFcn,KFcn,KTFcn, ...
+    BendForceMat,impcodt,nFib)
+
+    Nxx = length(X1D);
+    Nx = Nxx/(3*nFib);
+    Lam1D=x(1:Nxx);
+    Lam = reshape(Lam1D,3,[])';
+    alphaU = reshape(x(Nxx+1:end),3,[])';
+    KAlpha1D=reshape(KFcn(alphaU,X1D)',[],1);
+
+    MLam = zeros(Nxx,1);
+    for iFib=1:nFib
+        finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
+        MWsymTildeOne = MobFcn(X1D(finds));
+        MLam(finds)=MWsymTildeOne*(Lam1D(finds)+impcodt*BendForceMat*KAlpha1D(finds));
+    end
+    Eq1 = -MLam+KAlpha1D;
+
+    % Second eqn K^T Lam = 0 
+    % K^T Lam = C^T X^T Lam = -C X^T Lam = cross(DOFs(iTau,:),XTLam(iTau,:)
+    KTLam=reshape(KTFcn(Lam,X1D)',[],1);
+    Eq2 = reshape(KTLam',[],1);
+    
+    Ax=[Eq1;Eq2];
+end
+
+
+

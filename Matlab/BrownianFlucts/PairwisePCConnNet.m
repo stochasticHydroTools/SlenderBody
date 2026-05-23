@@ -17,11 +17,11 @@ function x = PairwisePCConnNet(RHS,PrecompPCMats,paths,Connections,NodesByBranch
     % Go connection by connection, the total solution is then a
     % superposition
     LinkNum=0;
-    nPaths=length(paths);
-    for iPath=1:nPaths
-        FilsInPath = paths{iPath};
-        for j=2:length(FilsInPath)
-            jFib = FilsInPath(j);
+    for iC=1:size(MasterConnections,1)
+        ConnRow=MasterConnections(iC,:);
+
+        
+        upFib = ConnRow(1)
             Upstream = FilsInPath(j-1);
             upInds = ((Upstream-1)*3*Nx+1:Upstream*3*Nx)';
             upIndsTau = (3*TauIndices(Upstream)+1:3*TauIndices(Upstream+1))';

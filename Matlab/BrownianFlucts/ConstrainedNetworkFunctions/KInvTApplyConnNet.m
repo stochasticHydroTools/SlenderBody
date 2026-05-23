@@ -30,15 +30,7 @@ function Xperp = KInvTApplyConnNet(OmPerp,Xt,XTrInvFcn,InvXFcn,BranchIndices)
             OmTrue = InvertMe' \ (ActOmega'*OmPerp(BrInd(iBr,:),:)');
             OmPerp(BrInd(iBr,:),:)=OmTrue;
         end
-        % Now assign
-        [~,branchorder]=sort(BranchIndices(:,2),'ascend');
-        % Assign branch nodes
-        for iBr=branchorder'
-            masternode = BranchIndices(iBr,1);
-            slavenode = BranchIndices(iBr,2);
-            OmPerp = [OmPerp(1:slavenode-1,:); OmPerp(masternode,:); ...
-                OmPerp(slavenode:end,:)];
-        end
+        OmPerp=AssignBranchNodes(OmPerp,BranchIndices);
     end
     
     OmegaPerpCross = zeros(size(TausAndXBar,1),3);

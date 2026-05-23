@@ -29,7 +29,9 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
             findedge(G, Connections(BrInd(iBr),1), Connections(BrInd(iBr),3))];
     end
     % 3. Compute the MST
-    G.Edges.Weight(forcedEdgeIdx) = -inf; % Set weight to -infinity to force inclusion
+    if (~isempty(forcedEdgeIdx))
+        G.Edges.Weight(forcedEdgeIdx) = -inf; % Set weight to -infinity to force inclusion
+    end
     T = minspantree(G);
 
     % Go through the MST and order the connections. 
@@ -39,7 +41,10 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     nodes_end = find(nodes_degree == 1);
     
     % Find the center node
+    try
     T.Edges.Weight(1:end)=1;
+    catch
+    end
     % Calculate all-pairs shortest path distances in the tree
     dists = distances(T);
     % Find the eccentricity of each node (max distance to any other node)
@@ -53,6 +58,7 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         [~,indmin2]=min(meanDists);
         node_start=node_start(indmin2);
     end
+    node_start=1
     
     % Extract each branch path
     paths = {};
@@ -217,32 +223,6 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         end
         DOFs(TauStart(DownFib):TauStart(DownFib+1)-1,:)= ...
             repmat(taus(DownFib,:),length(TangentVectorNodes{DownFib}),1);
-        % % Pairwise integration matrices (for the prconditioner)
-        % DOFsToCustomNodes = [IntegrationMatrix{Upstream} zeros(Nx,N); ...
-        %     ones(Nx,1).*barymat(MotherPt,sX,bX)*IntegrationMatrix{Upstream} ...
-        %     (eye(Nx)-repmat(barymat(FixPt,sX,bX),Nx,1))*IntegrationMatrix{jFib}];
-        % if (ConnRow(5)>0)
-        %     DOFsToCustomNodes(Nx+1:end,end+1) = ell;
-        % else
-        %     masterpt = find(TangentVectorNodes{Upstream}==MotherPt);
-        %     slavept = N+find(TangentVectorNodes{jFib}==FixPt);
-        %     AssignMat = eye(N*2+1);
-        %     for iBr=1:size(NodesByBranch,1)
-        %         AssignMat(slavept,:)=0;
-        %         AssignMat(slavept,masterpt)=1;
-        %     end
-        %     AssignMat(:,slavept)=[];
-        %     AssignMat=stackMatrix(AssignMat);
-        % end
-        % % Only involves the first link
-        % AvgMat = 1/(2*L)*repmat(wX,1,2);
-        % SubAvg = eye(Nx*2)-repmat(ones(Nx,1),2,1).*AvgMat;
-        % ChebMatZeroMean = SubAvg*DOFsToCustomNodes;
-        % DOFsToChebNodes = [ChebMatZeroMean ones(2*Nx,1)];
-        % PairwiseXMats{iPath,j-1,1} = stackMatrix(DOFsToChebNodes);
-        % if (ConnRow(5)==0)
-        %     PairwiseXMats{iPath,j-1,2} = AssignMat;
-        % end
     end
     % Go through the slave nodes and set the constraints
     for iC=1:size(SlaveConnections,1)

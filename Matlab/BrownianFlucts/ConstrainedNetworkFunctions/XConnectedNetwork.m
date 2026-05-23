@@ -11,7 +11,6 @@ function [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
     end
     nDOFs = size(DOFs,1);
 
-    % Chebyshev points of first filament
     AnchorFil = MasterConnections(1,1);
     DOFInds = TauStart(AnchorFil):TauStart(AnchorFil+1)-1;
     % Remove slave nodes on first filament

@@ -28,5 +28,7 @@ function OmegaPerp = KInvApplyConnNet(U,Xt,InvXFcn,BranchIndices)
         OmTrue = ActOmega*(InvertMe \ OmTot');
         OmegaPerp(BranchIndices(iBr,1),:)=OmTrue;
     end
-    OmegaPerp(BranchIndices(:,2),:)=[];
+    if (~isempty(BranchIndices))
+        OmegaPerp(BranchIndices(:,2),:)=[];
+    end
 end
