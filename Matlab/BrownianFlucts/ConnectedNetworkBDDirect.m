@@ -9,14 +9,12 @@ L = 1;
 ell = 0.1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
-Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
-    4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
-    8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1; 10 1 1 0 1; ...
-    9 1 1 0.25 1];
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
 %     4 0.5 5 0 0;  1 0.9 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
-%     8 0.5 9 0 0; 9 0.5 10 0.1 1];
-nFib=10;
+%     8 0.5 9 0 0; 9 0.5 10 0.1 1; 9 0.7 10 0.3 1; 2 0.1 1 0.6 1; 10 1 1 0 1; ...
+%     9 1 1 0.25 1];
+Connections = [1 0.5 2 0 0];
+nFib=2;
 %Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
 %Connections(2:3:end,5)=1;
 rtrue = 4e-3; % 4 nm radius
@@ -29,7 +27,7 @@ mu = 0.6;
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 1;
+makeMovie = 0;
 dt=1e-4;
 tf =25;
 
@@ -39,7 +37,7 @@ tf =25;
 
 % Initialize X and X inverse functions
 [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,1);
+    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,0);
 [DOFs2,XInvMat] = XInvConnectedNetwork(X,MasterConnections,...
     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
 XMat = stackMatrix(XMat);
@@ -223,11 +221,12 @@ for count=0:stopcount
     %SecondDrift = Mob_og*K'*MWsym^(-1)*M_RFD;
     %SDAll=SDAll+SecondDrift;
     RHSU = MWsymTilde*(BendMatAll*Xt+ Fext)+RandomVel+U0;
-    alphaUProj = MobK*Ktilde'*(MWsymTilde \ RHSU);
+    RHSV = randn(size(K,2),1);
+    alphaUProj = MobK*(Ktilde'*(MWsymTilde \ RHSU)+RHSV);
     LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSU);
-    RHS=[RHSU;zeros(size(K,2),1)];
+    RHS=[RHSU;RHSV];
     alphaLamPC = PrecomputePairwisePC(RHS,Xtilde,XInvFcn,MobFcn,...
-        MasterConnections,SlaveConnections,IntegrationMatrix, ...
+        BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
         ConstrainedPosNodes, TangentVectorNodes,BendForceMat,impcoeff*dt,L,nFib);
     return
     alphaU = AssignMat*alphaUProj;

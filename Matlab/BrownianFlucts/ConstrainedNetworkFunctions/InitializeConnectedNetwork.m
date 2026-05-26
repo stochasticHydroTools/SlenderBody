@@ -81,7 +81,7 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
             Upstream = FilsInPath(j-1);
             ConnInd = find((Connections(:,1)==jFib & Connections(:,3)==Upstream) | ...
                 (Connections(:,3)==jFib & Connections(:,1)==Upstream));
-            if (length(ConnInd)>1 && sum(Connections(ConnInd,5))>0)
+            if (length(ConnInd)>1 && sum(Connections(ConnInd,5)==0)>0)
                 % Find the one that has the branch and use that one
                 ConnInd = ConnInd(Connections(ConnInd,5)==0);
             else
@@ -225,6 +225,9 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
             repmat(taus(DownFib,:),length(TangentVectorNodes{DownFib}),1);
     end
     % Go through the slave nodes and set the constraints
+    if (isempty(SlaveConnections))
+        SlaveConnections=zeros(0,6);
+    else
     for iC=1:size(SlaveConnections,1)
         LinkNum=LinkNum+1;
         ConnRow = SlaveConnections(iC,:);
@@ -237,12 +240,14 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         SlaveConnections(iC,6)=norm(tauCL);
         DOFs(TauStart(end)-1+LinkNum,:)=tauCL/norm(tauCL);
     end
+    end
+    
     com=zeros(1,3);
     for iFib=1:nFib
         com=com+1/nFib*(Xstart(iFib,:)+L/2*taus(iFib,:));
         Xplt = [Xstart(iFib,:); Xstart(iFib,:)+L*taus(iFib,:)];
-        plot3(Xplt(:,1),Xplt(:,2),Xplt(:,3),':')
-        hold on
+        % plot3(Xplt(:,1),Xplt(:,2),Xplt(:,3),':')
+        % hold on
     end
     DOFs(end,:)=com;
 end
