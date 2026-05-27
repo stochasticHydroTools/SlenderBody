@@ -1,4 +1,4 @@
-function PrecompPCs = PrecomputePairwisePC(RHS,Xinput,XInvFcn,MobFcn,...
+function PrecompPCs = PrecomputePairwisePC2(RHS,Xinput,XInvFcn,MobFcn,...
     BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
     RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcodt,L,nFib)
     Nxx = length(Xinput);
@@ -37,46 +37,59 @@ function PrecompPCs = PrecomputePairwisePC(RHS,Xinput,XInvFcn,MobFcn,...
 
 
     LinkNum=0;
+    nMasterLinks = sum(MasterConnections(:,5)==1);
     % First solve pretending that the master connections are the only ones
     for iC=1:size(MasterConnections,1)
         ConnRow = MasterConnections(iC,:);
         UpFib = ConnRow(1);
-        PtOnUp = ConstrainedPosNodes{UpFib}(ConnRow(2));
         DownFib = ConnRow(3);
-        PtOnDown = ConstrainedPosNodes{DownFib}(ConnRow(4));
         DOFsDown = TauStart(DownFib):TauStart(DownFib+1)-1;
         DOFsUp = TauStart(UpFib):TauStart(UpFib+1)-1;
-        Tau3 = [DOFs(TauStart(UpFib):TauStart(UpFib+1)-1,:); ...
-            DOFs(TauStart(DownFib):TauStart(DownFib+1)-1,:)];
         % Find the branch index if it exists
+        if (~isempty(BranchIndices))
         BrIndex = find(BranchIndices(:,1) < TauStart(UpFib+1) & ...
             BranchIndices(:,1) >= TauStart(UpFib) & ...
             BranchIndices(:,2) < TauStart(DownFib+1) & ...
             BranchIndices(:,2) >= TauStart(DownFib));
+        else
+            BrIndex=[];
+        end
 
         % Compute the matrices which map the lead nodes to a regular grid
         % of Nx Chebyshev points
-        LeadIndDown = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==DownFib,4));
-        LeadIndUp = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==UpFib,4));
-        Nup = length(LeadIndUp);
-        Ndown = length(LeadIndDown);
-        [sUp,wUp,bUp] = chebpts(Nup,[0 L],2);
-        ResampleUp = barymat(sX,sUp,bUp)*barymat(ConstrainedPosNodes{UpFib}(LeadIndUp),sUp,bUp)^(-1);
-        IntMatUp = ResampleUp*IntegrationMatrix{UpFib};
-        [sDwn,wDwn,bDwn] = chebpts(Ndown,[0 L],2);
-        ResampleDwn = barymat(sX,sDwn,bDwn)*barymat(ConstrainedPosNodes{DownFib}(LeadIndDown),sDwn,bDwn)^(-1);
-        IntMatDwn = ResampleDwn*IntegrationMatrix{DownFib};
+        
+        SlaveIndsUp = find(SlaveConnections(:,3)==UpFib);
+        SlaveLinkInds = nMasterLinks+SlaveIndsUp;
+        [SlavePtsUp,sorder]=sort(SlaveConnections(SlaveIndsUp,4),'ascend');
+        OrderedSlaveLinks_up=SlaveConnections(SlaveIndsUp(sorder),:);
+        SlaveLinkInds_up=SlaveLinkInds(sorder);
 
-        % Compute the X matrix for this pair (maps the lead DOFs to the
-        % positions by Chebyshev integration)
-        DOFsToChebNodes = [IntMatUp zeros(Nx,length(DOFsDown)); ...
-            ones(Nx,1).*barymat(PtOnUp,sX,bX)*IntMatUp ...
-            (eye(Nx)-repmat(barymat(PtOnDown,sX,bX),Nx,1))*IntMatDwn];
+        SlaveIndsDown = find(SlaveConnections(:,3)==DownFib);
+        SlaveLinkInds = nMasterLinks+SlaveIndsDown;
+        [SlavePtsDwn,sorder]=sort(SlaveConnections(SlaveIndsDown,4),'ascend');
+        OrderedSlaveLinks_dwn=SlaveConnections(SlaveIndsDown(sorder),:);
+        SlaveLinkInds_dwn=SlaveLinkInds(sorder);
+
+        Tau3 = [DOFs(TauStart(UpFib):TauStart(UpFib+1)-1,:); DOFs(TauStart(end)-1+SlaveLinkInds_up,:);...
+            DOFs(TauStart(DownFib):TauStart(DownFib+1)-1,:); DOFs(TauStart(end)-1+SlaveLinkInds_dwn,:)];
+
+        Nup = Nx - length(SlavePtsUp);
+        Ndown = Nx - length(SlavePtsDwn);
+        % Approximation: fixed center of mass of slave links
+        DOFsToIrregNodes=[IntegrationMatrix{UpFib} zeros(Nup,2*(Nx-1)-(Nup-1)); 
+            ones(Ndown,1).*IntegrationMatrix{UpFib}(ConnRow(2),:) ...
+            (IntegrationMatrix{DownFib}-ones(Ndown,1).*IntegrationMatrix{DownFib}(ConnRow(4),:)) zeros(Ndown,2*(Nx-1)-(Nup-1)-(Ndown-1)); ......
+            zeros(Nx-Nup,Nup-1+Ndown-1) diag(OrderedSlaveLinks_up(:,6)) zeros(Nx-Nup,(Nx-1)-(Ndown-1)); ...
+            zeros(Nx-Ndown,Ndown-1+Nup-1) zeros(Nx-Ndown,(Nx-1)-(Nup-1)) diag(OrderedSlaveLinks_dwn(:,6))];
+        
+        ToChebNodes = [RegGridMatrix{UpFib}(:,1:Nup) zeros(Nx,Ndown) RegGridMatrix{UpFib}(:,Nup+1:end) zeros(Nx,Nx-Ndown); ...
+            zeros(Nx,Nup) RegGridMatrix{DownFib}(:,1:Ndown) zeros(Nx,Nx-Nup) RegGridMatrix{DownFib}(:,Ndown+1:end)];
+        DOFsToChebNodes=ToChebNodes*DOFsToIrregNodes;
 
         % Remove the slave DOF from the second fiber
         DOFsDownNoSlave= DOFsDown;
         if (ConnRow(5)>0)
-            DOFsToChebNodes(Nup+1:end,end+1) = ConnRow(6);
+            DOFsToChebNodes(Nx+1:end,end+1) = ConnRow(6);
             AssignMat = 1;
             LinkNum=LinkNum+1;
             Tau3 = [Tau3; DOFs(TauStart(end,:)-1+LinkNum,:)];
@@ -84,7 +97,7 @@ function PrecompPCs = PrecomputePairwisePC(RHS,Xinput,XInvFcn,MobFcn,...
             masterpt = BranchIndices(BrIndex,1)-TauStart(UpFib)+1;
             slavept = BranchIndices(BrIndex,2)-TauStart(DownFib)+1;
             slaveindex=length(DOFsUp)+slavept;
-            AssignMat = eye(length(DOFsUp)+length(DOFsDown)+1);
+            AssignMat = eye(2*Nx-1);
             AssignMat(slaveindex,:)=0;
             AssignMat(slaveindex,masterpt)=1;
             AssignMat(:,slaveindex)=[];
@@ -97,8 +110,20 @@ function PrecompPCs = PrecomputePairwisePC(RHS,Xinput,XInvFcn,MobFcn,...
         SubAvg = eye(2*Nx)-ones(2*Nx,1).*AvgMat;
         ChebMatZeroMean = SubAvg*DOFsToChebNodes;
         DOFsToChebNodes = [ChebMatZeroMean ones(2*Nx,1)];
-        XMat = stackMatrix(DOFsToChebNodes);        
-        
+        XMat = stackMatrix(DOFsToChebNodes);   
+
+        % K matrix
+        TauVelocity = zeros(3*size(Tau3,1)+3);
+        % The matrix for all the taus (incl links) to evolve
+        for iR =1:size(Tau3,1)
+            inds = (iR-1)*3+1:iR*3;
+            CMat = CPMatrix(Tau3(iR,:));
+            TauVelocity(inds,inds) =  -CMat;
+        end
+        % The COM
+        TauVelocity(end-2:end,end-2:end)=eye(3);
+        K = XMat*TauVelocity*AssignMat;
+
         DOFIndicesToFind = [DOFsUp DOFsDownNoSlave];
         stAlphInds = 0*repmat(DOFIndicesToFind,1,3);
         for pTau=1:length(DOFIndicesToFind)
@@ -108,6 +133,16 @@ function PrecompPCs = PrecomputePairwisePC(RHS,Xinput,XInvFcn,MobFcn,...
             end
             stAlphInds(3*pTau-2:3*pTau)=3*ThisDOFInd-2:3*ThisDOFInd;
         end
+        % Add slaves
+        slaveUps = [];
+        for iG=SlaveLinkInds_up'
+            slaveUps=[slaveUps 3*TauStartNoSlave(end)-3+(3*iG-2:3*iG)];
+        end
+        slaveDwns = [];
+        for iG=SlaveLinkInds_dwn'
+            slaveDwns=[slaveDwns 3*TauStartNoSlave(end)-3+(3*iG-2:3*iG)];
+        end
+        stAlphInds = [stAlphInds slaveUps slaveDwns];
         % Add the taus for the CL on the RHS
         if (ConnRow(5)>0)
             stAlphInds=[stAlphInds ...
@@ -118,7 +153,6 @@ function PrecompPCs = PrecomputePairwisePC(RHS,Xinput,XInvFcn,MobFcn,...
         UThis = U(UInds);
 
         % Form and solve linear system for this pair
-        K = KWithLink(XMat,Tau3,AssignMat);
         M = blkdiag(MobFcn(Xinput(3*Nx*(UpFib-1)+(1:3*Nx))),...
             MobFcn(Xinput(3*Nx*(DownFib-1)+(1:3*Nx))));
         KWithImp = K-impcodt*M*blkdiag(BendForceMat,BendForceMat)*K;
@@ -132,51 +166,25 @@ function PrecompPCs = PrecomputePairwisePC(RHS,Xinput,XInvFcn,MobFcn,...
         alphaU_All(stAlphInds)=alphaU_All(stAlphInds)+alphaU(1:end-3);
         alphaU_All(end-2:end)=alphaU_All(end-2:end)+alphaU(end-2:end);
     end
-
-
-    % Slave connections
-    for iC=1:size(SlaveConnections,1)
-        sFib = SlaveConnections(iC,3);
-        sPt = SlaveConnections(iC,4);
-        mFib = SlaveConnections(iC,1);
-        mPt = SlaveConnections(iC,2);
-        LinkNum=LinkNum+1;
-        Tau3 = DOFs(TauStart(end,:)-1+LinkNum,:);
-        CMat = CPMatrix(Tau3);
-        stAlphInds=3*TauStartNoSlave(end)-2+(3*LinkNum-3:3*LinkNum-1);
-        mInds = 3*Nx*(mFib-1)+(1:3*Nx);
-        sInds = 3*Nx*(sFib-1)+(1:3*Nx);
-        Umaster0 = stackMatrix(RegGridMatrix{mFib}) \ U_All(mInds);
-        Umaster0=Umaster0(3*mPt-2:3*mPt);
-        Uslave0 = stackMatrix(RegGridMatrix{sFib}) \ U_All(sInds);
-        Uslave0=Uslave0(3*sPt-2:3*sPt);
-        AssignMat = zeros(Nx,1);
-        AssignMat(sPt)=1;
-        Ext = stackMatrix(RegGridMatrix{sFib}*AssignMat);
-        MobSlave = MobFcn(Xinput(sInds));
-        KSl = -Ext*CMat*SlaveConnections(iC,6);
-        RHS = Ext*(Uslave0-Umaster0);
-        % Solve for the change in U and Lambda on the slave
-        LamAlph = pinv([-MobSlave KSl; KSl' zeros(3)])*[RHS; V(stAlphInds)];
-        alphaU_All(stAlphInds)=alphaU_All(stAlphInds)+LamAlph(end-2:end);
-        Lam_All(sInds)=Lam_All(sInds)+LamAlph(1:end-3);
+    % Take out null space to make solution unique
+    for g=1:size(DOFIndexToTau,1)
+        TauInds = DOFIndexToTau(g,:);
+        ThisAlpha = alphaU_All(3*g-2:3*g)';
+        if (TauInds(2)==-1) % There's only a null space if not part of branch
+            ThisTau = DOFs(DOFIndexToTau(g,1),:);
+            % Project off
+            ThisAlpha = ThisAlpha - dot(ThisAlpha,ThisTau)*ThisTau;
+            alphaU_All(3*g-2:3*g)=ThisAlpha;
+        end
+    end
+    % Take out null space for cross links
+    for g=1:(nMasterLinks+size(SlaveConnections,1))
+        ThisTau = DOFs(TauStart(end)-1+g,:);
+        alphaInds = 3*(TauStartNoSlave(end)-1)+(3*g-2:3*g);
+        ThisAlpha = alphaU_All(alphaInds)';
+        % Project off
+        ThisAlpha = ThisAlpha - dot(ThisAlpha,ThisTau)*ThisTau;
+        alphaU_All(alphaInds)=ThisAlpha;
     end
     PrecompPCs=[Lam_All;alphaU_All];
-end
-    
-        
-    
-
-
-function KTogether = KWithLink(XMat,Tau3,AssignMat)
-    TauVelocity = zeros(3*size(Tau3,1)+3);
-    % The matrix for all the taus (incl links) to evolve
-    for iR =1:size(Tau3,1)
-        inds = (iR-1)*3+1:iR*3;
-        CMat = CPMatrix(Tau3(iR,:));
-        TauVelocity(inds,inds) =  -CMat;
-    end
-    % The COM
-    TauVelocity(end-2:end,end-2:end)=eye(3);
-    KTogether = XMat*TauVelocity*AssignMat;
 end

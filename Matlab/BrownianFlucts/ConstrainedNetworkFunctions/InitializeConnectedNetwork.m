@@ -104,9 +104,9 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     nSlave = zeros(nFib,1);
     for p =1:size(SlaveConnections,1)
         SlaveRow = SlaveConnections(p,:);
-        if (nSlave(SlaveRow(1))<nSlave(SlaveRow(3)))
-            SlaveRow = [SlaveRow(3:4) SlaveRow(1:2) SlaveRow(5)];
-        end
+        % if (nSlave(SlaveRow(1))<nSlave(SlaveRow(3)))
+        %     SlaveRow = [SlaveRow(3:4) SlaveRow(1:2) SlaveRow(5)];
+        % end
         nSlave(SlaveRow(3))=nSlave(SlaveRow(3))+1;
         SlaveConnections(p,:)=SlaveRow;
     end
@@ -210,13 +210,20 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         % Figure out if it's a branch or cross link
         if (ConnRow(5)==0) % branch
             prevsn=-1*prevsn;
+            if (UpFib==1 && DownFib>2)
+                prevsn=-1;
+            end
             taus(DownFib,:)=rotate(taus(UpFib,:),prevsn*70/180*pi*[0 0 1]);
             Xstart(DownFib,:)=Xstart(UpFib,:)+taus(UpFib,:)*PtOnUp;
         else % Cross link
+            prevsn=-1*prevsn;
+            if (UpFib==1 && DownFib>2)
+                prevsn=-1;
+            end
             LinkNum=LinkNum+1;
             nRand = [randn(2,2) zeros(2,1)];
-            taus(DownFib,:)=nRand(1,:)/norm(nRand(1,:));
-            LinkVec =nRand(2,:)/norm(nRand(2,:));
+            LinkVec =rotate(taus(UpFib,:),prevsn*30/180*pi*[0 0 1]);%nRand(2,:)/norm(nRand(2,:));
+            taus(DownFib,:)=rotate(LinkVec,prevsn*30/180*pi*[0 0 1]);%nRand(1,:)/norm(nRand(1,:));
             DOFs(TauStart(end)-1+LinkNum,:)=LinkVec;
             Xstart(DownFib,:)=Xstart(UpFib,:)+taus(UpFib,:)*PtOnUp + ...
                 LinkVec*ell - taus(DownFib,:)*PtOnDown;

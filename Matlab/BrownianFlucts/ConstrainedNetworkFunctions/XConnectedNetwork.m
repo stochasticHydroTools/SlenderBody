@@ -103,7 +103,7 @@ function [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
     end
 
     if (makePlot)
-        %figure;
+        figure;
         for iFib=1:nFib
             plot3(X((iFib-1)*Nx+(1:Nx),1),X((iFib-1)*Nx+(1:Nx),2),X((iFib-1)*Nx+(1:Nx),3))
             hold on
