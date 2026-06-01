@@ -1,11 +1,11 @@
 % Langevin dynamics
 nTrial=100;
-Ns=[8 16];
+Ns=[8 16 24];
 L=1;
 lp=2;
 Force = 3;
 FSqRts = Force;
-dts = [1e-3 1e-5];
+dts = [1e-3 1e-5 1e-6];
 MeanExtension = zeros(nTrial,length(dts));
 MeanTay = zeros(nTrial,length(dts));
 Npl=101;
@@ -31,7 +31,7 @@ for jj=1:nTrial
         MeanTauSq(:,:,jj,iDT)=MeanTauSq(:,:,jj,iDT)+(TauThis.^2)/nObs;
         MeanExtension(jj,iDT) = MeanExtension(jj,iDT) + ThesePts(end,2)/nObs;
     end
-    MeanCorSize(jj,iDT)=MeanOmTurn;
+    %MeanCorSize(jj,iDT)=MeanOmTurn;
 end
 end
 nError = 5;

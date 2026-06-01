@@ -2,7 +2,7 @@
 % Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 function [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,makePlot)
+    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,makePlot)
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
     X = zeros(Nx*nFib,3);
     TauStart = ones(nFib,1);
@@ -88,18 +88,25 @@ function [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
     end
 
     % Remove the average
-    AvgPt = zeros(1,3);
-    for iFib=1:nFib
-        AvgPt = AvgPt+1/(L*nFib)*wX*X((iFib-1)*Nx+(1:Nx),:);
-    end
-    X = X-AvgPt + DOFs(end,:);
-    if (nargout>1)
-        XMat = XMat([1:Nx*nFib end],Nx*nFib+1:end);
-        AvgMat = 1/(nFib*L)*repmat(wX,1,nFib);
-        SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
-        SubAvg = [SubAvg ones(Nx*nFib,1)];
-        XMat = SubAvg*XMat;
-        XMatEr=max(abs(XMat*DOFs-X))
+    if (~clamp0)
+        AvgPt = zeros(1,3);
+        for iFib=1:nFib
+            AvgPt = AvgPt+1/(L*nFib)*wX*X((iFib-1)*Nx+(1:Nx),:);
+        end
+        X = X-AvgPt + DOFs(end,:);
+        if (nargout>1)
+            XMat = XMat([1:Nx*nFib end],Nx*nFib+1:end);
+            AvgMat = 1/(nFib*L)*repmat(wX,1,nFib);
+            SubAvg = eye(Nx*nFib)-repmat(ones(Nx,1),nFib,1).*AvgMat;
+            SubAvg = [SubAvg ones(Nx*nFib,1)];
+            XMat = SubAvg*XMat;
+            XMatEr=max(abs(XMat*DOFs-X))
+        end
+    else
+        if (nargout>1)
+            XMat = XMat(1:Nx*nFib,Nx*nFib+1:end);
+            XMatEr=max(abs(XMat*DOFs-X))
+        end
     end
 
     if (makePlot)

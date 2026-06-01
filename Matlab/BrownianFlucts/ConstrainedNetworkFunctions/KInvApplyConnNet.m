@@ -1,4 +1,4 @@
-function OmegaPerp = KInvApplyConnNet(U,Xt,InvXFcn,BranchIndices)
+function OmegaPerp = KInvApplyConnNet(U,Xt,InvXFcn,BranchIndices,clampedTau)
     if (size(Xt,2)==1)
         Xt = reshape(Xt,3,[])';
     end
@@ -12,8 +12,12 @@ function OmegaPerp = KInvApplyConnNet(U,Xt,InvXFcn,BranchIndices)
     for iR =1:size(TausAndXBar,1)-1
         OmegaPerp(iR,:) =  -cross(Alpha(iR,:),TausAndXBar(iR,:));
     end
-    % The COM
-    OmegaPerp(end,:)=Alpha(end,:);
+    if (clampedTau>0)
+        OmegaPerp(end,:) =  -cross(Alpha(end,:),TausAndXBar(end,:));
+    else
+        % The COM
+        OmegaPerp(end,:)=Alpha(end,:);
+    end
     % Overwrite the branches
     for iBr=1:size(BranchIndices,1)
         % Construct local ONB
@@ -28,7 +32,12 @@ function OmegaPerp = KInvApplyConnNet(U,Xt,InvXFcn,BranchIndices)
         OmTrue = ActOmega*(InvertMe \ OmTot');
         OmegaPerp(BranchIndices(iBr,1),:)=OmTrue;
     end
-    if (~isempty(BranchIndices))
-        OmegaPerp(BranchIndices(:,2),:)=[];
+    delInds=[];
+    if (clampedTau>0)
+        delInds=[delInds;clampedTau];
     end
+    if (~isempty(BranchIndices))
+        delInds=[delInds;BranchIndices(:,2)];
+    end
+    OmegaPerp(delInds,:)=[];
 end

@@ -7,19 +7,21 @@ seed=1;
 Nx = 8;
 L = 1;
 ell = 0.25;
+clamp0 = 1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
-Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
-    4 0.5 5 0 0;  1 0.1 6 0 1; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
-    8 0.5 9 0 0; 3 0.7 4 0.1 1; ...
-    4 1 5 0.7 1; 6 1 7 0.5 1; 9 1 2 1 1];
-nFib=9;
-%Connections = [1 0.5 2 0 0; 2 0.8 1 0.4 1];
-%nFib=2;
-%Connections = [1 0.5 2 0 0];
-%nFib=2;
-%Connections = [(1:nFib-1)' 0.8*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
-%Connections(2:3:end,5)=1;
+% Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
+%     4 0.5 5 0 0;  1 0.1 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0 0; ...
+%     8 0.5 9 0 0; 2 1 3 1 1; 1 0.3 2 0.2 1; 2 0.3 3 0.2 1; 1 1 7 0.7 1; ...
+%     8 1 9 1 1];
+% nFib=9;
+Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
+nFib=3;
+% nFib=40;
+% Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
+%     [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
+% Connections(2:2:end,5)=1;
+% Connections=[Connections; 3 0.7 4 0.1 1; 4 1 5 0.7 1];
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -32,31 +34,34 @@ rng(seed);
 impcoeff = 1;
 makeMovie = 1;
 dt=1e-4;
-tf =25;
+tf=1e-3;
 
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
-  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
-    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell);
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,...
+  DiffMatrix,RegGridMatrix,clampedTau] = ...
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,clamp0);
 
 % Initialize X and X inverse functions
 [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,0);
-[DOFs2,XInvMat] = XInvConnectedNetwork(X,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
-XMat = stackMatrix(XMat);
-InvXMat = stackMatrix(XInvMat);
+    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,1);
+[DOFs2,InvXMat] = XInvConnectedNetwork(X,MasterConnections,...
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
+
 % Lam=randn(size(X));
 % XTLam1=XMat'*Lam;
 % XTLam2=XTrConnectedNetwork(Lam,MasterConnections,SlaveConnections,...
-%     Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
+%     Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0);
 % max(abs(XTLam1-XTLam2))
 % 
 % max(abs(DOFs2-DOFs))
-% max(max(abs(XInvMat*XMat-eye(size(XMat,2)))))
+% max(max(abs(InvXMat*XMat-eye(size(XMat,2)))))
 % Om = randn(size(DOFs));
 % XInvTD = XInvTrConnectedNetwork(Om,MasterConnections,...
-%     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
-% max(abs(XInvTD-XInvMat'*Om))
+%     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
+% max(abs(XInvTD-InvXMat'*Om))
+
+XMat = stackMatrix(XMat);
+InvXMat = stackMatrix(InvXMat);
 
 % Matrices to assign taus for the branch node
 AssignMat = eye(size(DOFs,1));
@@ -64,20 +69,26 @@ for iBr=1:size(BranchIndices,1)
     AssignMat(BranchIndices(iBr,2),:)=0;
     AssignMat(BranchIndices(iBr,2),BranchIndices(iBr,1))=1;
 end
-if ~isempty(BranchIndices)
-    AssignMat(:,BranchIndices(:,2))=[];
+IndsToDel=[];
+if (clamp0)
+    AssignMat(clampedTau,:)=0;
+    IndsToDel=clampedTau;
 end
+if ~isempty(BranchIndices)
+    IndsToDel=[IndsToDel;BranchIndices(:,2)];
+end
+AssignMat(:,IndsToDel)=[];
 AssignMat=stackMatrix(AssignMat);
 
 % Initialize X and X inverse functions
 XFcn = @(dof3d) XConnectedNetwork(dof3d,MasterConnections,...
-    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,0);
+    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,0);
 XInvFcn = @(x3d) XInvConnectedNetwork(x3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
 XTrFcn = @(lam3d) XTrConnectedNetwork(lam3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0);
 XInvTrFcn = @(Om3d) XInvTrConnectedNetwork(Om3d,MasterConnections,...
-     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
+     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
 Xt = reshape(X',[],1);
 
 % Bending energy matrix (2Nx grid)
@@ -106,7 +117,7 @@ MobFcn = @(x1d) LocalDragMob(x1d,DX,MobConst,WTilde_Nx_Inverse);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
-saveEvery=max(1,floor(1e-2/dt+1e-10));
+saveEvery=1;%max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
 MDDist=[];
@@ -165,7 +176,7 @@ for count=0:stopcount
 
     % Matrices at time step n 
     [K,KInv] = KWithLink(Xt,XMat,InvXMat,...
-        AssignMat,BranchIndices);
+        AssignMat,BranchIndices,clampedTau);
     MWsym = zeros(nFib*3*Nx);
     RandomVelBM = zeros(nFib*3*Nx,1);
     g = randn(3*Nx*nFib,1);
@@ -180,12 +191,10 @@ for count=0:stopcount
     
     % Advance to midpoint
     OmegaTilde = KInv*RandomVelBM;
-    % Iterative version
-    OmegaTilde2 = KInvApplyConnNet(RandomVelBM,Xt,XInvFcn,BranchIndices);
     OmAll = AssignMat*OmegaTilde;
-    Xtilde = updateByRotate(Xt,OmAll,XMat,InvXMat,dt/2);
+    Xtilde = updateByRotate(Xt,OmAll,XMat,InvXMat,dt/2,clamp0);
     [Ktilde,KInvTilde] = KWithLink(Xtilde,XMat,InvXMat,...
-        AssignMat,BranchIndices);
+        AssignMat,BranchIndices,clampedTau);
     MWsymTilde = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
@@ -197,9 +206,9 @@ for count=0:stopcount
     g3 = randn(size(AssignMat,2),1);
     OmM = AssignMat*g3;
     delta = 1e-5;
-    XPlus = updateByRotate(Xt,OmM,XMat,InvXMat,delta);
+    XPlus = updateByRotate(Xt,OmM,XMat,InvXMat,delta,clamp0);
     [KPlus,KInvPlus] = KWithLink(XPlus,XMat,InvXMat,...
-        AssignMat,BranchIndices);
+        AssignMat,BranchIndices,clampedTau);
     MWSymPlus = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
@@ -232,9 +241,9 @@ for count=0:stopcount
     %     BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
     %     ConstrainedPosNodes, TangentVectorNodes,BendForceMat,impcoeff*dt,L,nFib);
     alphaU = AssignMat*alphaUProj;
-    return
+    %return
 
-    Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt);
+    Xp1 = updateByRotate(Xt,alphaU,XMat,InvXMat,dt,clamp0);
     Xt=Xp1;
 end
 %FDAll=FDAll/(count+1);
@@ -244,11 +253,17 @@ Totaltime=toc(tStart);
 %end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
-    AssignMat,BranchIndices)
+    AssignMat,BranchIndices,clampedTau)
     TausAndXBar = InvXMat*Xt;
-    Tau3 = reshape(TausAndXBar(1:end-3),3,[])';
-    TauVelocity = zeros(3*size(Tau3,1)+3);
-    InvTauVelocity = zeros(3*size(Tau3,1)+3);
+    if (clampedTau <=0)
+        Tau3 = reshape(TausAndXBar(1:end-3),3,[])';
+        TauVelocity = zeros(3*size(Tau3,1)+3);
+        InvTauVelocity = zeros(3*size(Tau3,1)+3);
+    else
+        Tau3 = reshape(TausAndXBar,3,[])';
+        TauVelocity = zeros(3*size(Tau3,1));
+        InvTauVelocity = zeros(3*size(Tau3,1));
+    end
     % The matrix for all the taus (incl links) to evolve
     for iR =1:size(Tau3,1)
         inds = (iR-1)*3+1:iR*3;
@@ -257,8 +272,10 @@ function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
         InvTauVelocity(inds,inds) = CMat;
     end
     % The COM
-    TauVelocity(end-2:end,end-2:end)=eye(3);
-    InvTauVelocity(end-2:end,end-2:end)=eye(3);
+    if (clampedTau<=0)
+        TauVelocity(end-2:end,end-2:end)=eye(3);
+        InvTauVelocity(end-2:end,end-2:end)=eye(3);
+    end
     KTogether = XMat*TauVelocity*AssignMat;
     KTogetherInv = AssignMat'*InvTauVelocity*InvXMat;
     OmegaFromProjections = eye(length(TausAndXBar));
@@ -278,21 +295,31 @@ function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
     for iBr=1:size(BranchIndices,1)
         brInds = [brInds;3*BranchIndices(iBr,2)+(-2:0)'];
     end
+    if (clampedTau>0)
+        brInds = [brInds;(3*clampedTau-2:3*clampedTau)'];
+    end
     OmegaFromProjections(brInds,:)=[];
     OmegaFromProjections(:,brInds)=[];
     KTogetherInv=OmegaFromProjections*KTogetherInv;
 end
 
-function XNew = updateByRotate(Xt,alphaU,XMat,InvXMat,dt)
+function XNew = updateByRotate(Xt,alphaU,XMat,InvXMat,dt,clamp0)
     TausXBar = InvXMat*Xt;
     TausXBarNew = 0*TausXBar;
     % Update the tangent vectors
-    Taus = reshape(TausXBar(1:end-3),3,[])';
-    Omega = reshape(alphaU(1:end-3),3,[])';
-    newTaus = rotateTau(Taus,Omega,dt);
-    TausXBarNew(1:end-3)=reshape(newTaus',[],1);
-    % Add the constant
-    TausXBarNew(end-2:end)=TausXBar(end-2:end)+dt*alphaU(end-2:end);
+    if (~clamp0)
+        Taus = reshape(TausXBar(1:end-3),3,[])';
+        Omega = reshape(alphaU(1:end-3),3,[])';
+        newTaus = rotateTau(Taus,Omega,dt);
+        TausXBarNew(1:end-3)=reshape(newTaus',[],1);
+        % Add the constant
+        TausXBarNew(end-2:end)=TausXBar(end-2:end)+dt*alphaU(end-2:end);
+    else
+        Taus = reshape(TausXBar,3,[])';
+        Omega = reshape(alphaU,3,[])';
+        newTaus = rotateTau(Taus,Omega,dt);
+        TausXBarNew=reshape(newTaus',[],1);
+    end    
     XNew = XMat*TausXBarNew;
 end
 

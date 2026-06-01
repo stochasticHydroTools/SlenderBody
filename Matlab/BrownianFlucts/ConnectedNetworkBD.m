@@ -6,19 +6,24 @@ seed=1;
 Nx = 8;
 L = 1;
 ell = 0.25;
+clamp0=1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
-%     4 0.5 5 0 0;  1 0.1 6 0 1; 6 0.5 7 0 0; 7 0.9 8 0.1 1; ...
-%     8 0.5 9 0 0; 3 0.7 4 0.1 1; ...
-%    4 1 5 0.7 1];% 6 1 7 0.5 1; 9 1 2 1 1];
-%nFib=9;
-% Connections = [1 0.5 2 0 0; 2 0.8 1 0.4 1];
-nFib=40;
+%     4 0.5 5 0 0;  1 0.1 6 0 0; 6 0.5 7 0 0; 7 0.9 8 0 0; ...
+%     8 0.5 9 0 0; 2 1 3 1 1; 1 0.3 2 0.2 1; 2 0.3 3 0.2 1; 1 1 7 0.7 1; ...
+%     8 1 9 1 1];
+% nFib=9;
+%Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
+%nFib=3;
+nFib=30;
 Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
-    [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
-Connections(2:2:end,5)=1;
-%Connections=[Connections; 3 0.7 4 0.1 1]; 4 1 5 0.7 1];
+   [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
+%NewConn = [(2:2:nFib/2-1)'; (nFib/2+1:2:nFib-1)'];
+%Connections=[Connections;  NewConn 0.5*ones(length(NewConn),1) ...
+%   NewConn+1 0.6*ones(length(NewConn),1) ones(length(NewConn),1)];
+%NewConn = [(2:5)' ones(4,1) (nFib/2+1:nFib/2+4)' 0.1*ones(4,1) ones(4,1)]
+%Connections=[Connections; NewConn];
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -31,26 +36,27 @@ rng(seed);
 impcoeff = 1;
 makeMovie = 1;
 dt=1e-4;
-tf =25;
+tf =1e-3;
 
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
-  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
-    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell);
-nAlphas = 3*(size(DOFs,1)-sum(MasterConnections(:,5)==0));
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,...
+  DiffMatrix,RegGridMatrix,clampedTau] = ...
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,clamp0);
+nAlphas = 3*(size(DOFs,1)-sum(MasterConnections(:,5)==0)-clamp0);
 
 % Initialize X and X inverse functions
 XFcn = @(dof3d) XConnectedNetwork(dof3d,MasterConnections,...
-    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,0);
+    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,0);
 XInvFcn = @(x3d) XInvConnectedNetwork(x3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
 XTrFcn = @(lam3d) XTrConnectedNetwork(lam3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix);
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0);
 XInvTrFcn = @(Om3d) XInvTrConnectedNetwork(Om3d,MasterConnections,...
-     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix);
-KFcn = @(alpha,x) KApplyConnNet(alpha,x,XFcn,XInvFcn,BranchIndices);
-KTFcn =  @(Lam,x) KTApplyConnNet(Lam,x,XTrFcn,XInvFcn,BranchIndices);
-KInvFcn = @(U,x) KInvApplyConnNet(U,x,XInvFcn,BranchIndices);
-KTInvFcn = @(alpha,x)  KInvTApplyConnNet(alpha,x,XInvTrFcn,XInvFcn,BranchIndices);
+     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
+KFcn = @(alpha,x) KApplyConnNet(alpha,x,XFcn,XInvFcn,BranchIndices,clampedTau);
+KTFcn =  @(Lam,x) KTApplyConnNet(Lam,x,XTrFcn,XInvFcn,BranchIndices,clampedTau);
+KInvFcn = @(U,x) KInvApplyConnNet(U,x,XInvFcn,BranchIndices,clampedTau);
+KTInvFcn = @(alpha,x)  KInvTApplyConnNet(alpha,x,XInvTrFcn,XInvFcn,BranchIndices,clampedTau);
 
 % Bending energy matrix (2Nx grid)
 [sX,wX,bX] = chebpts(Nx,[0 L],2);
@@ -121,7 +127,11 @@ for count=0:stopcount
                 jS = Connections(iConn,4);
                 pts = [barymat(iS,sX,bX)*PtsThisT((iFib-1)*Nx+(1:Nx),:); ...
                     barymat(jS,sX,bX)*PtsThisT((jFib-1)*Nx+(1:Nx),:)];
-                plot3(pts(:,1),pts(:,2),pts(:,3),':ko')
+                if (Connections(iConn,5)==1)
+                plot3(pts(:,1),pts(:,2),pts(:,3),':ko','MarkerSize',2,'MarkerFaceColor','k')
+                else
+                plot3(pts(:,1),pts(:,2),pts(:,3),'bo','MarkerSize',2,'MarkerFaceColor','k')
+                end
             end
             movieframes(frameNum)=getframe(f);
         end
@@ -150,15 +160,15 @@ for count=0:stopcount
     
     % Advance to midpoint
     OmegaTilde = KInvFcn(RandomVelBM, Xt);
-    OmegaTilde = AssignBranchNodes(OmegaTilde,BranchIndices);
-    TauBarTilde = updateByRotate(DOFs,OmegaTilde,dt/2);
+    OmegaTilde = AssignBranchNodes(OmegaTilde,BranchIndices,clampedTau);
+    TauBarTilde = updateByRotate(DOFs,OmegaTilde,dt/2,clamp0);
     Xtilde = reshape(XFcn(TauBarTilde)',[],1);
 
     % RFD and other RHS velocities
     g3 = randn(nAlphas,1);
-    OmRFD=AssignBranchNodes(reshape(g3,3,[])',BranchIndices);
+    OmRFD=AssignBranchNodes(reshape(g3,3,[])',BranchIndices,clampedTau);
     delta = 1e-5;
-    TauBarPlus = updateByRotate(DOFs,OmRFD,delta);
+    TauBarPlus = updateByRotate(DOFs,OmRFD,delta,clamp0);
     XPlus = reshape(XFcn(TauBarPlus)',[],1);
     KInvTOm = reshape(KTInvFcn(g3,Xt)',[],1);
     KInvTOmPlus = reshape(KTInvFcn(g3,XPlus)',[],1);
@@ -182,37 +192,37 @@ for count=0:stopcount
     RHSAll = [RHSVel; zeros(nAlphas,1)];
 
     % Iterative (not exact - errors could accumulate(?))
-    tic
-    %PrecompMats = PrecompPCMat(Xtilde);
-    solapp=PrecomputePairwisePC2(RHSAll,Xtilde,XInvFcn,MobFcn,...
+    % [PrecompMats,DOFs,TauStart,TauStartNoSlave] = PrecomputePairwisePC(Xtilde,...
+    %     XInvFcn,MobFcn,BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
+    %     RegGridMatrix,BendForceMat,impcoeff*dt,L,nFib);
+    % solapp=ApplyPairwisePC(RHSAll,DOFs,MasterConnections,SlaveConnections,...
+    %     PrecompMats,TauStart,TauStartNoSlave,BranchIndices,Nx,nFib);
+    % PreconPW = @(RHS) ApplyPairwisePC(RHS,DOFs,MasterConnections,SlaveConnections,...
+    %     PrecompMats,TauStart,TauStartNoSlave,BranchIndices,Nx,nFib);
+    solapp=PairwisePCFull(RHSAll,Xtilde,XInvFcn,MobFcn,...
         BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-        RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcoeff*dt,L,nFib);
-    PreconPW = @(RHS) PrecomputePairwisePC2(RHS,Xtilde,XInvFcn,MobFcn,...
+        RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcoeff*dt,L,nFib,clampedTau);
+    PreconPW = @(RHS) PairwisePCFull(RHS,Xtilde,XInvFcn,MobFcn,...
         BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-        RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcoeff*dt,L,nFib);
+        RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcoeff*dt,L,nFib,clampedTau);
     [AllxG,flag,~,~,rv] = gmres(@(y)ApplyAMat(y,Xtilde),RHSAll,...
        [],1e-10,100,PreconPW);
     norm(ApplyAMat(AllxG,Xtilde)-RHSAll)/norm(RHSAll)
     length(rv)
     return
-    Lambda = AllxG(1:Nxx);
-    alphaU = reshape(AllxG(Nxx+1:end),3,[])';
+    Lambda = AllxG(1:3*Nx*nFib);
+    alphaU = AllxG(3*Nx*nFib+1:end);
     %toc
     % Assign branch nodes
-    for iBr=1:NBranch
-        masternode = NodesByBranch(iBr,1);
-        slavenode = NodesByBranch(iBr,2);
-        alphaU = [alphaU(1:slavenode-1,:); alphaU(masternode,:); ...
-            alphaU(slavenode:end,:)];
-    end
+    alphaU=AssignBranchNodes(reshape(alphaU,3,[])',BranchIndices,clampedTau);
     % Evolve constants by rotating and translating the link
-    DOFs_next = updateByRotate(DOFs,reshape(alphaU',[],1),dt);
+    DOFs_next = updateByRotate(DOFs,reshape(alphaU',[],1),dt,clamp0);
     DOFs=DOFs_next;
 end
 %Totaltime=toc(tStart);
 %save(strcat('Branched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist')
 
-function DOFsNew = updateByRotate(DOFs,alphaU,dt)
+function DOFsNew = updateByRotate(DOFs,alphaU,dt,clamp0)
     DOFsNew = 0*DOFs;
     % Update the tangent vectors
     if (size(alphaU,2)==1)
@@ -220,7 +230,11 @@ function DOFsNew = updateByRotate(DOFs,alphaU,dt)
     end
     DOFsNew(1:end-1,:) = rotateTau(DOFs(1:end-1,:),alphaU(1:end-1,:),dt);
     % Add the constant
-    DOFsNew(end,:)=DOFs(end,:)+dt*alphaU(end,:);
+    if (clamp0)
+        DOFsNew(end,:) = rotateTau(DOFs(end,:),alphaU(end,:),dt);
+    else
+        DOFsNew(end,:)=DOFs(end,:)+dt*alphaU(end,:);
+    end
 end
 
 % Apply the big matrix

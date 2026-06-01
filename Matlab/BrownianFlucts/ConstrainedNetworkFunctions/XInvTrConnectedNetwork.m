@@ -4,7 +4,7 @@
 
 % Split this into two functions
 function X = XInvTrConnectedNetwork(DOFs,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix)
+    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0)
 
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
     XIrreg = zeros(nFib*Nx,3);
@@ -29,7 +29,11 @@ function X = XInvTrConnectedNetwork(DOFs,MasterConnections,...
     end
 
     % Compute the center and tangent vectors on each fib
-    X = 1/(L*nFib)*repmat(wX',nFib,1).*DOFs(end,:);
+    if (clamp0)
+        X = zeros(Nx*nFib,3);
+    else
+        X = 1/(L*nFib)*repmat(wX',nFib,1).*DOFs(end,:);
+    end
     for iFib=1:nFib
         LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==iFib,4));
         XInds = Nx*(iFib-1)+(1:Nx);

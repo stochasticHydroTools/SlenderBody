@@ -1,20 +1,12 @@
-function PrecompPCs = PrecomputePairwisePC2(RHS,Xinput,XInvFcn,MobFcn,...
+function [MatsByPair,DOFs,TauStart,TauStartNoSlave] = PrecomputePairwisePC(Xinput,XInvFcn,MobFcn,...
     BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-    RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcodt,L,nFib)
+    RegGridMatrix,BendForceMat,impcodt,L,nFib)
     Nxx = length(Xinput);
     Nx = Nxx/(3*nFib);
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
     
     X3 = reshape(Xinput,3,[])';
-    DOFs = XInvFcn(X3);
-
-    Lam_All = zeros(Nxx,1);
-    U_All = zeros(Nxx,1);
-    nAlphas = 3*(size(DOFs,1)-sum(MasterConnections(:,5)==0));
-    alphaU_All = zeros(nAlphas,1);
-    
-    U = RHS(1:Nxx);
-    V = RHS(Nxx+1:end);
+    DOFs = XInvFcn(X3);  
 
     TauStart = ones(nFib,1);
     TauStartNoSlave = ones(nFib,1);
@@ -79,8 +71,8 @@ function PrecompPCs = PrecomputePairwisePC2(RHS,Xinput,XInvFcn,MobFcn,...
         DOFsToIrregNodes=[IntegrationMatrix{UpFib} zeros(Nup,2*(Nx-1)-(Nup-1)); 
             ones(Ndown,1).*IntegrationMatrix{UpFib}(ConnRow(2),:) ...
             (IntegrationMatrix{DownFib}-ones(Ndown,1).*IntegrationMatrix{DownFib}(ConnRow(4),:)) zeros(Ndown,2*(Nx-1)-(Nup-1)-(Ndown-1)); ......
-            zeros(Nx-Nup,Nup-1+Ndown-1) diag(OrderedSlaveLinks_up(:,6)) zeros(Nx-Nup,(Nx-1)-(Ndown-1)); ...
-            zeros(Nx-Ndown,Ndown-1+Nup-1) zeros(Nx-Ndown,(Nx-1)-(Nup-1)) diag(OrderedSlaveLinks_dwn(:,6))];
+            zeros(Nx-Nup,Nup-1+Ndown-1) diag(OrderedSlaveLinks_up(:,6))/2 zeros(Nx-Nup,(Nx-1)-(Ndown-1)); ...
+            zeros(Nx-Ndown,Ndown-1+Nup-1) zeros(Nx-Ndown,(Nx-1)-(Nup-1)) diag(OrderedSlaveLinks_dwn(:,6))/2];
         
         ToChebNodes = [RegGridMatrix{UpFib}(:,1:Nup) zeros(Nx,Ndown) RegGridMatrix{UpFib}(:,Nup+1:end) zeros(Nx,Nx-Ndown); ...
             zeros(Nx,Nup) RegGridMatrix{DownFib}(:,1:Ndown) zeros(Nx,Nx-Nup) RegGridMatrix{DownFib}(:,Ndown+1:end)];
@@ -148,43 +140,16 @@ function PrecompPCs = PrecomputePairwisePC2(RHS,Xinput,XInvFcn,MobFcn,...
             stAlphInds=[stAlphInds ...
                 3*TauStartNoSlave(end)-2+(3*LinkNum-3:3*LinkNum-1)];
         end
-        VThis = [V(stAlphInds); V(end-2:end)];
-        UInds = [3*Nx*(UpFib-1)+(1:3*Nx) 3*Nx*(DownFib-1)+(1:3*Nx)];
-        UThis = U(UInds);
 
         % Form and solve linear system for this pair
         M = blkdiag(MobFcn(Xinput(3*Nx*(UpFib-1)+(1:3*Nx))),...
             MobFcn(Xinput(3*Nx*(DownFib-1)+(1:3*Nx))));
         KWithImp = K-impcodt*M*blkdiag(BendForceMat,BendForceMat)*K;
         NMat = pinv(K'*(M\KWithImp));
-        KprimeMinvU = K' * (M \ UThis);
-        alphaU = NMat*(KprimeMinvU+VThis);
-        Lam = M \ (KWithImp*alphaU - UThis);
-
-        Lam_All(UInds)=Lam_All(UInds)+Lam;
-        U_All(UInds)=U_All(UInds)+K*alphaU;
-        alphaU_All(stAlphInds)=alphaU_All(stAlphInds)+alphaU(1:end-3);
-        alphaU_All(end-2:end)=alphaU_All(end-2:end)+alphaU(end-2:end);
+        MatsByPair{iC,1}=M;
+        MatsByPair{iC,3}=KWithImp;
+        MatsByPair{iC,2}=K;
+        MatsByPair{iC,4}=NMat;
+        MatsByPair{iC,5}=stAlphInds;
     end
-    % Take out null space to make solution unique
-    for g=1:size(DOFIndexToTau,1)
-        TauInds = DOFIndexToTau(g,:);
-        ThisAlpha = alphaU_All(3*g-2:3*g)';
-        if (TauInds(2)==-1) % There's only a null space if not part of branch
-            ThisTau = DOFs(DOFIndexToTau(g,1),:);
-            % Project off
-            ThisAlpha = ThisAlpha - dot(ThisAlpha,ThisTau)*ThisTau;
-            alphaU_All(3*g-2:3*g)=ThisAlpha;
-        end
-    end
-    % Take out null space for cross links
-    for g=1:(nMasterLinks+size(SlaveConnections,1))
-        ThisTau = DOFs(TauStart(end)-1+g,:);
-        alphaInds = 3*(TauStartNoSlave(end)-1)+(3*g-2:3*g);
-        ThisAlpha = alphaU_All(alphaInds)';
-        % Project off
-        ThisAlpha = ThisAlpha - dot(ThisAlpha,ThisTau)*ThisTau;
-        alphaU_All(alphaInds)=ThisAlpha;
-    end
-    PrecompPCs=[Lam_All;alphaU_All];
 end

@@ -1,26 +1,32 @@
 function XTLam=XTrConnectedNetwork(Lams,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix)
+    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0)
     % Apply X^T to X:
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
-    SubAvgTX = zeros(Nx*nFib+1,3);
+    SubAvgTX = zeros(Nx*nFib+1-clamp0,3);
     TauStart = ones(nFib,1);
     for iFib=1:nFib
         TauStart(iFib+1)=TauStart(iFib)+size(IntegrationMatrix{iFib},2);
     end
     NLinks = nnz(SlaveConnections(:,5))+nnz(MasterConnections(:,5));
     LinkNum=NLinks;
-    for jFib=1:nFib
-        SubAvgTX((jFib-1)*Nx+(1:Nx),:)=Lams((jFib-1)*Nx+(1:Nx),:)-...
-            1/(L*nFib)*wX'.*sum(Lams);
+    if (~clamp0)
+        for jFib=1:nFib
+            SubAvgTX((jFib-1)*Nx+(1:Nx),:)=Lams((jFib-1)*Nx+(1:Nx),:)-...
+                1/(L*nFib)*wX'.*sum(Lams);
+        end
+        SubAvgTX(end,:)=sum(Lams);
+    else
+        SubAvgTX=Lams;
     end
-    SubAvgTX(end,:)=sum(Lams);
     % Map to regular Chebyshev grid
     for iFib=1:nFib
         XInds=Nx*(iFib-1)+(1:Nx);
         SubAvgTX(XInds,:) = RegGridMatrix{iFib}'*SubAvgTX(XInds,:);
     end
-    XTLam = zeros(TauStart(end)+NLinks,3);
-    XTLam(end,:)=SubAvgTX(end,:);
+    XTLam = zeros(TauStart(end)+NLinks-clamp0,3);
+    if (~clamp0)
+        XTLam(end,:)=SubAvgTX(end,:);
+    end
     % Slave connections 
     for iC=size(SlaveConnections,1):-1:1
         ConnRow = SlaveConnections(iC,:);

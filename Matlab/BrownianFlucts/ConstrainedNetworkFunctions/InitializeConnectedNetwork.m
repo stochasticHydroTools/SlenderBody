@@ -1,8 +1,8 @@
 % Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
-  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix] = ...
-  InitializeConnectedNetwork(Connections,nFib,Nx,L,ell)
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix,clampedTau] = ...
+  InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,clamp0)
     N = Nx-1;
     % Check list
     for p=1:size(Connections,1)
@@ -13,6 +13,9 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     end
     % Check that there are not multiple CLs or branches at the same place
     AllConns = [Connections(:,1:2); Connections(:,3:4)];
+    if (clamp0)
+        AllConns = [AllConns;1 0];
+    end
     if (size(unique(AllConns, 'rows'), 1) < size(AllConns, 1))
         error('Cannot have two different constraints in the same place')
     end
@@ -167,6 +170,13 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         end
     end
 
+    clampedTau=-1;
+    if (clamp0) % Replace tangent vector on the first (central filament)
+        [TangentVectorNodes,nTauReplaced] = ReplaceNode(TangentVectorNodes,nTauReplaced,node_start,0);
+        clampedTau = TauStart(node_start)+length(TangentVectorNodes{node_start})-nTauReplaced(node_start);
+        [ConstrainedPosNodes,nXReplaced] = ReplaceNode(ConstrainedPosNodes,nXReplaced,node_start,0);
+    end
+
     
     % Integration matrix: takes the tangent vector nodes and maps them to
     % the LEAD nodes
@@ -184,14 +194,18 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         [sRegTau,~,bRegTau]=chebpts(NTau,[0 L],1);
         [sRegX,~,bRegX]=chebpts(NLead,[0 L],2);
         DX = diffmat(NLead,[0 L],'chebkind2');
-        IntegrationMatrix{iFib}=barymat(sLead,sRegX,bRegX)*pinv(DX)*barymat(sRegX,sRegTau,bRegTau)...
+        BMat = barymat(sLead,sRegX,bRegX);
+        if (clamp0 && iFib==node_start)
+            BMat = barymat(sLead,sRegX,bRegX)-barymat(0,sRegX,bRegX);
+        end
+        IntegrationMatrix{iFib}=BMat*pinv(DX)*barymat(sRegX,sRegTau,bRegTau)...
             *barymat(TangentVectorNodes{iFib},sRegTau,bRegTau)^(-1);
         DiffMatrix{iFib}=barymat(sTau,sRegX,bRegX)*DX*barymat(sLead,sRegX,bRegX)^(-1);
         RegGridMatrix{iFib}=barymat(ConstrainedPosNodes{iFib},sX,bX)^(-1);
     end
 
     % Initialize filament DOFs (straight filaments)
-    DOFs = zeros(TauStart(end)+NLinks,3);
+    DOFs = zeros(TauStart(end)+NLinks-1,3);
     taus = zeros(nFib,3);
     Xstart = zeros(nFib,3);
     prevsn=-1;
@@ -249,14 +263,16 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     end
     end
     
-    com=zeros(1,3);
-    for iFib=1:nFib
-        com=com+1/nFib*(Xstart(iFib,:)+L/2*taus(iFib,:));
-        Xplt = [Xstart(iFib,:); Xstart(iFib,:)+L*taus(iFib,:)];
-        % plot3(Xplt(:,1),Xplt(:,2),Xplt(:,3),':')
-        % hold on
+    if (~clamp0)
+        com=zeros(1,3);
+        for iFib=1:nFib
+            com=com+1/nFib*(Xstart(iFib,:)+L/2*taus(iFib,:));
+            %Xplt = [Xstart(iFib,:); Xstart(iFib,:)+L*taus(iFib,:)];
+            % plot3(Xplt(:,1),Xplt(:,2),Xplt(:,3),':')
+            % hold on
+        end
+        DOFs(end+1,:)=com;
     end
-    DOFs(end,:)=com;
 end
 
 function [ConstrainedPosNodes,nXReplaced] = ReplaceNode(ConstrainedPosNodes,nXReplaced,iFib,iS)
