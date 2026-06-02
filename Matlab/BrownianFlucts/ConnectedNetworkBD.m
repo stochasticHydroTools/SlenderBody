@@ -1,12 +1,15 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
+function ConnectedNetworkBD(seed,CL,nLayers)
 %% Define constants 
 addpath(genpath('../'))
-seed=1;
+%seed=1;
 Nx = 8;
-L = 1;
+L = 0.5;
 ell = 0.25;
+%CL=0;
 clamp0=1;
+%nLayers=8;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
@@ -16,43 +19,74 @@ clamp0=1;
 % nFib=9;
 %Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
 %nFib=3;
-nFib=30;
-Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
-   [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
+%nFib=40;
+%Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
+%   [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
 %NewConn = [(2:2:nFib/2-1)'; (nFib/2+1:2:nFib-1)'];
 %Connections=[Connections;  NewConn 0.5*ones(length(NewConn),1) ...
 %   NewConn+1 0.6*ones(length(NewConn),1) ones(length(NewConn),1)];
 %NewConn = [(2:5)' ones(4,1) (nFib/2+1:nFib/2+4)' 0.1*ones(4,1) ones(4,1)]
 %Connections=[Connections; NewConn];
+%specfib=[];
+anglebr=70;
+x1 = cos(anglebr*pi/180);
+tauU = [0 1 0];
+tauL = rotate(tauU,anglebr/180*pi*[0 0 1]);
+tauR = rotate(tauU,-anglebr/180*pi*[0 0 1]);
+Backbone = [(1:2*nLayers-1)' L*(ones(2*nLayers-1,1)-x1) (2:2*nLayers)' zeros(2*nLayers-1,2)];
+Backbone(end,2)=0.5-x1;
+Connections = Backbone;
+LastTwoInLayer=[];
+for k=1:nLayers-1
+    LastFib  = max(Connections(:,3));
+    nThisLayer = 2*nLayers+1-2*k;
+    Layer = [[(2*k-1) LastFib+1:LastFib+nThisLayer-1]' L*[0.5-x1;ones(nThisLayer-1,1)-x1] ...
+        (LastFib+1:LastFib+nThisLayer)' zeros(nThisLayer,2)];
+    Connections = [Connections;Layer];
+    LastTwoInLayer=[LastTwoInLayer;Layer(end-1:end,3)'];
+end
+        
+nFib = max(max(Connections(:,1)),max(Connections(:,3)));
+specfib=2*nLayers;
+if (CL)
+    for iL=1:size(LastTwoInLayer,1)-1
+        Connections=[Connections;LastTwoInLayer(iL,1) L LastTwoInLayer(iL+1,2) L 1];
+    end
+end
+
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 2*L;
+lp = 10;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 1;
+makeMovie = 0;
 dt=1e-4;
-tf =1e-3;
+tf = 100 ;
 
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
   TangentVectorNodes,BranchIndices,IntegrationMatrix,...
-  DiffMatrix,RegGridMatrix,clampedTau] = ...
-    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,clamp0);
+  DiffMatrix,RegGridMatrix,LeadIndicesByFib,clampedTau] = ...
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,70,clamp0,specfib);
 nAlphas = 3*(size(DOFs,1)-sum(MasterConnections(:,5)==0)-clamp0);
 
+RegGridMatrixInv = cell(size(RegGridMatrix));
+for iFib=1:nFib
+    RegGridMatrixInv{iFib}=RegGridMatrix{iFib}^(-1);
+end
 % Initialize X and X inverse functions
 XFcn = @(dof3d) XConnectedNetwork(dof3d,MasterConnections,...
-    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,0);
+    SlaveConnections,LeadIndicesByFib, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,0);
 XInvFcn = @(x3d) XInvConnectedNetwork(x3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
+    SlaveConnections,LeadIndicesByFib,Nx,nFib,L,RegGridMatrixInv,DiffMatrix,clamp0);
 XTrFcn = @(lam3d) XTrConnectedNetwork(lam3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0);
+    SlaveConnections,LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0);
 XInvTrFcn = @(Om3d) XInvTrConnectedNetwork(Om3d,MasterConnections,...
-     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
+     SlaveConnections,LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
 KFcn = @(alpha,x) KApplyConnNet(alpha,x,XFcn,XInvFcn,BranchIndices,clampedTau);
 KTFcn =  @(Lam,x) KTApplyConnNet(Lam,x,XTrFcn,XInvFcn,BranchIndices,clampedTau);
 KInvFcn = @(U,x) KInvApplyConnNet(U,x,XInvFcn,BranchIndices,clampedTau);
@@ -83,11 +117,13 @@ ApplyAMat = @(x,Xt) ApplyBigMatrix(x,Xt,MobFcn,KFcn,KTFcn, ...
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
-saveEvery=1;%max(1,floor(1e-2/dt+1e-10));
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
 MDDist=[];
 Xbars=[];
+NumGIts=[];
+rv=[];
 Npl=100;
 [spl,~,~]=chebpts(Npl,[0 L]);
 RplNp1 = barymat(spl,sX,bX);
@@ -135,6 +171,7 @@ for count=0:stopcount
             end
             movieframes(frameNum)=getframe(f);
         end
+        t
         MotherEnd = barymat(L,sX,bX)*PtsThisT(1:Nx,:);
         DaughterPts = barymat((0:0.001:1)',sX,bX)*PtsThisT(Nx+1:2*Nx,:);
         dispMD = DaughterPts - MotherEnd;
@@ -143,6 +180,7 @@ for count=0:stopcount
         Xpts=[Xpts;PtsThisT];
         ee =[ee; norm(PtsThisT(1,:)-PtsThisT(Nx,:)); ...
             norm(PtsThisT(Nx+1,:)-PtsThisT(2*Nx,:))];
+        NumGIts=[NumGIts;length(rv)];
     end  
     
     % Matrices at time step n 
@@ -192,24 +230,17 @@ for count=0:stopcount
     RHSAll = [RHSVel; zeros(nAlphas,1)];
 
     % Iterative (not exact - errors could accumulate(?))
-    % [PrecompMats,DOFs,TauStart,TauStartNoSlave] = PrecomputePairwisePC(Xtilde,...
-    %     XInvFcn,MobFcn,BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-    %     RegGridMatrix,BendForceMat,impcoeff*dt,L,nFib);
-    % solapp=ApplyPairwisePC(RHSAll,DOFs,MasterConnections,SlaveConnections,...
-    %     PrecompMats,TauStart,TauStartNoSlave,BranchIndices,Nx,nFib);
-    % PreconPW = @(RHS) ApplyPairwisePC(RHS,DOFs,MasterConnections,SlaveConnections,...
-    %     PrecompMats,TauStart,TauStartNoSlave,BranchIndices,Nx,nFib);
-    solapp=PairwisePCFull(RHSAll,Xtilde,XInvFcn,MobFcn,...
-        BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-        RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcoeff*dt,L,nFib,clampedTau);
-    PreconPW = @(RHS) PairwisePCFull(RHS,Xtilde,XInvFcn,MobFcn,...
-        BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-        RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcoeff*dt,L,nFib,clampedTau);
+    [PCMats,AllRHSInds,AllUpClamped,Nxx] = PrecomputePairwisePC(Xtilde,XInvFcn,MobFcn,...
+        BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix,...
+        RegGridMatrix,BendForceMat,impcoeff*dt,L,nFib,clampedTau);
+    % solapp=PairwisePCFull(RHSAll,Xtilde,XInvFcn,MobFcn,...
+    %     BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
+    %     RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcoeff*dt,L,nFib,clampedTau);
+    PreconPW = @(RHS) PairwisePCConnNet(RHS,PCMats,AllRHSInds, AllUpClamped,clampedTau,Nxx,nFib);
     [AllxG,flag,~,~,rv] = gmres(@(y)ApplyAMat(y,Xtilde),RHSAll,...
-       [],1e-10,100,PreconPW);
-    norm(ApplyAMat(AllxG,Xtilde)-RHSAll)/norm(RHSAll)
-    length(rv)
-    return
+       [],1e-3,100,PreconPW);
+    %norm(ApplyAMat(AllxG,Xtilde)-RHSAll)/norm(RHSAll)
+    %length(rv)
     Lambda = AllxG(1:3*Nx*nFib);
     alphaU = AllxG(3*Nx*nFib+1:end);
     %toc
@@ -220,7 +251,8 @@ for count=0:stopcount
     DOFs=DOFs_next;
 end
 %Totaltime=toc(tStart);
-%save(strcat('Branched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist')
+save(strcat('BranchedNtwk_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+end
 
 function DOFsNew = updateByRotate(DOFs,alphaU,dt,clamp0)
     DOFsNew = 0*DOFs;

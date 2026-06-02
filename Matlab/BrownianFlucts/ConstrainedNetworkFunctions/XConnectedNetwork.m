@@ -2,7 +2,7 @@
 % Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 function [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,makePlot)
+    LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,makePlot)
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
     X = zeros(Nx*nFib,3);
     TauStart = ones(nFib,1);
@@ -14,7 +14,7 @@ function [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
     AnchorFil = MasterConnections(1,1);
     DOFInds = TauStart(AnchorFil):TauStart(AnchorFil+1)-1;
     % Remove slave nodes on first filament
-    LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==AnchorFil,4));
+    LeadIndices = LeadIndicesByFib{AnchorFil};
     XInds = Nx*(AnchorFil-1)+LeadIndices;
     X(XInds,:) = IntegrationMatrix{AnchorFil}*DOFs(DOFInds,:);
     if (nargout>1)
@@ -31,7 +31,7 @@ function [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
         DownFib = ConnRow(3);
         PtOnDown = ConnRow(4);
         DOFInds = TauStart(DownFib):TauStart(DownFib+1)-1;
-        LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==DownFib,4));
+        LeadIndices = LeadIndicesByFib{DownFib};
         XInds = Nx*(DownFib-1)+(1:Nx);
         XIndUp =  Nx*(UpFib-1)+PtOnUp;
         X(XInds(LeadIndices),:) = IntegrationMatrix{DownFib}*DOFs(DOFInds,:);

@@ -1,11 +1,13 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 %function ConnectedNetworkBDDirect(seed,Nx,dt)
+for seed=1:5
+for CL=[0 1]
 %% Define constants 
 addpath(genpath('../'))
-seed=1;
+%seed=1;
 Nx = 8;
-L = 1;
+L = 0.5;
 ell = 0.25;
 clamp0 = 1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
@@ -15,37 +17,47 @@ clamp0 = 1;
 %     8 0.5 9 0 0; 2 1 3 1 1; 1 0.3 2 0.2 1; 2 0.3 3 0.2 1; 1 1 7 0.7 1; ...
 %     8 1 9 1 1];
 % nFib=9;
-Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
-nFib=3;
-% nFib=40;
-% Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
-%     [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
+brang=70;
+Connections = [1 L*(1-cos(brang/180*pi)) 2 0 0];% 2 0.5 3 0 0];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
+nFib=2;
+if (CL)
+    Connections =[Connections; 1 L 2 L 1];
+end
+%nFib=40;
+%Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
+%    [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
 % Connections(2:2:end,5)=1;
 % Connections=[Connections; 3 0.7 4 0.1 1; 4 1 5 0.7 1];
+specfib=[];
+%BranchedNetForFluct;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 2*L;
+lp = 10;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 1;
+makeMovie = 0;
 dt=1e-4;
-tf=1e-3;
+tf=100;
 
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
   TangentVectorNodes,BranchIndices,IntegrationMatrix,...
-  DiffMatrix,RegGridMatrix,clampedTau] = ...
-    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,clamp0);
+  DiffMatrix,RegGridMatrix,LeadIndicesByFib,clampedTau] = ...
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,brang,clamp0,specfib);
 
 % Initialize X and X inverse functions
 [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,1);
+    LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,1);
+RegGridMatrixInv = cell(size(RegGridMatrix));
+for iFib=1:nFib
+    RegGridMatrixInv{iFib}=RegGridMatrix{iFib}^(-1);
+end
 [DOFs2,InvXMat] = XInvConnectedNetwork(X,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
+    SlaveConnections,LeadIndicesByFib,Nx,nFib,L,RegGridMatrixInv,DiffMatrix,clamp0);
 
 % Lam=randn(size(X));
 % XTLam1=XMat'*Lam;
@@ -81,14 +93,6 @@ AssignMat(:,IndsToDel)=[];
 AssignMat=stackMatrix(AssignMat);
 
 % Initialize X and X inverse functions
-XFcn = @(dof3d) XConnectedNetwork(dof3d,MasterConnections,...
-    SlaveConnections, Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,0);
-XInvFcn = @(x3d) XInvConnectedNetwork(x3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
-XTrFcn = @(lam3d) XTrConnectedNetwork(lam3d,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0);
-XInvTrFcn = @(Om3d) XInvTrConnectedNetwork(Om3d,MasterConnections,...
-     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
 Xt = reshape(X',[],1);
 
 % Bending energy matrix (2Nx grid)
@@ -112,12 +116,10 @@ end
 % Pre-computations for mobility
 MobConst = -log(eps^2)/(8*pi*mu);
 MobFcn = @(x1d) LocalDragMob(x1d,DX,MobConst,WTilde_Nx_Inverse);
-% ApplyBigC = @(x,Xt) ApplyBigCMatrix(x,Xt,XFcn,XInvFcn,XTrFcn,MobFcn,NodesByBranch,...
-%         BendForceMat,impcoeff*dt,nFib);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
-saveEvery=1;%max(1,floor(1e-2/dt+1e-10));
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 Xpts=[];
 ee=[];
 MDDist=[];
@@ -237,9 +239,6 @@ for count=0:stopcount
     alphaUProj = MobK*(Ktilde'*(MWsymTilde \ RHSU)+RHSV);
     LambdaUProj = MWsymTilde \ (KWithImp*alphaUProj-RHSU);
     RHS=[RHSU;RHSV];
-    % alphaLamPC = PrecomputePairwisePC(RHS,Xtilde,XInvFcn,MobFcn,...
-    %     BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-    %     ConstrainedPosNodes, TangentVectorNodes,BendForceMat,impcoeff*dt,L,nFib);
     alphaU = AssignMat*alphaUProj;
     %return
 
@@ -250,7 +249,10 @@ end
 %SDAll=SDAll/(count+1);
 Totaltime=toc(tStart);
 %save(strcat('BranchedP_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('BranchedCL',num2str(CL),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 %end
+end
+end
 
 function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
     AssignMat,BranchIndices,clampedTau)

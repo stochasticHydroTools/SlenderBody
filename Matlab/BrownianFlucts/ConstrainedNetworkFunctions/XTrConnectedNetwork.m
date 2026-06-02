@@ -1,5 +1,5 @@
 function XTLam=XTrConnectedNetwork(Lams,MasterConnections,SlaveConnections,...
-    Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0)
+    LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0)
     % Apply X^T to X:
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
     SubAvgTX = zeros(Nx*nFib+1-clamp0,3);
@@ -49,7 +49,7 @@ function XTLam=XTrConnectedNetwork(Lams,MasterConnections,SlaveConnections,...
         DownFib = ConnRow(3);
         PtOnDown = ConnRow(4);
         DOFInds = TauStart(DownFib):TauStart(DownFib+1)-1;
-        LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==DownFib,4));
+        LeadIndices = LeadIndicesByFib{DownFib};
         XInds = Nx*(DownFib-1)+(1:Nx);
         XIndUp =  Nx*(UpFib-1)+PtOnUp;
         if (ConnRow(5)>0)
@@ -65,7 +65,7 @@ function XTLam=XTrConnectedNetwork(Lams,MasterConnections,SlaveConnections,...
     AnchorFil = MasterConnections(1,1);
     DOFInds = TauStart(AnchorFil):TauStart(AnchorFil+1)-1;
     % Remove slave nodes on first filament
-    LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==AnchorFil,4));
+    LeadIndices = LeadIndicesByFib{AnchorFil};
     XInds = Nx*(AnchorFil-1)+LeadIndices;
     XTLam(DOFInds,:) = IntegrationMatrix{AnchorFil}'*SubAvgTX(XInds,:);
 end

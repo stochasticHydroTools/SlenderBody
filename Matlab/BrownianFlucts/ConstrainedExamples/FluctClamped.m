@@ -1,25 +1,28 @@
-function FluctClamped(seed,ForceRt,Nx,dt)
+%function FluctClamped(seed,ForceRt,Nx,dt,clampL)
 % Single fluctuating clamped filament
-%ForceRt=0;
+for seed=1:2
+ForceRt=0;
 %seed=1;
-%N=16;
-%dt=1e-3;
+Nx=8;
+dt=1e-3;
 N = Nx-1;
 gtype=1;
 addpath(genpath('../../'))
 %close all;
 rng(seed);
-L = 1;   % microns
+L = 0.5;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 2*L;
+lp = 10;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 impcoeff = 1;
 makeMovie = 0;
-tf = 25;
+clampL=0;
+tf = 100;
 Tau0BC = [0;1;0];
+Tau0BC=rotate(Tau0BC',-70/180*pi*[0 0 1])';
 TrkLoc = 0;
 [s,~,b] = chebpts(N, [0 L], gtype);
 Xs3=repmat(Tau0BC',N,1);
@@ -28,7 +31,9 @@ sC=s;
 if (gtype==1)
     % Replace first and last entry with L
     sC(1)=0;
-    sC(end)=L;
+    if (clampL)
+        sC(end)=L;
+    end
     ChebToConstr = barymat(sC,s,b);
     ConstrToCheb = ChebToConstr^(-1);
 else
@@ -109,7 +114,11 @@ for count=0:stopcount
     end
     % The COM
     KInv = -TauVelocity*InvXonNp1Mat;
-    KInv([1:3;3*N-2:3*N],:)=[];
+    if (clampL)
+        KInv([1:3;3*N-2:3*N],:)=[];
+    else
+        KInv(1:3,:)=[];
+    end
 
     % Obtain Brownian velocity
     g = randn(3*Nx,1);
@@ -118,17 +127,30 @@ for count=0:stopcount
     % Advance to midpoint
     OmegaTilde = cross(Xs3,ChebToConstr*RNp1ToN*DNp1*reshape(RandomVelBM,3,[])');
     % Fix constrained variables
-    OmegaTilde([1;N],:)=0;
+    if (clampL)
+        OmegaTilde([1;N],:)=0;
+    else
+        OmegaTilde(1,:)=0;
+    end
     Xstilde = rotateTau(Xs3,OmegaTilde,dt/2);
     Xtilde = XonNp1Mat*reshape(Xstilde',[],1);
     MWsymTilde = LocalDragMob(Xtilde,DNp1,MobConst,WTilde_Np1_Inverse);
     Ktilde = KonNp1(Xstilde,XonNp1Mat,[]);
-    Ktilde(:,[1:3;3*N-2:3*N])=[];
+    if (clampL)
+        Ktilde(:,[1:3;3*N-2:3*N])=[];
+    else
+        Ktilde(:,1:3)=[];
+    end
 
     % Set up and solve system
     deltaRFD = 1e-5;
-    WRFD = randn(3*(N-2),1); % This is Delta X on the N+1 grid
-    WRFDom= [zeros(3,1); WRFD; zeros(3,1)];
+    if (clampL)
+        WRFD = randn(3*(N-2),1); % This is Delta X on the N+1 grid
+        WRFDom= [zeros(3,1); WRFD; zeros(3,1)];
+    else
+        WRFD = randn(3*(N-1),1); % This is Delta X on the N+1 grid
+        WRFDom= [zeros(3,1); WRFD];
+    end
     TauPlus = rotateTau(Xs3,reshape(WRFDom(1:3*N),3,[])',deltaRFD);
     XPlus = XonNp1Mat*reshape(TauPlus',[],1);
     MWsymPlus = LocalDragMob(XPlus,DNp1,MobConst,WTilde_Np1_Inverse);
@@ -143,12 +165,16 @@ for count=0:stopcount
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
     alphaU = MobK* Ktilde'*(BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
     Omega = reshape(alphaU,3,[])';
-    Omega = [zeros(1,3); Omega; zeros(1,3)];
+    if (clampL)
+        Omega = [zeros(1,3); Omega; zeros(1,3)];
+    else
+        Omega = [zeros(1,3); Omega];
+    end
     newXs = rotateTau(Xs3,Omega,dt);
     Xsp1 = reshape(newXs',[],1);
     Xp1 = XonNp1Mat*Xsp1;
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('Clamped_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','ee')
+save(strcat('TruClampRot_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end

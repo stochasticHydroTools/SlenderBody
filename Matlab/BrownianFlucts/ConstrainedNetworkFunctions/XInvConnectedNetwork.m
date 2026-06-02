@@ -1,7 +1,7 @@
 % Compute/apply matrix X^(-1)
 
 function [DOFs,XInvMat] = XInvConnectedNetwork(X,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0)
+    SlaveConnections,LeadIndicesByFib,Nx,nFib,L,RegGridMatrixInv,DiffMatrix,clamp0)
     
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
     TauStart = ones(nFib,1);
@@ -20,19 +20,19 @@ function [DOFs,XInvMat] = XInvConnectedNetwork(X,MasterConnections,...
     XIrreg = zeros(nFib*Nx,3);
     % Compute the center and tangent vectors on each fib
     for iFib=1:nFib
-        LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==iFib,4));
+        LeadIndices = LeadIndicesByFib{iFib};
         XInds = Nx*(iFib-1)+(1:Nx);
         DOFInds = TauStart(iFib):TauStart(iFib+1)-1;
         if (~clamp0)
             DOFs(end,:)=DOFs(end,:)+1/(L*nFib)*wX*X(XInds,:);
         end
-        XIrreg(XInds,:)=RegGridMatrix{iFib}\X(XInds,:);
+        XIrreg(XInds,:)=RegGridMatrixInv{iFib}*X(XInds,:);
         DOFs(DOFInds,:) = DiffMatrix{iFib}*XIrreg(XInds(LeadIndices),:);
         if (nargout>1)
             if (~clamp0)
                 XToIrreg(end,XInds)=1/(L*nFib)*wX;
             end
-            XToIrreg(XInds,XInds)=RegGridMatrix{iFib}^(-1);
+            XToIrreg(XInds,XInds)=RegGridMatrixInv{iFib};
             XInvMat(DOFInds,XInds(LeadIndices))=DiffMatrix{iFib};
         end
     end

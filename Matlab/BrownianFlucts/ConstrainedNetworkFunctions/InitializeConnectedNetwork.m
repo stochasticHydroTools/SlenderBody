@@ -1,8 +1,9 @@
 % Input: # fibers, list of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
-  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,RegGridMatrix,clampedTau] = ...
-  InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,clamp0)
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,DiffMatrix,...
+  RegGridMatrix,LeadIndicesByFib,clampedTau] = ...
+  InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,anglebr,clamp0,specfib)
     N = Nx-1;
     % Check list
     for p=1:size(Connections,1)
@@ -96,7 +97,14 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
             if (ConnRow(3)==Upstream)
                 ConnRow = [ConnRow(3:4) ConnRow(1:2) ConnRow(5)];
             end
+            if (size(MasterConnections,1)>0)
+                exrow = sum(MasterConnections(:,1)==ConnRow(1) & MasterConnections(:,3)==ConnRow(3));
+            else
+                exrow=0;
+            end
+            if (exrow==0)
             MasterConnections =[MasterConnections; ConnRow];
+            end
         end
     end
     % In the slave connections list, the first one is the master and the
@@ -185,6 +193,7 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     IntegrationMatrix = cell(nFib,1);
     DiffMatrix = cell(nFib,1);
     RegGridMatrix = cell(nFib,1);
+    LeadIndicesByFib = cell(nFib,1);
     for iFib=1:nFib
         sTau = TangentVectorNodes{iFib};
         NTau = length(sTau);
@@ -202,17 +211,19 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
             *barymat(TangentVectorNodes{iFib},sRegTau,bRegTau)^(-1);
         DiffMatrix{iFib}=barymat(sTau,sRegX,bRegX)*DX*barymat(sLead,sRegX,bRegX)^(-1);
         RegGridMatrix{iFib}=barymat(ConstrainedPosNodes{iFib},sX,bX)^(-1);
+        LeadIndicesByFib{iFib}=setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==iFib,4));
     end
 
     % Initialize filament DOFs (straight filaments)
     DOFs = zeros(TauStart(end)+NLinks-1,3);
     taus = zeros(nFib,3);
     Xstart = zeros(nFib,3);
-    prevsn=-1;
+    prevsn=1;
     LinkNum=0;
     taus(1,:)=[0 1 0];
     DOFs(1:length(TangentVectorNodes{1}),:)=repmat(taus(1,:),length(TangentVectorNodes{1}),1);
     % Go through the list of master connections
+    SgnsByConn=zeros(size(MasterConnections,1),1);
     MasterConnections(:,6)=0;
     MasterConnections(MasterConnections(:,5)==1,6)=ell;
     for iC=1:size(MasterConnections,1)
@@ -224,11 +235,17 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
         % Figure out if it's a branch or cross link
         if (ConnRow(5)==0) % branch
             prevsn=-1*prevsn;
-            if (UpFib==1 && DownFib>2)
-                prevsn=-1;
+            % If this is the second branch, have it go the other way
+            LastConn = find(MasterConnections(1:iC-1,1)==UpFib);
+            if (~isempty(LastConn))
+                prevsn = -1*SgnsByConn(LastConn);
             end
-            taus(DownFib,:)=rotate(taus(UpFib,:),prevsn*70/180*pi*[0 0 1]);
+            if (~isempty(specfib) && DownFib==specfib)
+                prevsn = -1*prevsn;
+            end
+            taus(DownFib,:)=rotate(taus(UpFib,:),prevsn*anglebr/180*pi*[0 0 1]);
             Xstart(DownFib,:)=Xstart(UpFib,:)+taus(UpFib,:)*PtOnUp;
+            SgnsByConn(iC)=prevsn;
         else % Cross link
             prevsn=-1*prevsn;
             if (UpFib==1 && DownFib>2)

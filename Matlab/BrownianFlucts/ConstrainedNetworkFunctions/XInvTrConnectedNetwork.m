@@ -4,7 +4,7 @@
 
 % Split this into two functions
 function X = XInvTrConnectedNetwork(DOFs,MasterConnections,...
-    SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0)
+    SlaveConnections,LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0)
 
     [sX,wX,bX]=chebpts(Nx,[0 L],2);
     XIrreg = zeros(nFib*Nx,3);
@@ -35,7 +35,7 @@ function X = XInvTrConnectedNetwork(DOFs,MasterConnections,...
         X = 1/(L*nFib)*repmat(wX',nFib,1).*DOFs(end,:);
     end
     for iFib=1:nFib
-        LeadIndices = setdiff(1:Nx,SlaveConnections(SlaveConnections(:,3)==iFib,4));
+        LeadIndices = LeadIndicesByFib{iFib};
         XInds = Nx*(iFib-1)+(1:Nx);
         DOFInds = TauStart(iFib):TauStart(iFib+1)-1;
         XIrreg(XInds(LeadIndices),:)=XIrreg(XInds(LeadIndices),:)+...
