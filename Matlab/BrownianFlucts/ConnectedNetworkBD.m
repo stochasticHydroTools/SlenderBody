@@ -9,6 +9,7 @@ L = 0.5;
 ell = 0.25;
 %CL=0;
 clamp0=1;
+ConfineZ=1;
 %nLayers=8;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
@@ -212,6 +213,9 @@ for count=0:stopcount
     KInvTOmPlus = reshape(KTInvFcn(g3,XPlus)',[],1);
     M_RFD = zeros(3*Nx*nFib,1);
     Fext = zeros(3*Nx*nFib,1);
+    if (ConfineZ)
+        Fext(3:3:end)=-Xt(3:3:end);
+    end
     U0 = zeros(3*Nx*nFib,1);
     MTildeF = zeros(nFib*3*Nx,1);
     RandomVelBE = zeros(nFib*3*Nx,1);
@@ -251,7 +255,7 @@ for count=0:stopcount
     DOFs=DOFs_next;
 end
 %Totaltime=toc(tStart);
-save(strcat('BranchedNtwk_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('BranchedNtwkL',num2str(nLayers),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
 
 function DOFsNew = updateByRotate(DOFs,alphaU,dt,clamp0)

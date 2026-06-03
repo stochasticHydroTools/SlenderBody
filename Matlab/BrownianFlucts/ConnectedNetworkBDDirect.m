@@ -10,6 +10,7 @@ Nx = 8;
 L = 0.5;
 ell = 0.25;
 clamp0 = 1;
+ConfineZ = 1;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
@@ -227,6 +228,9 @@ for count=0:stopcount
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
     Fext = zeros(3*Nx*nFib,1);
+    if (ConfineZ)
+    Fext(3:3:end)=-Xt(3:3:end);
+    end
     %[Nxx,Ndd] = size(Ktilde);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
     %Mob_og = pinv(K'*(MWsym \ K));
@@ -249,7 +253,7 @@ end
 %SDAll=SDAll/(count+1);
 Totaltime=toc(tStart);
 %save(strcat('BranchedP_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-save(strcat('BranchedCL',num2str(CL),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('ConfBranched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 %end
 end
 end
