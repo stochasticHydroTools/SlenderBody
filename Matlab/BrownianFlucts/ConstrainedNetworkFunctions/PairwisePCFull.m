@@ -1,7 +1,7 @@
-% Go along master tree only
+% This is the full preconditioner without any precomputations
 function PrecompPCs = PairwisePCFull(RHS,Xinput,XInvFcn,MobFcn,...
     BranchIndices,MasterConnections,SlaveConnections,IntegrationMatrix, ...
-    RegGridMatrix,ConstrainedPosNodes,BendForceMat,impcodt,L,nFib,clampedTau)
+    RegGridMatrix,BendForceMat,impcodt,L,nFib,clampedTau)
     Nxx = length(Xinput);
     Nx = Nxx/(3*nFib);
     [sX,wX,bX]=chebpts(Nx,[0 L],2);

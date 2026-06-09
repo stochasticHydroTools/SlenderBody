@@ -248,8 +248,12 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
             SgnsByConn(iC)=prevsn;
         else % Cross link
             prevsn=-1*prevsn;
-            if (UpFib==1 && DownFib>2)
-                prevsn=-1;
+            LastConn = find(MasterConnections(1:iC-1,1)==UpFib);
+            if (~isempty(LastConn))
+                prevsn = -1*SgnsByConn(LastConn);
+            end
+            if (~isempty(specfib) && DownFib==specfib)
+                prevsn = -1*prevsn;
             end
             LinkNum=LinkNum+1;
             nRand = [randn(2,2) zeros(2,1)];
@@ -258,6 +262,7 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
             DOFs(TauStart(end)-1+LinkNum,:)=LinkVec;
             Xstart(DownFib,:)=Xstart(UpFib,:)+taus(UpFib,:)*PtOnUp + ...
                 LinkVec*ell - taus(DownFib,:)*PtOnDown;
+            SgnsByConn(iC)=prevsn;
         end
         DOFs(TauStart(DownFib):TauStart(DownFib+1)-1,:)= ...
             repmat(taus(DownFib,:),length(TangentVectorNodes{DownFib}),1);

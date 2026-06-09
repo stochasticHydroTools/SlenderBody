@@ -1,16 +1,16 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 %function ConnectedNetworkBDDirect(seed,Nx,dt)
-for seed=1:5
-for CL=[0 1]
 %% Define constants 
 addpath(genpath('../'))
-%seed=1;
+seed=1;
 Nx = 8;
 L = 0.5;
 ell = 0.25;
 clamp0 = 1;
 ConfineZ = 1;
+CL = 1;
+nLayers=4;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
 % Connections = [1 0.5 2 0 0; 2 0.5 3 0 0; 3 0.5 4 0 0; ...
@@ -18,19 +18,48 @@ ConfineZ = 1;
 %     8 0.5 9 0 0; 2 1 3 1 1; 1 0.3 2 0.2 1; 2 0.3 3 0.2 1; 1 1 7 0.7 1; ...
 %     8 1 9 1 1];
 % nFib=9;
-brang=70;
-Connections = [1 L*(1-cos(brang/180*pi)) 2 0 0];% 2 0.5 3 0 0];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
-nFib=2;
-if (CL)
-    Connections =[Connections; 1 L 2 L 1];
-end
+% brang=70;
+% Connections = [1 L*(1-cos(brang/180*pi)) 2 0 0];% 2 0.5 3 0 0];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
+% nFib=2;
+% if (CL)
+%     Connections =[Connections; 1 L 2 L 1];
+% end
 %nFib=40;
 %Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
 %    [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
 % Connections(2:2:end,5)=1;
 % Connections=[Connections; 3 0.7 4 0.1 1; 4 1 5 0.7 1];
-specfib=[];
-%BranchedNetForFluct;
+%specfib=[];
+
+anglebr=70;
+x1 = cos(anglebr*pi/180);
+Backbone = [(1:2*nLayers-1)' L*(ones(2*nLayers-1,1)-x1) (2:2*nLayers)' zeros(2*nLayers-1,2)];
+Backbone(end,2)=0.5-x1;
+Connections = Backbone;
+LayerFibs=cell(nLayers,1);
+for k=1:nLayers-1
+    LastFib  = max(Connections(:,3));
+    nThisLayer = 2*nLayers+1-2*k;
+    Layer = [[(2*k-1) LastFib+1:LastFib+nThisLayer-1]' L*[0.5-x1;ones(nThisLayer-1,1)-x1] ...
+        (LastFib+1:LastFib+nThisLayer)' zeros(nThisLayer,2)];
+    Connections = [Connections;Layer];
+    LayerFibs{k} = Layer(:,3);
+end
+LayerFibs{nLayers}=Backbone(:,3);
+
+nFib = max(max(Connections(:,1)),max(Connections(:,3)));
+specfib=2*nLayers;
+if (CL)
+    for iL=1:size(LayerFibs,1)-1
+        for pL=1:nLayers
+            try
+        Connections=[Connections;LayerFibs{iL}(end-(2*pL-1)) L LayerFibs{iL+1}(end-(2*pL-2)) L 1];
+            catch
+            end
+        end
+    end
+end
+
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -48,11 +77,11 @@ tf=100;
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
   TangentVectorNodes,BranchIndices,IntegrationMatrix,...
   DiffMatrix,RegGridMatrix,LeadIndicesByFib,clampedTau] = ...
-    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,brang,clamp0,specfib);
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,anglebr,clamp0,specfib);
 
 % Initialize X and X inverse functions
 [X,XMat]=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
-    LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,1);
+    LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0,0);
 RegGridMatrixInv = cell(size(RegGridMatrix));
 for iFib=1:nFib
     RegGridMatrixInv{iFib}=RegGridMatrix{iFib}^(-1);
@@ -164,10 +193,18 @@ for count=0:stopcount
                 jS = Connections(iConn,4);
                 pts = [barymat(iS,sX,bX)*PtsThisT((iFib-1)*Nx+(1:Nx),:); ...
                     barymat(jS,sX,bX)*PtsThisT((jFib-1)*Nx+(1:Nx),:)];
-                plot3(pts(:,1),pts(:,2),pts(:,3),':ko')
+                   if (Connections(iConn,5)==1)
+                    plot3(pts(:,1),pts(:,2),pts(:,3),':ko','MarkerSize',2,'MarkerFaceColor','k')
+                    else
+                    plot3(pts(:,1),pts(:,2),pts(:,3),'bo','MarkerSize',2,'MarkerFaceColor','k')
+                    end
             end
+             ylim([0 2])
+            xlim([-1.75 1.5])
+            PlotAspect
             movieframes(frameNum)=getframe(f);
         end
+        t
         MotherEnd = barymat(L,sX,bX)*PtsThisT(1:Nx,:);
         DaughterPts = barymat((0:0.001:1)',sX,bX)*PtsThisT(Nx+1:2*Nx,:);
         dispMD = DaughterPts - MotherEnd;
@@ -253,61 +290,14 @@ end
 %SDAll=SDAll/(count+1);
 Totaltime=toc(tStart);
 %save(strcat('BranchedP_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-save(strcat('ConfBranched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+% if (~CL)
+% save(strcat('ConfBranched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+% else
+% save(strcat('ConfBranchedCL_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+% end
+% %end
+% end
 %end
-end
-end
-
-function [KTogether,KTogetherInv] = KWithLink(Xt,XMat,InvXMat,...
-    AssignMat,BranchIndices,clampedTau)
-    TausAndXBar = InvXMat*Xt;
-    if (clampedTau <=0)
-        Tau3 = reshape(TausAndXBar(1:end-3),3,[])';
-        TauVelocity = zeros(3*size(Tau3,1)+3);
-        InvTauVelocity = zeros(3*size(Tau3,1)+3);
-    else
-        Tau3 = reshape(TausAndXBar,3,[])';
-        TauVelocity = zeros(3*size(Tau3,1));
-        InvTauVelocity = zeros(3*size(Tau3,1));
-    end
-    % The matrix for all the taus (incl links) to evolve
-    for iR =1:size(Tau3,1)
-        inds = (iR-1)*3+1:iR*3;
-        CMat = CPMatrix(Tau3(iR,:));
-        TauVelocity(inds,inds) =  -CMat;
-        InvTauVelocity(inds,inds) = CMat;
-    end
-    % The COM
-    if (clampedTau<=0)
-        TauVelocity(end-2:end,end-2:end)=eye(3);
-        InvTauVelocity(end-2:end,end-2:end)=eye(3);
-    end
-    KTogether = XMat*TauVelocity*AssignMat;
-    KTogetherInv = AssignMat'*InvTauVelocity*InvXMat;
-    OmegaFromProjections = eye(length(TausAndXBar));
-    for iBr=1:size(BranchIndices,1)
-        % Construct local ONB
-        tauM = Tau3(BranchIndices(iBr,1),:);
-        tauD = Tau3(BranchIndices(iBr,2),:);
-        crossMD = cross(tauM,tauD);
-        % 3 x 3 matrix going from P1Omega+P2Omega -> (Omega1,Omega2,Omega3)
-        InvertMe = [tauM'-tauD'*dot(tauM,tauD) tauD'-tauM'*dot(tauD,tauM) ...
-            2*crossMD'];
-        ActOmega = [tauM' tauD' crossMD'];
-        brInds = 3*BranchIndices(iBr,1)+(-2:0);
-        OmegaFromProjections(brInds,brInds)=ActOmega*InvertMe^(-1);
-    end
-    brInds=[];
-    for iBr=1:size(BranchIndices,1)
-        brInds = [brInds;3*BranchIndices(iBr,2)+(-2:0)'];
-    end
-    if (clampedTau>0)
-        brInds = [brInds;(3*clampedTau-2:3*clampedTau)'];
-    end
-    OmegaFromProjections(brInds,:)=[];
-    OmegaFromProjections(:,brInds)=[];
-    KTogetherInv=OmegaFromProjections*KTogetherInv;
-end
 
 function XNew = updateByRotate(Xt,alphaU,XMat,InvXMat,dt,clamp0)
     TausXBar = InvXMat*Xt;

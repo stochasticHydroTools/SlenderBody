@@ -1,12 +1,13 @@
 %function FluctClamped(seed,ForceRt,Nx,dt,clampL)
 % Single fluctuating clamped filament
-for seed=1:2
+for seed=3:5
 ForceRt=0;
 %seed=1;
 Nx=8;
 dt=1e-3;
 N = Nx-1;
 gtype=1;
+ConfineZ=1;
 addpath(genpath('../../'))
 %close all;
 rng(seed);
@@ -161,6 +162,9 @@ for count=0:stopcount
     U0 = zeros(3*Nx,1);
     Fext = zeros(3*Nx,1);
     Fext(end-1) = ForceRt^2*Eb;
+    if (ConfineZ)
+        Fext(3:3:end)=-Xt(3:3:end);
+    end
     KWithImp = Ktilde-impcoeff*dt*MWsymTilde*BendForceMat*Ktilde;
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
     alphaU = MobK* Ktilde'*(BendForceMat*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
@@ -176,5 +180,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('TruClampRot_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('TruClampRot_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
