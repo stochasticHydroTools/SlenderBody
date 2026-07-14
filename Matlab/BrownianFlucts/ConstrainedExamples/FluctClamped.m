@@ -1,17 +1,17 @@
 %function FluctClamped(seed,ForceRt,Nx,dt,clampL)
 % Single fluctuating clamped filament
-for seed=3:5
-ForceRt=0;
+for seed=1:30
+ForceRt=10;
 %seed=1;
-Nx=8;
-dt=1e-3;
+Nx=16;
+dt=1e-5;
 N = Nx-1;
-gtype=1;
-ConfineZ=1;
+gtype='u';
+ConfineZ=0;
 addpath(genpath('../../'))
 %close all;
 rng(seed);
-L = 0.5;   % microns
+L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
@@ -20,12 +20,16 @@ Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 impcoeff = 1;
 makeMovie = 0;
-clampL=0;
-tf = 100;
+clampL=1;
+tf = 50;
 Tau0BC = [0;1;0];
-Tau0BC=rotate(Tau0BC',-70/180*pi*[0 0 1])';
+%Tau0BC=rotate(Tau0BC',-70/180*pi*[0 0 1])';
 TrkLoc = 0;
-[s,~,b] = chebpts(N, [0 L], gtype);
+try
+    [s,~,b] = chebpts(N, [0 L], gtype);
+catch
+    [s,~,b] = chebpts(N, [0 L], 1);
+end
 Xs3=repmat(Tau0BC',N,1);
 % Add rows for the constraints 
 sC=s;
@@ -35,6 +39,10 @@ if (gtype==1)
     if (clampL)
         sC(end)=L;
     end
+    ChebToConstr = barymat(sC,s,b);
+    ConstrToCheb = ChebToConstr^(-1);
+elseif (gtype=='u')
+    sC=(0:N-1)'/(N-1)*L;
     ChebToConstr = barymat(sC,s,b);
     ConstrToCheb = ChebToConstr^(-1);
 else
@@ -180,5 +188,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('TruClampRot_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('ClampedU_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end
