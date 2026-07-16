@@ -6,7 +6,7 @@ function FluctClamped(seed,ForceRt,Nx,dt,clampL)
 %Nx=16;
 %dt=1e-5;
 N = Nx-1;
-gtype='u';
+gtype=1;
 ConfineZ=0;
 addpath(genpath('../../'))
 %close all;
@@ -21,7 +21,7 @@ mu = 0.6;
 impcoeff = 1;
 makeMovie = 0;
 %clampL=1;
-tf = 50;
+tf = 100;
 Tau0BC = [0;1;0];
 %Tau0BC=rotate(Tau0BC',-70/180*pi*[0 0 1])';
 TrkLoc = 0;
@@ -113,7 +113,7 @@ for count=0:stopcount
     % Evolve system
     Xs3 = reshape(InvXonNp1Mat*Xt,3,[])';
     MWsym = LocalDragMob(Xt,DNp1,MobConst,WTilde_Np1_Inverse);
-    MWsymHalf = real(MWsym^(1/2));
+    MWsymHalf = chol(MWsym)';
     TauVelocity = zeros(3*N);
     % The matrix for all the taus (incl links) to evolve
     for iR =1:size(Xs3,1)
@@ -188,6 +188,6 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ClampedU_Lp',num2str(lp),'_F',num2str(ForceRt),...
-    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('Clamped1_Lp',num2str(lp),'_F',num2str(ForceRt),...
+    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','s','b','ConstrToCheb')
 end
