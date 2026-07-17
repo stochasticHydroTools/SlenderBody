@@ -10,7 +10,7 @@ nSaveSamples = 0.5*nSamp;
 nTrial = 10;
 %Nx = 8; % number tangent vectors
 N = Nx - 1;
-TauConst=2e-2*8/Nx;
+TauConst=5e-2*8/Nx;
 lpstar = Eb/kbT*1/L;
 %gtype = 1;
 Tau0BC = [0;1;0];
@@ -41,8 +41,8 @@ else
     ConstrToCheb = eye(N);
 end
 Xs3=repmat(Tau0BC',N,1);
-Xs3=Xs3+sqrt(((L - sC).*sC)./(L*lp)).*randn(N,3);
-Xs3=Xs3./sqrt(sum(Xs3.*Xs3,2));
+%Xs3=Xs3+sqrt(((L - sC).*sC)./(L*lp)).*randn(N,3);
+%Xs3=Xs3./sqrt(sum(Xs3.*Xs3,2));
 
 %%% Preliminary computations %%%
 [sNp1,~,bNp1]=chebpts(Nx,[0 L],2);
@@ -91,7 +91,7 @@ for iSamp=1:nSamp
     end
     if (iSamp > (nSamp-nSaveSamples))
         MeanTauSq(:,:,iTrial)=MeanTauSq(:,:,iTrial)+...
-            XsProp.*XsProp;
+            Xs3.*Xs3;
     end
 end
 MeanTauSq(:,:,iTrial)=MeanTauSq(:,:,iTrial)/nSaveSamples;
