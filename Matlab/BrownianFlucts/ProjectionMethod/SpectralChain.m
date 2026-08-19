@@ -142,7 +142,7 @@ for iT=1:nSt
         index = iT/saveEvery;
         NumIts(index)=it;
         eedists(index)=norm(x(1:3)-x(end-2:end));
-        if (iT/nSt>0)
+        if (iT/nSt>1/2)
             % Tangent vector dot products
             tau = reshape(D*x,3,[])';
             for iLink=1:Nx-1
