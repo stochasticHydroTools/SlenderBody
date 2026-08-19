@@ -2,28 +2,30 @@
 function WormLikeChain(seed,dt,wrongdrift)
 addpath(genpath('../../'))
 nRuns = 1;
+%seed=1;
+%wrongdrift=1;
 
 ds = 0.1;
 Nlinks = 10;
 L = ds*Nlinks;
 kbT = 4.1e-3; % pN * um
-lp = 10*L;
+lp = 1*L;
 K_b = lp*kbT;
 a = 1e-2;
 mu = 1;
 delta = 1e-5;
-%dt=1e-3;
+%dt=2.5e-4;
 implicit=1;
-tf = 20;
+tf = 200;
 nSt = (tf/dt);
 saveEvery = max(1e-2/dt,1);
 nSave = nSt/saveEvery;
 rng(seed);
 MaxIts = 10;
-Confine = 1;
+Confine = 0;
 
 nW = 1;
-Mobility = @(x) MobRPY(x,a,mu);
+Mobility = @(x) MobRPY(x,a,mu,ds);
 % Hessians are constant
 H = HessMat(Nlinks);
 AllTanVecDots = zeros(nRuns,Nlinks);
@@ -153,22 +155,45 @@ AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
 if (~wrongdrift)
-    save(strcat('ConfinedWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('WLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
 else
-    save(strcat('WrongDrConfinedWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('WrongDrWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
+end
+%end
+% dts = [2.5e-3 1e-3 2.5e-4 1e-4 1e-4];
+% for cIndex=4:5
+% nRuns=50;
+% nSave=2000;
+% Nlinks=10;
+% dt = dts(cIndex);
+% TotalTanVecDots = zeros(nRuns,Nlinks);
+% TotalFailureRates = zeros(nRuns,1);
+% TotalItCounts = zeros(nRuns,nSave);
+% TotalEE  = zeros(nRuns,nSave);
+% for kRun=1:nRuns
+%     if (cIndex==5)
+%         load(strcat('WrongDrConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
+%     else
+%         load(strcat('ConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
+%     end
+%     TotalTanVecDots(kRun,:)=AllTanVecDots;
+%     TotalFailureRates(kRun)=FailureRates;
+%     TotalItCounts(kRun,:)=AllItCounts;
+%     TotalEE(kRun,:)=AllEE;
+% end
+% AllTanVecDots=TotalTanVecDots;
+% cIndex=1;
 % diffc = (0:Nlinks-1)*ds;
 % MC = mean(AllTanVecDots);
 % SC = 2*std(AllTanVecDots)/sqrt(nRuns);
 % Colors=get(gca,'ColorOrder');
-% cIndex=1;
 % fill([diffc, fliplr(diffc)], [MC-SC, fliplr(MC+SC)],...
 %     Colors(cIndex,:), 'FaceAlpha', 0.2, 'linestyle', 'none');
 % hold on
 % plot(diffc,MC,'-o','Color',Colors(cIndex,:),'LineWidth',2)
 % hold on
 % plot(diffc,exp(-diffc/lp))
-end
 
 
 function EnergyMat = WLCEnergyMatrix(K_b,Nlinks,ds)
@@ -224,14 +249,25 @@ function H = HessMat(Nlinks)
     end
 end
 
-function M = MobRPY(x,a,mu)
+function M = MobRPY(x,a,mu,ds)
     % Starting with free space RPY kernel
     if (size(x,2)==1)
         x=reshape(x,3,[])';
     end
     Nx = size(x,1);
-    %M = zeros(3*Nx);
-    %M = 1/(6*pi*mu*a)*eye(3*Nx);
+    tau = (x(2:end,:)-x(1:end-1,:))/ds;
+    tauavg = zeros(Nx,3);
+    for j=2:Nx-1
+        tauavg(j,:)=1/2*(tau(j-1,:)+tau(j,:));
+    end
+    tauavg(1,:)=tau(1,:);
+    tauavg(end,:)=tauavg(end,:);
+    M = zeros(3*Nx);
+    for j=1:Nx
+        M(3*j-2:3*j,3*j-2:3*j)=...
+            log(a^(-2))/(8*pi*mu)*(eye(3)+tauavg(j,:)'*tauavg(j,:));
+    end
+    % M = 1/(6*pi*mu*a)*eye(3*Nx);
     % for i=1:Nx
     %     for j=i:Nx
     %         rvec = x(i,:)-x(j,:);
@@ -240,5 +276,5 @@ function M = MobRPY(x,a,mu)
     %         M(3*j-2:3*j,3*i-2:3*i) =mij;
     %     end
     % end
-    M = RPYMatrixWithWall(x,mu, a);
+   % M = RPYMatrixWithWall(x,mu, a);
 end

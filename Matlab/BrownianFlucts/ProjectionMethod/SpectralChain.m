@@ -17,7 +17,7 @@ mu = 1;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
-tf = 40;
+tf = 200;
 nSt = (tf/dt);
 saveEvery = max(1e-2/dt,1);
 nSave = nSt/saveEvery;
@@ -86,8 +86,10 @@ for iT=1:nSt
     end
     divMtru = divM;
     divMctru = divMC;
-    if (wrongdrift)
+    if (wrongdrift==1)
         divMtru=0*divMtru;
+        divMctru=0*divMctru;
+    elseif (wrongdrift==2)
         divMctru=0*divMctru;
     end
 
@@ -160,28 +162,29 @@ FailureRates(iRun) = nFail/nSt;
 AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
-if (~wrongdrift)
-    save(strcat('aConfinedWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
-else
-    save(strcat('aWrongDrConfinedWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+if (wrongdrift==0)
+    save(strcat('Spectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
+elseif (wrongdrift==1)
+    save(strcat('NoDrSpectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
+elseif (wrongdrift==2)
+    save(strcat('WrongDrSpectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 end
-%end
-% dts = [2.5e-3 1e-3 2.5e-4 1e-4 1e-4];
-% for cIndex=4:5
+% dts = [1e-4 1e-4];
+% for cIndex=1:2
 % nRuns=50;
-% nSave=2000;
-% Nlinks=10;
+% nSave=4000;
+% Nx=11;
 % dt = dts(cIndex);
-% TotalTanVecDots = zeros(nRuns,Nlinks);
+% TotalTanVecDots = zeros(nRuns,Nx-1);
 % TotalFailureRates = zeros(nRuns,1);
 % TotalItCounts = zeros(nRuns,nSave);
 % TotalEE  = zeros(nRuns,nSave);
 % for kRun=1:nRuns
-%     if (cIndex==5)
-%         load(strcat('WrongDrConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
+%     if (cIndex==2)
+%         load(strcat('aWrongDrConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
 %     else
-%         load(strcat('ConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
+%         load(strcat('aConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
 %     end
 %     TotalTanVecDots(kRun,:)=AllTanVecDots;
 %     TotalFailureRates(kRun)=FailureRates;
@@ -189,7 +192,6 @@ end
 %     TotalEE(kRun,:)=AllEE;
 % end
 % AllTanVecDots=TotalTanVecDots;
-% cIndex=1;
 % ds = L/(Nx-1);
 % diffc = (0:Nx-2)*ds;
 % MC = mean(AllTanVecDots);
@@ -201,6 +203,7 @@ end
 % plot(diffc,MC,'-o','Color',Colors(cIndex,:),'LineWidth',2)
 % hold on
 % plot(diffc,exp(-diffc/lp))
+% end
 
 
 function [val,J] = ProjectionObjective(x,xtilde,Minv)
