@@ -152,7 +152,11 @@ FailureRates(iRun) = nFail/nSt;
 AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
-save(strcat('ConfinedWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+if (~wrongdrift)
+    save(strcat('ConfinedWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+else
+    save(strcat('WrongDrConfinedWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+end
 % diffc = (0:Nlinks-1)*ds;
 % MC = mean(AllTanVecDots);
 % SC = 2*std(AllTanVecDots)/sqrt(nRuns);
