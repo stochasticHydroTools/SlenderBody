@@ -4,14 +4,14 @@ L = 2;
 kbT = 4.1e-3; % pN * um
 lp = 1*L;
 K_b = lp*kbT;
-Nlinks = 200;
+Nlinks = 10;
 a = L/Nlinks;
 ds= a;
 nSamp = 1e6;
 nSaveSamples = 0.8*nSamp;
 nTrial = 10;
 lpstar = (K_b)/kbT*1/L;
-penaltyCoeff = kbT*16000/L^3;
+penaltyCoeff = 0;
 ProposeFromC = 0;
 if (penaltyCoeff>0)
     CurvedX0 = 1;

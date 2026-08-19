@@ -9,7 +9,7 @@ L = 0.5;
 ell = 0.25;
 clamp0 = 1;
 ConfineZ = 1;
-CL = 1;
+CL = 0;
 nLayers=4;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
 % type). Type=0 for branch, 1 for cross link. 
@@ -18,12 +18,13 @@ nLayers=4;
 %     8 0.5 9 0 0; 2 1 3 1 1; 1 0.3 2 0.2 1; 2 0.3 3 0.2 1; 1 1 7 0.7 1; ...
 %     8 1 9 1 1];
 % nFib=9;
-% brang=70;
-% Connections = [1 L*(1-cos(brang/180*pi)) 2 0 0];% 2 0.5 3 0 0];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
-% nFib=2;
-% if (CL)
-%     Connections =[Connections; 1 L 2 L 1];
-% end
+anglebr=30;
+Connections = [1 L*(0.8) 2 0 0];% 2 0.5 3 0 0];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
+nFib=2;
+if (CL)
+    Connections =[Connections; 1 L 2 L 1];
+end
+specfib=[];
 %nFib=40;
 %Connections = [(1:nFib/2-1)' [0.4;0.8*ones(nFib/2-2,1)] (2:nFib/2)' zeros(nFib/2-1,2); ...
 %    [1;(nFib/2+1:nFib-1)'] 0.8*ones(nFib/2,1) (nFib/2+1:nFib)' zeros(nFib/2,2)];
@@ -31,6 +32,7 @@ nLayers=4;
 % Connections=[Connections; 3 0.7 4 0.1 1; 4 1 5 0.7 1];
 %specfib=[];
 
+if (0)
 anglebr=70;
 x1 = cos(anglebr*pi/180);
 Backbone = [(1:2*nLayers-1)' L*(ones(2*nLayers-1,1)-x1) (2:2*nLayers)' zeros(2*nLayers-1,2)];
@@ -59,6 +61,7 @@ if (CL)
         end
     end
 end
+end
 
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
@@ -70,7 +73,7 @@ mu = 0.6;
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 0;
+makeMovie = 1;
 dt=1e-4;
 tf=100;
 
@@ -88,20 +91,6 @@ for iFib=1:nFib
 end
 [DOFs2,InvXMat] = XInvConnectedNetwork(X,MasterConnections,...
     SlaveConnections,LeadIndicesByFib,Nx,nFib,L,RegGridMatrixInv,DiffMatrix,clamp0);
-
-% Lam=randn(size(X));
-% XTLam1=XMat'*Lam;
-% XTLam2=XTrConnectedNetwork(Lam,MasterConnections,SlaveConnections,...
-%     Nx,nFib,L,RegGridMatrix,IntegrationMatrix,clamp0);
-% max(abs(XTLam1-XTLam2))
-% 
-% max(abs(DOFs2-DOFs))
-% max(max(abs(InvXMat*XMat-eye(size(XMat,2)))))
-% Om = randn(size(DOFs));
-% XInvTD = XInvTrConnectedNetwork(Om,MasterConnections,...
-%     SlaveConnections,Nx,nFib,L,RegGridMatrix,DiffMatrix,clamp0);
-% max(abs(XInvTD-InvXMat'*Om))
-
 XMat = stackMatrix(XMat);
 InvXMat = stackMatrix(InvXMat);
 

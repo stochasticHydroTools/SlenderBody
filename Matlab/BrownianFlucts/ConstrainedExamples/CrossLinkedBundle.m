@@ -11,7 +11,7 @@ addpath(genpath('../../'))
 if (Nlinks==1)
     LinkLocs = [0.5 0.5];
 else
-    LinkLocs = [0 0; 1 1];
+    LinkLocs = [0.1 0.1; 0.9 0.9];
 end
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
@@ -21,6 +21,7 @@ lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 ell = 0.1;
+kbT=0;
 
 %% Initialization
 Nlinks = size(LinkLocs,1);
@@ -38,8 +39,8 @@ end
 NLink1 = (Nx-1)-N1;
 NLink2 = (Nx-1)-N2;
 impcoeff = 1;
-makeMovie = 0;
-tf = 25;
+makeMovie = 1;
+tf = 1;
 Tau0 = [0 1 0];
 Xbar = [0 0 0];
 Locs10 = [-ell/2 -L/2 0]+LinkLocs(:,1)*Tau0;
@@ -243,6 +244,8 @@ for count=0:stopcount
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
+    U0(1:3:end)=Xt(1:3:end);
+    U0(2:3:end)=-Xt(2:3:end);
     Fext = zeros(3*Nx*nFib,1);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
     alphaU = MobK*Ktilde'*(BendMatAll*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
@@ -252,7 +255,7 @@ for count=0:stopcount
 end
 Totaltime=toc(tStart);
 if (Nlinks==2)
-save(strcat('ConstrBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('DetBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 else
 save(strcat('ConstrLink_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
 end

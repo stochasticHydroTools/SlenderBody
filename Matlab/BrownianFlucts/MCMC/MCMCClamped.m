@@ -1,5 +1,6 @@
 function MCMCClamped(Nx,gtype)
 % Generate initial chain
+addpath(genpath('../../'))
 clampL=1;
 L = 1;
 kbT = 4.1e-3; % pN * um

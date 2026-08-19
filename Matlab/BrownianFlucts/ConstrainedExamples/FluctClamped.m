@@ -115,7 +115,7 @@ for count=0:stopcount
     MWsym = LocalDragMob(Xt,DNp1,MobConst,WTilde_Np1_Inverse);
     MWsymHalf = chol(MWsym)';
     TauVelocity = zeros(3*N);
-    % The matrix for all the taus (incl links) to evolve
+    % The matrix for all the taus to evolve
     for iR =1:size(Xs3,1)
         inds = (iR-1)*3+1:iR*3;
         CMat = CPMatrix(Xs3(iR,:));

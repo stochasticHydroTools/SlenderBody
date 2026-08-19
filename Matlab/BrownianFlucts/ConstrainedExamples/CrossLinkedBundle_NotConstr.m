@@ -11,7 +11,7 @@ ell = 0.1;
 if (Nlinks==1)
     LinkLocs = [0.5];
 else
-    LinkLocs = [0 1];
+    LinkLocs = [0.1 0.9];
 end
 %close all;
 rng(seed);
@@ -23,15 +23,15 @@ eps = rtrue/L;
 kbT = 4.1e-3;
 lp = 2*L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
+kbT = 0;
 mu = 0.6;
 impcoeff = 1;
-makeMovie = 0;
-tf = 25;
+makeMovie = 1;
+tf = 1;
 Kcl=Kstiff;
 Tau0 = [0;1;0];
 Xbar=[-ell/2 ell/2;0 0; 0 0];
 Xs3=repmat(Tau0',nFib*N,1);
-links = [1+2*LinkLocs(:) 4+2*LinkLocs(:) zeros(Nlinks,3)];
 
 % Chebyshev grids
 [s,~,b] = chebpts(N,[0 L], gtype);
@@ -57,9 +57,10 @@ BendingEnergyMatrix_Nx = Eb*stackMatrix(DX^2)'*WTilde_Nx*stackMatrix(DX^2);
 BendForceMat = -BendingEnergyMatrix_Nx;
 BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
 
-Nuni=3;
-su=[0;1/2;1]*L;
+Nuni=11;
+su=(0:Nuni-1)'/(Nuni-1)*L;
 Runi = barymat(su,sNx,bNx);
+links = [2 2+Nuni zeros(1,3); 10 10+Nuni zeros(1,3)];
 
 Xt = zeros(3*nFib*Nx,1);
 for iFib=1:nFib
@@ -128,6 +129,8 @@ for count=0:stopcount
     [CLForce,~,~] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(Nlinks,1),0,0);
     Xp1=Xt;
     U0 = zeros(3*Nx*nFib,1);
+    U0(1:3:end)=Xt(1:3:end);
+    U0(2:3:end)=-Xt(2:3:end);
     Fext = reshape(CLForce',[],1);
     % Matrices at time step n 
     gAll = randn(3*Nx*nFib,1);
@@ -187,7 +190,7 @@ for count=0:stopcount
 end
 Totaltime=toc(tStart);
 if (Nlinks==2)
-save(strcat('BundleK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
+save(strcat('DetK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
 else
 save(strcat('OneLinkK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
 end
