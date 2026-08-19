@@ -74,8 +74,10 @@ for iT=1:nSt
     end
     divMtru = divM;
     divMctru = divMC;
-    if (wrongdrift)
+    if (wrongdrift==1)
         divMtru=0*divMtru;
+        divMctru=0*divMctru;
+    elseif (wrongdrift==2)
         divMctru=0*divMctru;
     end
 
@@ -154,9 +156,11 @@ FailureRates(iRun) = nFail/nSt;
 AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
-if (~wrongdrift)
+if (wrongdrift==0)
     save(strcat('WLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
-else
+elseif (wrongdrift==1)
+    save(strcat('NoDrWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+elseif (wrongdrift==2)
     save(strcat('WrongDrWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 end

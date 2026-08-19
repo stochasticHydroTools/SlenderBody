@@ -170,40 +170,6 @@ elseif (wrongdrift==2)
     save(strcat('WrongDrSpectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 end
-% dts = [1e-4 1e-4];
-% for cIndex=1:2
-% nRuns=50;
-% nSave=4000;
-% Nx=11;
-% dt = dts(cIndex);
-% TotalTanVecDots = zeros(nRuns,Nx-1);
-% TotalFailureRates = zeros(nRuns,1);
-% TotalItCounts = zeros(nRuns,nSave);
-% TotalEE  = zeros(nRuns,nSave);
-% for kRun=1:nRuns
-%     if (cIndex==2)
-%         load(strcat('aWrongDrConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
-%     else
-%         load(strcat('aConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
-%     end
-%     TotalTanVecDots(kRun,:)=AllTanVecDots;
-%     TotalFailureRates(kRun)=FailureRates;
-%     TotalItCounts(kRun,:)=AllItCounts;
-%     TotalEE(kRun,:)=AllEE;
-% end
-% AllTanVecDots=TotalTanVecDots;
-% ds = L/(Nx-1);
-% diffc = (0:Nx-2)*ds;
-% MC = mean(AllTanVecDots);
-% SC = 2*std(AllTanVecDots)/sqrt(nRuns);
-% Colors=get(gca,'ColorOrder');
-% fill([diffc, fliplr(diffc)], [MC-SC, fliplr(MC+SC)],...
-%     Colors(cIndex,:), 'FaceAlpha', 0.2, 'linestyle', 'none');
-% hold on
-% plot(diffc,MC,'-o','Color',Colors(cIndex,:),'LineWidth',2)
-% hold on
-% plot(diffc,exp(-diffc/lp))
-% end
 
 
 function [val,J] = ProjectionObjective(x,xtilde,Minv)
