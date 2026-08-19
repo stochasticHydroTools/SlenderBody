@@ -1,17 +1,18 @@
 function MCMCClamped(Nx,gtype)
 % Generate initial chain
 addpath(genpath('../../'))
-clampL=1;
+clampL=0;
+clamp0=0;
 L = 1;
 kbT = 4.1e-3; % pN * um
-lp = 10*L;
+lp = 1*L;
 Eb = lp*kbT;
 nSamp = 1e8;
 nSaveSamples = 0.5*nSamp;
 nTrial = 10;
 %Nx = 8; % number tangent vectors
 N = Nx - 1;
-TauConst=5e-2*8/Nx;
+TauConst=5e-3*8/Nx;
 lpstar = Eb/kbT*1/L;
 %gtype = 1;
 Tau0BC = [0;1;0];
@@ -34,7 +35,7 @@ if (gtype==1)
     ChebToConstr = barymat(sC,s,b);
     ConstrToCheb = ChebToConstr^(-1);
 elseif (gtype=='u')
-    sC=(0:N-1)'/(N-1)*L;
+    sC=(0.5:N)'/(N)*L;
     ChebToConstr = barymat(sC,s,b);
     ConstrToCheb = ChebToConstr^(-1);
 else
@@ -66,6 +67,9 @@ X = XonNp1Mat*reshape(Xs3',[],1);
 EPrev = 1/2*X'*BendingEnergyMatrix_Np1*X;
 nAcc=0;
 MeanTauSq = zeros(N,3,nTrial);
+AllTanVecDots = zeros(nTrial,N);
+TanVecDots = zeros(N,1);
+nSamplesDs = zeros(N,1);
 
 for iTrial=1:nTrial
 disp(strcat('New trial = ',num2str(iTrial)))
@@ -73,7 +77,9 @@ tic
 for iSamp=1:nSamp
     DTau = TauConst.*randn(N,3);
     % Project off zero
-    DTau(1,:)=0;
+    if (clamp0)
+        DTau(1,:)=0;
+    end
     if (clampL)
         DTau(end,:)=0;
     end
@@ -93,13 +99,29 @@ for iSamp=1:nSamp
     if (iSamp > (nSamp-nSaveSamples))
         MeanTauSq(:,:,iTrial)=MeanTauSq(:,:,iTrial)+...
             Xs3.*Xs3;
+        tau=Xs3;
+        % Tangent vector dot products
+        for iLink=1:Nx-1
+            for jLink=iLink:Nx-1
+                index = jLink-iLink+1;
+                nSamplesDs(index)=nSamplesDs(index)+1;
+                TanVecDots(index)=TanVecDots(index)+dot(tau(iLink,:),tau(jLink,:));
+            end
+        end
     end
 end
 MeanTauSq(:,:,iTrial)=MeanTauSq(:,:,iTrial)/nSaveSamples;
+TanVecDots = TanVecDots./nSamplesDs;
+AllTanVecDots(iTrial,:) = TanVecDots;
 toc
-save(strcat('MCMC',num2str(gtype),'_Clamp_Nx',num2str(Nx),'_Lp',num2str(lpstar),'.mat'))
+save(strcat('MCMC',num2str(gtype),'_Nx',num2str(Nx),'_Lp',num2str(lpstar),'.mat'))
 end
+diffc = (0:Nlinks-1)*ds;
+errorbar(diffc,mean(AllTanVecDots),2*std(AllTanVecDots),'-o','LineWidth',2.0)
+hold on
+plot(diffc,exp(-diffc/lp))
 end
+
 
 function newXs = rotateTauM(Xsin,Omega)
     nOm = sqrt(sum(Omega.*Omega,2));
