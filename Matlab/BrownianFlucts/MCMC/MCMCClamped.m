@@ -7,7 +7,7 @@ L = 1;
 kbT = 4.1e-3; % pN * um
 lp = 1*L;
 Eb = lp*kbT;
-nSamp = 1e8;
+nSamp = 5e8;
 nSaveSamples = 0.5*nSamp;
 nTrial = 10;
 %Nx = 8; % number tangent vectors
@@ -17,6 +17,8 @@ lpstar = Eb/kbT*1/L;
 %gtype = 1;
 Tau0BC = [0;1;0];
 TrkLoc=0;
+nBins = 100;
+AllEndToEndDists = zeros(nTrial,nBins);
 
 %%% Base state %%%
 try
@@ -68,10 +70,10 @@ EPrev = 1/2*X'*BendingEnergyMatrix_Np1*X;
 nAcc=0;
 MeanTauSq = zeros(N,3,nTrial);
 AllTanVecDots = zeros(nTrial,N);
-TanVecDots = zeros(N,1);
-nSamplesDs = zeros(N,1);
 
 for iTrial=1:nTrial
+TanVecDots = zeros(N,1);
+nSamplesDs = zeros(N,1);
 disp(strcat('New trial = ',num2str(iTrial)))
 tic
 for iSamp=1:nSamp
@@ -100,6 +102,9 @@ for iSamp=1:nSamp
         MeanTauSq(:,:,iTrial)=MeanTauSq(:,:,iTrial)+...
             Xs3.*Xs3;
         tau=Xs3;
+        EEDist=norm(X3(1,:)-X3(end,:));
+        EndBinNum = min(ceil(EEDist/L*nBins),nBins); % [0,1000]
+        AllEndToEndDists(iTrial,EndBinNum)=AllEndToEndDists(iTrial,EndBinNum)+1;
         % Tangent vector dot products
         for iLink=1:Nx-1
             for jLink=iLink:Nx-1
@@ -116,10 +121,6 @@ AllTanVecDots(iTrial,:) = TanVecDots;
 toc
 save(strcat('MCMC',num2str(gtype),'_Nx',num2str(Nx),'_Lp',num2str(lpstar),'.mat'))
 end
-diffc = (0:Nlinks-1)*ds;
-errorbar(diffc,mean(AllTanVecDots),2*std(AllTanVecDots),'-o','LineWidth',2.0)
-hold on
-plot(diffc,exp(-diffc/lp))
 end
 
 
