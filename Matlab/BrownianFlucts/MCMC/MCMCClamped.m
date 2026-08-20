@@ -102,6 +102,7 @@ for iSamp=1:nSamp
         MeanTauSq(:,:,iTrial)=MeanTauSq(:,:,iTrial)+...
             Xs3.*Xs3;
         tau=Xs3;
+        X3 = XonNp1Mat(1:3:end,1:3:end)*tau;
         EEDist=norm(X3(1,:)-X3(end,:));
         EndBinNum = min(ceil(EEDist/L*nBins),nBins); % [0,1000]
         AllEndToEndDists(iTrial,EndBinNum)=AllEndToEndDists(iTrial,EndBinNum)+1;
