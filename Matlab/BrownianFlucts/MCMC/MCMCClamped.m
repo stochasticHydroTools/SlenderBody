@@ -1,5 +1,6 @@
-function MCMCClamped(Nx,gtype)
+function MCMCClamped(Nx,gtype,seed)
 % Generate initial chain
+rng(seed)
 addpath(genpath('../../'))
 clampL=0;
 clamp0=0;
@@ -9,7 +10,7 @@ lp = 1*L;
 Eb = lp*kbT;
 nSamp = 5e8;
 nSaveSamples = 0.5*nSamp;
-nTrial = 10;
+nTrial = 1;
 %Nx = 8; % number tangent vectors
 N = Nx - 1;
 TauConst=5e-3*8/Nx;
