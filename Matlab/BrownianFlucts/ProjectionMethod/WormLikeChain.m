@@ -5,8 +5,8 @@ nRuns = 1;
 %seed=1;
 %wrongdrift=1;
 
-ds = 0.1;
 Nlinks = 10;
+ds = 1/Nlinks;
 L = ds*Nlinks;
 kbT = 4.1e-3; % pN * um
 lp = 1*L;
@@ -259,13 +259,13 @@ function M = MobRPY(x,a,mu,ds)
         x=reshape(x,3,[])';
     end
     Nx = size(x,1);
-    tau = (x(2:end,:)-x(1:end-1,:))/ds;
     tauavg = zeros(Nx,3);
     for j=2:Nx-1
-        tauavg(j,:)=1/2*(tau(j-1,:)+tau(j,:));
+        tauavg(j,:)=(x(j+1,:)-x(j-1,:));
     end
-    tauavg(1,:)=tau(1,:);
-    tauavg(end,:)=tauavg(end,:);
+    tauavg(1,:)=x(2,:)-x(1,:);
+    tauavg(Nx,:)=x(Nx,:)-x(end-1,:);
+    tauavg = tauavg./sqrt(sum(tauavg.*tauavg,2));
     M = zeros(3*Nx);
     for j=1:Nx
         M(3*j-2:3*j,3*j-2:3*j)=...
