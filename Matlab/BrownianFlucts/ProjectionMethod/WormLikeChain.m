@@ -5,7 +5,7 @@ nRuns = 1;
 %seed=1;
 %wrongdrift=1;
 
-Nlinks = 10;
+Nlinks = 100;
 ds = 1/Nlinks;
 L = ds*Nlinks;
 kbT = 4.1e-3; % pN * um
@@ -16,10 +16,10 @@ mu = 1;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
-tf = 200;
+tf = 20;
 nSt = (tf/dt);
 saveEvery = max(1e-2/dt,1);
-nSave = nSt/saveEvery;
+nSave = floor(1e-10+nSt/saveEvery);
 rng(seed);
 MaxIts = 10;
 Confine = 0;
@@ -134,7 +134,7 @@ for iT=1:nSt
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
-        index = iT/saveEvery;
+        index = floor(1e-6+iT/saveEvery);
         NumIts(index)=it;
         eedists(index)=norm(x(1:3)-x(end-2:end));
         if (iT/nSt>1/2)
@@ -157,11 +157,11 @@ AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
 if (wrongdrift==0)
-    save(strcat('WLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('WLC100_dt',num2str(dt),'_',num2str(seed),'.mat'))
 elseif (wrongdrift==1)
-    save(strcat('NoDrWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('NoDrWLC100_dt',num2str(dt),'_',num2str(seed),'.mat'))
 elseif (wrongdrift==2)
-    save(strcat('WrongDrWLC_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('WrongDrWLC100_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 end
 %end
