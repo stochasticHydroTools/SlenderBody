@@ -4,8 +4,7 @@ addpath(genpath('../../'))
 nRuns = 1;
 %seed=1;
 %wrongdrift=1;
-
-Nlinks = 100;
+Nlinks = 25;
 ds = 1/Nlinks;
 L = ds*Nlinks;
 kbT = 4.1e-3; % pN * um
@@ -16,7 +15,7 @@ mu = 1;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
-tf = 20;
+tf = 200;
 nSt = (tf/dt);
 saveEvery = max(1e-2/dt,1);
 nSave = floor(1e-10+nSt/saveEvery);
@@ -157,11 +156,11 @@ AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
 if (wrongdrift==0)
-    save(strcat('WLC100_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('WLC25_dt',num2str(dt),'_',num2str(seed),'.mat'))
 elseif (wrongdrift==1)
-    save(strcat('NoDrWLC100_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('NoDrWLC25_dt',num2str(dt),'_',num2str(seed),'.mat'))
 elseif (wrongdrift==2)
-    save(strcat('WrongDrWLC100_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('WrongDrWLC25_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 end
 %end
