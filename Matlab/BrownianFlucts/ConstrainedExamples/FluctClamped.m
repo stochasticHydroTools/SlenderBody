@@ -1,7 +1,8 @@
-function FluctClamped(seed,ForceRt,Nx,dt,clampL)
+function FluctClamped(seed,Nx,dt)
 % Single fluctuating clamped filament
 %for seed=1:30
-%ForceRt=10;
+ForceRt=0;
+clampL=0;
 %seed=1;
 %Nx=16;
 %dt=1e-5;
@@ -15,7 +16,7 @@ L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 10;
+lp = 1;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 impcoeff = 1;
@@ -188,6 +189,6 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('Clamped1_Lp',num2str(lp),'_F',num2str(ForceRt),...
-    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','s','b','ConstrToCheb')
+save(strcat('ClmpPar_Lp',num2str(lp),...
+    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end

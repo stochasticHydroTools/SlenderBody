@@ -1,28 +1,30 @@
-% Parameters for chain and mobility
-function SpectralChain(seed,dt,wrongdrift)
+% Projection method for spectral chain
+function SpectralChain(seed,Nx,dt)
 %if (0)
 addpath(genpath('../../'))
 nRuns = 1;
 %seed=1;
-%wrongdrift=0;
+wrongdrift=0;
+clamp0=1;
 
-ds = 0.1;
-Nx = 11;
 L = 1;
 kbT = 4.1e-3; % pN * um
 lp = L;
 K_b = lp*kbT;
-a = 1e-2;
-mu = 1;
+rtrue = 4e-3; % 4 nm radius
+eps = rtrue/L;
+mu = 0.6;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
-tf = 200;
+tf = 100;
 nSt = (tf/dt);
-saveEvery = max(1e-2/dt,1);
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 nSave = nSt/saveEvery;
 rng(seed);
 MaxIts = 10;
+x0=[0;0;0];
+tau0=[1;0;0];
 
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 s = L*(0.5:Nx-1)'/(Nx-1);%chebpts(Nx-1,[0 L],1);
@@ -35,29 +37,40 @@ D = kron(D,eye(3));
 W2Nx = diag(w2x);
 R_Nx_To_2Nx = barymat(s2Nx,sX,bX);
 WTilde_1D = R_Nx_To_2Nx'*W2Nx*R_Nx_To_2Nx;
+WTilde_Inv = kron(WTilde_1D^(-1),eye(3));
 WTilde_Nx = stackMatrix(WTilde_1D);
 EMat = K_b*stackMatrix(DX^2)'*WTilde_Nx*...
     stackMatrix(DX^2);
 
 nW = 1;
-Mobility = @(x) MobRPY(x,DX,a,mu);
-% Hessians are constant
-H = HessMat(Nx,D);
+MobConst = -log(eps^2)/(8*pi*mu);
+Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); %MobRPY(x,DX,eps,mu);% Hessians are constant
+H = HessMat(Nx,D,clamp0);
 AllTanVecDots = zeros(nRuns,Nx-1);
 FailureRates = zeros(nRuns,1);
 AllItCounts = zeros(nRuns,nSave);
 AllEE  = zeros(nRuns,nSave);
+Xpts=[];
+
+% Gradient check
+% dx = rand(3*Nx,1);
+% gc = GradMat(x,D,clamp0)*dx;
+% for iEps=1:10
+%     [~,trudiff] = c(x+10^(-iEps)*dx,D,clamp0,x0,tau0);
+%     ers(iEps) = norm(trudiff/10^(-iEps)-gc);
+% end
 
 for iRun=1:nRuns
 % Initial state
-x = [sX zeros(Nx,2)];
+x = x0'+sX.*tau0';
 x = reshape(x',[],1);
 nC = Nx-1;
+if (clamp0)
+    nC = Nx+4;
+end
 nX = length(x);
 
 % Statistics
-TanVecDots = zeros(Nx-1,1);
-nSamplesDs = zeros(Nx-1,1);
 NumIts = zeros(nSave,1);
 eedists = zeros(nSave,1);
 nFail = 0;
@@ -66,7 +79,7 @@ nFail = 0;
 for iT=1:nSt
     M = Mobility(x);
     Mhalf = chol(M)';
-    C = GradMat(x,D);
+    C = GradMat(x,D,clamp0);
     prefac = M*C'*(C*M*C')^(-1);
     GradU = EMat*x;
     
@@ -81,7 +94,7 @@ for iT=1:nSt
         w2 = randn(nC,1);
         xc = x + delta*prefac*w2;
         Mc = Mobility(xc);
-        Cc = GradMat(xc,D);
+        Cc = GradMat(xc,D,clamp0);
         divMC = divMC + 1/(nW*delta)*(Mc*Cc'-M*C')*w2;
     end
     divMtru = divM;
@@ -113,10 +126,10 @@ for iT=1:nSt
     Allresids = zeros(MaxIts,1);
     for it=1:MaxIts
         % Compute the gradient and Hessian at x
-        C = GradMat(xg,D);
+        C = GradMat(xg,D,clamp0);
         Htot = sum(H.*reshape(lam,1,1,nC),3);
         J = [eye(nX)+M*Htot M*C'; C zeros(nC)];
-        [~,ceqc]=c(xg,D);
+        [~,ceqc]=c(xg,D,clamp0,x0,tau0);
         resid = [(xg-xtilde) + M *C'*lam;ceqc ];
         er=norm(resid);
         Allresids(it)=er;
@@ -133,7 +146,7 @@ for iT=1:nSt
         % Matlab default
         Minv = M^(-1);
         fun = @(xvar) ProjectionObjective(xvar,xtilde,Minv);
-        eqconstr = @(xvar) c(xvar,ds);
+        eqconstr = @(xvar) c(xvar,D,clamp0,x0,tau0);
         opts=optimoptions(@lsqnonlin,'OptimalityTolerance',1e-10,...
             'SpecifyObjectiveGradient',true,'Display','off');
         [xg,~,~,exitflag,~,~,~] = ...
@@ -141,29 +154,19 @@ for iT=1:nSt
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
-        index = iT/saveEvery;
+        index = floor(1e-10+iT/saveEvery)+1;
         NumIts(index)=it;
         eedists(index)=norm(x(1:3)-x(end-2:end));
-        if (iT/nSt>1/2)
-            % Tangent vector dot products
-            tau = reshape(D*x,3,[])';
-            for iLink=1:Nx-1
-                for jLink=iLink:Nx-1
-                    index = jLink-iLink+1;
-                    nSamplesDs(index)=nSamplesDs(index)+1;
-                    TanVecDots(index)=TanVecDots(index)+dot(tau(iLink,:),tau(jLink,:));
-                end
-            end
-        end
+        Xpts=[Xpts;reshape(x,3,[])'];
     end
 end
 AllEE(iRun,:)=eedists;
 FailureRates(iRun) = nFail/nSt;
-AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
 if (wrongdrift==0)
-    save(strcat('Spectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
+    save(strcat('ClmpProj_Lp',num2str(lp),...
+    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 elseif (wrongdrift==1)
     save(strcat('NoDrSpectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
 elseif (wrongdrift==2)
@@ -180,16 +183,19 @@ function [val,J] = ProjectionObjective(x,xtilde,Minv)
     end
 end
 
-function [cleq,cd] = c(x,D)
+function [cleq,cd] = c(x,D,clamp0,x0,tau0)
     if (size(x,2)==3)
         x=reshape(x',[],1);
     end
     tau = reshape(D*x,3,[])';
     cd = sum(tau.*tau,2)-1;
+    if (clamp0)
+        cd = [cd(2:end); x(1:3)-x0; tau(1,:)'-tau0];
+    end
     cleq=[];
 end
 
-function C = GradMat(x,D)
+function C = GradMat(x,D,clamp0)
     if (size(x,2)==3)
         x=reshape(x',[],1);
     end
@@ -199,12 +205,24 @@ function C = GradMat(x,D)
         DDt = D(3*j-2:3*j,:)'*D(3*j-2:3*j,:);
         C(j,:)=(2*DDt*x)';
     end
+    if (clamp0)
+        Ct = zeros(Nx+4,3*Nx);
+        Ct(1:Nx-2,:)=C(2:end,:);
+        Ct(Nx-1:Nx+1,1:3)=eye(3);
+        Ct(Nx+2:Nx+4,:)=D(1:3,:);
+        C=Ct;
+    end
 end
 
-function H = HessMat(Nx,D)
+function H = HessMat(Nx,D,clamp0)
     H = zeros(3*Nx,3*Nx,Nx-1);
     for j=1:Nx-1
         H(:,:,j)=2*D(3*j-2:3*j,:)'*D(3*j-2:3*j,:);
+    end
+    if (clamp0)
+        Ht = zeros(3*Nx,3*Nx,Nx+4);
+        Ht(:,:,1:Nx-2)=H(:,:,2:Nx-1);
+        H = Ht;
     end
 end
 
