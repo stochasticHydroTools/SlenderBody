@@ -3,33 +3,29 @@ function MCMCClamped(Nx,gtype,seed)
 rng(seed)
 addpath(genpath('../../'))
 clampL=0;
-clamp0=0;
+clamp0=1;
 L = 1;
 kbT = 4.1e-3; % pN * um
 lp = 1*L;
 Eb = lp*kbT;
-nSamp = 5e8;
-nSaveSamples = 0.5*nSamp;
+nSamp = 1e8;
+nSaveSamples = 0.8*nSamp;
 nTrial = 1;
-%Nx = 8; % number tangent vectors
+%Nx = 8; % number collocation pts
 N = Nx - 1;
-TauConst=5e-3*8/Nx;
 lpstar = Eb/kbT*1/L;
-%gtype = 1;
 Tau0BC = [0;1;0];
 TrkLoc=0;
 nBins = 100;
 AllEndToEndDists = zeros(nTrial,nBins);
 
 %%% Base state %%%
-try
-    [s,~,b] = chebpts(N, [0 L], gtype);
-catch
-    [s,~,b] = chebpts(N, [0 L], 1);
-end
+[s,~,b] = chebpts(N, [0 L], 2);
 % Add rows for the constraints 
 sC=s;
 if (gtype==1)
+    [s,~,b] = chebpts(N, [0 L], 1);
+    sC=s;
     % Replace first and last entry with L
     sC(1)=0;
     if (clampL)
@@ -37,17 +33,33 @@ if (gtype==1)
     end
     ChebToConstr = barymat(sC,s,b);
     ConstrToCheb = ChebToConstr^(-1);
+    TauConst=1e-1*8/Nx;
 elseif (gtype=='u')
     sC=(0.5:N)'/(N)*L;
     ChebToConstr = barymat(sC,s,b);
     ConstrToCheb = ChebToConstr^(-1);
-else
+    TauConst=2e-2*8^8/Nx^8;
+elseif (gtype==2)
+    TauConst=1e-1*8/Nx;
     ChebToConstr = eye(N);
     ConstrToCheb = eye(N);
 end
 Xs3=repmat(Tau0BC',N,1);
-%Xs3=Xs3+sqrt(((L - sC).*sC)./(L*lp)).*randn(N,3);
-%Xs3=Xs3./sqrt(sum(Xs3.*Xs3,2));
+Deltas = zeros(N);
+for iPt=1:N
+    for jPt=iPt:N
+        Deltas(iPt,jPt)=abs(sC(iPt)-sC(jPt));
+    end
+end
+Deltas = uniquetol(Deltas(:));
+IJInds = zeros(N);
+for iPt=1:N
+    for jPt=iPt:N
+        ds = abs(sC(iPt)-sC(jPt));
+        [~,IJInds(iPt,jPt)] = min(abs(Deltas-ds));
+    end
+end
+      
 
 %%% Preliminary computations %%%
 [sNp1,~,bNp1]=chebpts(Nx,[0 L],2);
@@ -70,11 +82,11 @@ X = XonNp1Mat*reshape(Xs3',[],1);
 EPrev = 1/2*X'*BendingEnergyMatrix_Np1*X;
 nAcc=0;
 MeanTauSq = zeros(N,3,nTrial);
-AllTanVecDots = zeros(nTrial,N);
+AllTanVecDots = zeros(nTrial,length(Deltas));
 
 for iTrial=1:nTrial
-TanVecDots = zeros(N,1);
-nSamplesDs = zeros(N,1);
+TanVecDots = zeros(length(Deltas),1);
+nSamplesDs = zeros(length(Deltas),1);
 disp(strcat('New trial = ',num2str(iTrial)))
 tic
 for iSamp=1:nSamp
@@ -108,11 +120,11 @@ for iSamp=1:nSamp
         EndBinNum = min(ceil(EEDist/L*nBins),nBins); % [0,1000]
         AllEndToEndDists(iTrial,EndBinNum)=AllEndToEndDists(iTrial,EndBinNum)+1;
         % Tangent vector dot products
-        for iLink=1:Nx-1
-            for jLink=iLink:Nx-1
-                index = jLink-iLink+1;
-                nSamplesDs(index)=nSamplesDs(index)+1;
-                TanVecDots(index)=TanVecDots(index)+dot(tau(iLink,:),tau(jLink,:));
+        for iPt=1:N
+            for jPt=iPt:N
+                nSamplesDs(IJInds(iPt,jPt))=nSamplesDs(IJInds(iPt,jPt))+1;
+                TanVecDots(IJInds(iPt,jPt))=TanVecDots(IJInds(iPt,jPt))...
+                    +dot(tau(iPt,:),tau(jPt,:));
             end
         end
     end
@@ -121,7 +133,8 @@ MeanTauSq(:,:,iTrial)=MeanTauSq(:,:,iTrial)/nSaveSamples;
 TanVecDots = TanVecDots./nSamplesDs;
 AllTanVecDots(iTrial,:) = TanVecDots;
 toc
-save(strcat('MCMC',num2str(gtype),'_Nx',num2str(Nx),'_Lp',num2str(lpstar),'.mat'))
+save(strcat('MCMC',num2str(gtype),'_Nx',num2str(Nx),'_Lp',num2str(lpstar),...
+    '_',num2str(seed),'.mat'))
 end
 end
 
