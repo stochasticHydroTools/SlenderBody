@@ -22,7 +22,7 @@ nSt = (tf/dt);
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 nSave = nSt/saveEvery;
 rng(seed);
-MaxIts = 10;
+MaxIts = 25;
 x0=[0;0;0];
 tau0=[1;0;0];
 
@@ -46,6 +46,7 @@ nW = 1;
 MobConst = -log(eps^2)/(8*pi*mu);
 Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); %MobRPY(x,DX,eps,mu);% Hessians are constant
 H = HessMat(Nx,D,clamp0);
+AllTanVecDots = zeros(nRuns,Nx-1);
 FailureRates = zeros(nRuns,1);
 AllItCounts = zeros(nRuns,nSave);
 AllEE  = zeros(nRuns,nSave);
@@ -120,7 +121,8 @@ for iT=1:nSt
     % Newton solve
     xg = x;
     lam = zeros(nC,1);
-    tol = 1e-10;
+    er=1;
+    tol = 1e-8;
     Allresids = zeros(MaxIts,1);
     for it=1:MaxIts
         % Compute the gradient and Hessian at x
