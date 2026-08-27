@@ -7,7 +7,7 @@ clampL=0;
 %Nx=16;
 %dt=1e-5;
 N = Nx-1;
-gtype=1;
+gtype=2;
 ConfineZ=0;
 addpath(genpath('../../'))
 %close all;
@@ -23,7 +23,7 @@ impcoeff = 1;
 makeMovie = 0;
 %clampL=1;
 tf = 100;
-Tau0BC = [0;1;0];
+Tau0BC = [1;0;0];
 %Tau0BC=rotate(Tau0BC',-70/180*pi*[0 0 1])';
 TrkLoc = 0;
 try
@@ -46,7 +46,7 @@ elseif (gtype=='u')
     sC=(0:N-1)'/(N-1)*L;
     ChebToConstr = barymat(sC,s,b);
     ConstrToCheb = ChebToConstr^(-1);
-else
+elseif (gtype==2)
     ChebToConstr = eye(N);
     ConstrToCheb = eye(N);
 end
@@ -170,7 +170,7 @@ for count=0:stopcount
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     U0 = zeros(3*Nx,1);
     Fext = zeros(3*Nx,1);
-    Fext(end-1) = ForceRt^2*Eb;
+    Fext(end-2) = ForceRt^2*Eb;
     if (ConfineZ)
         Fext(3:3:end)=-Xt(3:3:end);
     end

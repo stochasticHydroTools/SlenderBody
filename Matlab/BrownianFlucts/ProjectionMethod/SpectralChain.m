@@ -27,7 +27,7 @@ x0=[0;0;0];
 tau0=[1;0;0];
 
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
-s = L*(0.5:Nx-1)'/(Nx-1);%chebpts(Nx-1,[0 L],1);
+s = chebpts(Nx-1,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
 D = barymat(s,sX,bX)*DX;
 D = kron(D,eye(3));
@@ -46,7 +46,6 @@ nW = 1;
 MobConst = -log(eps^2)/(8*pi*mu);
 Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); %MobRPY(x,DX,eps,mu);% Hessians are constant
 H = HessMat(Nx,D,clamp0);
-AllTanVecDots = zeros(nRuns,Nx-1);
 FailureRates = zeros(nRuns,1);
 AllItCounts = zeros(nRuns,nSave);
 AllEE  = zeros(nRuns,nSave);
@@ -121,7 +120,6 @@ for iT=1:nSt
     % Newton solve
     xg = x;
     lam = zeros(nC,1);
-    er=1;
     tol = 1e-10;
     Allresids = zeros(MaxIts,1);
     for it=1:MaxIts
