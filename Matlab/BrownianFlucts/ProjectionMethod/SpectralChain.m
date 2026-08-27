@@ -17,7 +17,7 @@ mu = 0.6;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
-tf = 100;
+tf = 50;
 nSt = (tf/dt);
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 nSave = nSt/saveEvery;
@@ -154,7 +154,7 @@ for iT=1:nSt
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
-        index = floor(1e-10+iT/saveEvery)+1;
+        index = floor(1e-10+iT/saveEvery);
         NumIts(index)=it;
         eedists(index)=norm(x(1:3)-x(end-2:end));
         Xpts=[Xpts;reshape(x,3,[])'];
