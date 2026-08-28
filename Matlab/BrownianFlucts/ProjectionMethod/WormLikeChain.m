@@ -11,7 +11,7 @@ kbT = 4.1e-3; % pN * um
 lp = 1*L;
 K_b = lp*kbT;
 a = 1e-2;
-mu = 1;
+mu = 10;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
@@ -268,7 +268,7 @@ function M = MobRPY(x,a,mu,ds)
     M = zeros(3*Nx);
     for j=1:Nx
         M(3*j-2:3*j,3*j-2:3*j)=...
-            log(a^(-2))/(8*pi*mu)*(eye(3)+tauavg(j,:)'*tauavg(j,:));
+            log(a^(-2))/(8*pi*mu*ds)*(eye(3)+tauavg(j,:)'*tauavg(j,:));
     end
     % M = 1/(6*pi*mu*a)*eye(3*Nx);
     % for i=1:Nx
