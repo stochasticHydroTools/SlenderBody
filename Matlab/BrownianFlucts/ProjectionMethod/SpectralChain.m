@@ -1,5 +1,8 @@
 % Projection method for spectral chain
 function SpectralChain(seed,Nx,dt)
+%seed=1;
+%Nx=16;
+%dt=1e-6;
 %if (0)
 addpath(genpath('../../'))
 nRuns = 1;
@@ -17,7 +20,7 @@ mu = 0.6;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
-tf = 50;
+tf = 20;
 nSt = (tf/dt);
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 nSave = nSt/saveEvery;
@@ -31,6 +34,10 @@ s = chebpts(Nx-1,[0 L],2);
 DX = diffmat(Nx,[0 L],'chebkind2');
 D = barymat(s,sX,bX)*DX;
 D = kron(D,eye(3));
+DDtblocks = zeros(3*Nx,3*Nx,Nx-1);
+for j=1:Nx-1
+    DDtblocks(:,:,j) = D(3*j-2:3*j,:)'*D(3*j-2:3*j,:);
+end
 
 % Energy matrix
 [s2Nx, w2x, ~] = chebpts(2*Nx, [0 L], 2);
@@ -53,12 +60,12 @@ AllEE  = zeros(nRuns,nSave);
 Xpts=[];
 
 % Gradient check
-% dx = rand(3*Nx,1);
-% gc = GradMat(x,D,clamp0)*dx;
-% for iEps=1:10
-%     [~,trudiff] = c(x+10^(-iEps)*dx,D,clamp0,x0,tau0);
-%     ers(iEps) = norm(trudiff/10^(-iEps)-gc);
-% end
+dx = rand(3*Nx,1);
+gc = GradMat(x,D,DDtblocks,clamp0)*dx;
+for iEps=1:10
+    [~,trudiff] = c(x+10^(-iEps)*dx,D,clamp0,x0,tau0);
+    ers(iEps) = norm(trudiff/10^(-iEps)-gc);
+end
 
 for iRun=1:nRuns
 % Initial state
@@ -79,8 +86,7 @@ nFail = 0;
 for iT=1:nSt
     M = Mobility(x);
     Mhalf = chol(M)';
-    C = GradMat(x,D,clamp0);
-    prefac = M*C'*(C*M*C')^(-1);
+    C = GradMat(x,D,DDtblocks,clamp0);
     GradU = EMat*x;
     
     divM = zeros(nX,1);
@@ -92,9 +98,9 @@ for iT=1:nSt
         divM = divM + 1/(nW*delta)*(Mu-M)*w1;
     
         w2 = randn(nC,1);
-        xc = x + delta*prefac*w2;
+        xc = x + delta*(M*C'*((C*M*C') \ w2));
         Mc = Mobility(xc);
-        Cc = GradMat(xc,D,clamp0);
+        Cc = GradMat(xc,D,DDtblocks,clamp0);
         divMC = divMC + 1/(nW*delta)*(Mc*Cc'-M*C')*w2;
     end
     divMtru = divM;
@@ -119,14 +125,14 @@ for iT=1:nSt
     % x - xtilde + M*C(x)'*lambda = 0 
     % c(x) = 0
     % Newton solve
-    xg = x;
+    xg = xtilde;
     lam = zeros(nC,1);
     er=1;
     tol = 1e-8;
     Allresids = zeros(MaxIts,1);
     for it=1:MaxIts
         % Compute the gradient and Hessian at x
-        C = GradMat(xg,D,clamp0);
+        C = GradMat(xg,D,DDtblocks,clamp0);
         Htot = sum(H.*reshape(lam,1,1,nC),3);
         J = [eye(nX)+M*Htot M*C'; C zeros(nC)];
         [~,ceqc]=c(xg,D,clamp0,x0,tau0);
@@ -150,7 +156,7 @@ for iT=1:nSt
         opts=optimoptions(@lsqnonlin,'OptimalityTolerance',1e-10,...
             'SpecifyObjectiveGradient',true,'Display','off');
         [xg,~,~,exitflag,~,~,~] = ...
-            lsqnonlin(fun,x,[],[],[],[],[],[],eqconstr,opts);
+            lsqnonlin(fun,xtilde,[],[],[],[],[],[],eqconstr,opts);
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
@@ -195,15 +201,14 @@ function [cleq,cd] = c(x,D,clamp0,x0,tau0)
     cleq=[];
 end
 
-function C = GradMat(x,D,clamp0)
+function C = GradMat(x,D,Dblk,clamp0)
     if (size(x,2)==3)
         x=reshape(x',[],1);
     end
     Nx = length(x)/3;
     C = zeros(Nx-1,3*Nx);
     for j=1:Nx-1
-        DDt = D(3*j-2:3*j,:)'*D(3*j-2:3*j,:);
-        C(j,:)=(2*DDt*x)';
+        C(j,:)=(2*Dblk(:,:,j)*x)';
     end
     if (clamp0)
         Ct = zeros(Nx+4,3*Nx);
