@@ -1,6 +1,6 @@
 function HAll = RotateHessian(Xsin,Omega)
     [N,~]=size(Xsin);
-    HAll = zeros(3*N,3); % This is the Hessian of taux for all the vectors
+    HAll = zeros(3*N,3*N,3*N); % This is the Hessian of taux for all the vectors
     for k=1:N
         Om1 = Omega(k,1);
         Om2 = Omega(k,2);
@@ -671,8 +671,8 @@ function HAll = RotateHessian(Xsin,Omega)
         H3_33 = 1/3*(Om2*t1 - Om1*t2);
         H3 = [H3_11 H3_12 H3_13; H3_12 H3_22 H3_23; H3_13 H3_23 H3_33];
         end
-        HAll(3*(k-1)+1:3*k,3*(k-1)+1:3*k,1)=H1;
-        HAll(3*(k-1)+1:3*k,3*(k-1)+1:3*k,2)=H2;
-        HAll(3*(k-1)+1:3*k,3*(k-1)+1:3*k,3)=H3;
+        HAll(3*(k-1)+1:3*k,3*(k-1)+1:3*k,3*k-2)=H1;
+        HAll(3*(k-1)+1:3*k,3*(k-1)+1:3*k,3*k-1)=H2;
+        HAll(3*(k-1)+1:3*k,3*(k-1)+1:3*k,3*k)=H3;
     end
 end
