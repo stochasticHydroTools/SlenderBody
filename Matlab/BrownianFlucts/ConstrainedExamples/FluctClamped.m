@@ -1,11 +1,11 @@
-function FluctClamped(seed,Nx,dt)
+%function FluctClamped(seed,Nx,dt)
 % Single fluctuating clamped filament
 %for seed=1:30
 ForceRt=0;
 clampL=0;
-%seed=1;
-%Nx=16;
-%dt=1e-5;
+seed=1;
+Nx=8;
+dt=1e-2;
 N = Nx-1;
 gtype=2;
 ConfineZ=0;
@@ -22,7 +22,7 @@ mu = 0.6;
 impcoeff = 1;
 makeMovie = 0;
 %clampL=1;
-tf = 100;
+tf = 100 ;
 Tau0BC = [1;0;0];
 %Tau0BC=rotate(Tau0BC',-70/180*pi*[0 0 1])';
 TrkLoc = 0;
@@ -71,9 +71,18 @@ BendingEnergyMatrix_Np1 = Eb*stackMatrix((R_Np1_To_2Np2*DNp1^2)'*...
 BendForceMat = -BendingEnergyMatrix_Np1;
 BendMatHalf_Np1 = real(BendingEnergyMatrix_Np1^(1/2));
 
+% Hydrodynamics
+AllbS_Np1 = precomputeStokesletInts(sNp1,L,rtrue,Nx,1);
+AllbD_Np1 = precomputeDoubletInts(sNp1,L,rtrue,Nx,1);
+NForSmall = 8; % # of pts for R < 2a integrals for exact RPY
+eigThres = 1e-3;
 Xt = XonNp1Mat*reshape(Xs3',[],1);
-saveEvery=max(1,floor(1e-2/dt+1e-10));
 MobConst = -log(eps^2)/(8*pi*mu);
+Mobility = @(Xt) RPYQuadMob(Xt,rtrue,L,mu,sNp1,bNp1,DNp1,AllbS_Np1,AllbD_Np1,...
+    NForSmall,WTilde_Np1_Inverse,eigThres);
+%Mobility = @(Xt) LocalDragMob(Xt,DNp1,MobConst,WTilde_Np1_Inverse);
+        
+saveEvery=max(1,floor(1e-2/dt+1e-10));
 
 %% Initialization 
 stopcount=floor(tf/dt+1e-5);
@@ -113,7 +122,7 @@ for count=0:stopcount
 
     % Evolve system
     Xs3 = reshape(InvXonNp1Mat*Xt,3,[])';
-    MWsym = LocalDragMob(Xt,DNp1,MobConst,WTilde_Np1_Inverse);
+    MWsym = Mobility(Xt);
     MWsymHalf = chol(MWsym)';
     TauVelocity = zeros(3*N);
     % The matrix for all the taus to evolve
@@ -144,7 +153,7 @@ for count=0:stopcount
     end
     Xstilde = rotateTau(Xs3,OmegaTilde,dt/2);
     Xtilde = XonNp1Mat*reshape(Xstilde',[],1);
-    MWsymTilde = LocalDragMob(Xtilde,DNp1,MobConst,WTilde_Np1_Inverse);
+    MWsymTilde = Mobility(Xtilde);
     Ktilde = KonNp1(Xstilde,XonNp1Mat,[]);
     if (clampL)
         Ktilde(:,[1:3;3*N-2:3*N])=[];
@@ -163,7 +172,7 @@ for count=0:stopcount
     end
     TauPlus = rotateTau(Xs3,reshape(WRFDom(1:3*N),3,[])',deltaRFD);
     XPlus = XonNp1Mat*reshape(TauPlus',[],1);
-    MWsymPlus = LocalDragMob(XPlus,DNp1,MobConst,WTilde_Np1_Inverse);
+    MWsymPlus = Mobility(XPlus);
     M_RFD = kbT/deltaRFD*(MWsymPlus-MWsym)*KInv'*WRFD;
 
     RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf_Np1*randn(3*Nx,1);
@@ -189,6 +198,6 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ClmpPar_Lp',num2str(lp),...
+save(strcat('ClmpRPYPar_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-end
+%end

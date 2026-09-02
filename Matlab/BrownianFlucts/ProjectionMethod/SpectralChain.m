@@ -51,7 +51,15 @@ EMat = K_b*stackMatrix(DX^2)'*WTilde_Nx*...
 
 nW = 1;
 MobConst = -log(eps^2)/(8*pi*mu);
-Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); %MobRPY(x,DX,eps,mu);% Hessians are constant
+Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); 
+% Hydrodynamics
+AllbS_Np1 = precomputeStokesletInts(sX,L,rtrue,Nx,1);
+AllbD_Np1 = precomputeDoubletInts(sX,L,rtrue,Nx,1);
+NForSmall = 8; % # of pts for R < 2a integrals for exact RPY
+eigThres = 1e-3;
+Mobility = @(Xt) RPYQuadMob(Xt,rtrue,L,mu,sX,bX,DX,AllbS_Np1,AllbD_Np1,...
+    NForSmall,WTilde_Inv,eigThres);
+
 H = HessMat(Nx,D,clamp0);
 AllTanVecDots = zeros(nRuns,Nx-1);
 FailureRates = zeros(nRuns,1);
@@ -60,12 +68,12 @@ AllEE  = zeros(nRuns,nSave);
 Xpts=[];
 
 % Gradient check
-dx = rand(3*Nx,1);
-gc = GradMat(x,D,DDtblocks,clamp0)*dx;
-for iEps=1:10
-    [~,trudiff] = c(x+10^(-iEps)*dx,D,clamp0,x0,tau0);
-    ers(iEps) = norm(trudiff/10^(-iEps)-gc);
-end
+% dx = rand(3*Nx,1);
+% gc = GradMat(x,D,DDtblocks,clamp0)*dx;
+% for iEps=1:10
+%     [~,trudiff] = c(x+10^(-iEps)*dx,D,clamp0,x0,tau0);
+%     ers(iEps) = norm(trudiff/10^(-iEps)-gc);
+% end
 
 for iRun=1:nRuns
 % Initial state
@@ -171,7 +179,7 @@ FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 end
 if (wrongdrift==0)
-    save(strcat('ClmpProj_Lp',num2str(lp),...
+    save(strcat('ClmpRPYProj_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 elseif (wrongdrift==1)
     save(strcat('NoDrSpectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
