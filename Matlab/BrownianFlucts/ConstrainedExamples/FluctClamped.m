@@ -1,11 +1,11 @@
-%function FluctClamped(seed,Nx,dt)
+function FluctClamped(seed,Nx,dt)
 % Single fluctuating clamped filament
 %for seed=1:30
 ForceRt=0;
 clampL=0;
-seed=1;
-Nx=8;
-dt=1e-2;
+%seed=1;
+%Nx=8;
+%dt=1e-2;
 N = Nx-1;
 gtype=2;
 ConfineZ=0;
@@ -200,4 +200,4 @@ end
 Totaltime=toc(tStart);
 save(strcat('ClmpRPYPar_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-%end
+end
