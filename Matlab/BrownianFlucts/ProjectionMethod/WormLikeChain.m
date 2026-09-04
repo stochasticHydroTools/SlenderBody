@@ -16,7 +16,7 @@ delta = 1e-5;
 implicit=1;
 tf = 25;
 nSt = (tf/dt);
-saveEvery = 1;%max(1e-2/dt,1);
+saveEvery = max(1e-2/dt,1);
 nSave = floor(1e-10+nSt/saveEvery);
 rng(seed);
 MaxIts = 10;
@@ -82,7 +82,7 @@ for iT=1:nSt
     % x - xtilde + M*C(x)'*lambda = 0 
     % c(x) = 0
     % Newton solve
-    xg = xtilde;
+    xg = x;
     lam = zeros(nC,1);
     tol = 1e-10;
     Allresids = zeros(MaxIts,1);
@@ -106,7 +106,7 @@ for iT=1:nSt
         nFail=nFail+1;
         % Matlab default
         NLFcn = @(x) NonLinSys(x,xtilde,Mhalf,Chalf,ds);
-        [xnlsolve,fval,exitflag] = fsolve(NLFcn,[xtilde;zeros(nC,1)],opts);
+        [xnlsolve,fval,exitflag] = fsolve(NLFcn,[x;zeros(nC,1)],opts);
         xg = xnlsolve(1:nX);
     end
     x = xg;
