@@ -1,27 +1,25 @@
 % Parameters for chain and mobility
-function WormLikeChain(seed,dt,wrongdrift)
+function WormLikeChain(seed,Nlinks,dt)
 addpath(genpath('../../'))
-nRuns = 1;
+%Nlinks=10;
 %seed=1;
-%wrongdrift=1;
-Nlinks = 25;
+%dt=1e-2;
+nRuns=1;
 ds = 1/Nlinks;
 L = ds*Nlinks;
 kbT = 4.1e-3; % pN * um
 lp = 1*L;
 K_b = lp*kbT;
 a = 1e-2;
-mu = 10;
+mu = 1;
 delta = 1e-5;
-%dt=2.5e-4;
 implicit=1;
-tf = 200;
+tf = 25;
 nSt = (tf/dt);
-saveEvery = max(1e-2/dt,1);
+saveEvery = 1;%max(1e-2/dt,1);
 nSave = floor(1e-10+nSt/saveEvery);
 rng(seed);
 MaxIts = 10;
-Confine = 0;
 
 nW = 1;
 Mobility = @(x) MobRPY(x,a,mu,ds);
@@ -31,11 +29,12 @@ AllTanVecDots = zeros(nRuns,Nlinks);
 FailureRates = zeros(nRuns,1);
 AllItCounts = zeros(nRuns,nSave);
 AllEE  = zeros(nRuns,nSave);
+Xpts=[];
 
 for iRun=1:nRuns
 % Initial state
 tau = [ones(Nlinks,1) zeros(Nlinks,2)];
-x = reshape(([0 0 8*a]+[0 0 0; cumsum(ds*tau)])',[],1);
+x = reshape(([0 0 0; cumsum(ds*tau)])',[],1);
 nC = Nlinks;
 nX = length(x);
 
@@ -48,68 +47,51 @@ nSamplesDs = zeros(Nlinks,1);
 NumIts = zeros(nSave,1);
 eedists = zeros(nSave,1);
 nFail = 0;
+% For when Newton fails
+opts=optimoptions(@fsolve,'OptimalityTolerance',1e-10,...
+    'SpecifyObjectiveGradient',true,'Display','off');
 
 % Unconstrained step
 for iT=1:nSt
     M = Mobility(x);
     Mhalf = chol(M)';
-    C = GradMat(x);
-    prefac = M*C'*(C*M*C')^(-1);
-    GradU = EMat*x;
     
     divM = zeros(nX,1);
-    divMC = zeros(nX,1);
     for iP=1:nW
         w1 = randn(nX,1);
         xr = x + delta*w1;
         Mu = Mobility(xr);
         divM = divM + 1/(nW*delta)*(Mu-M)*w1;
-    
-        w2 = randn(nC,1);
-        xc = x + delta*prefac*w2;
-        Mc = Mobility(xc);
-        Cc = GradMat(xc);
-        divMC = divMC + 1/(nW*delta)*(Mc*Cc'-M*C')*w2;
-    end
-    divMtru = divM;
-    divMctru = divMC;
-    if (wrongdrift==1)
-        divMtru=0*divMtru;
-        divMctru=0*divMctru;
-    elseif (wrongdrift==2)
-        divMctru=0*divMctru;
     end
 
     % Take unconstrained step 
     W = randn(nX,1);
-    ExPart = dt*kbT*(divMtru-divMctru)+sqrt(2*dt*kbT)*Mhalf*W;
-    if (Confine)
-        FConf = zeros(nX,1);
-        FConf(3:3:end)=-20*(x(3:3:end)-8*a);
-        ExPart = ExPart + dt*M*FConf;
-    end
+    ExPart = dt*kbT*divM+sqrt(2*dt*kbT)*Mhalf*W;
     if (implicit)
         xtilde = (eye(3*(Nlinks+1))+dt*M*EMat) \ (x+ExPart);
     else
         xtildeEx = x - dt*M*GradU + ExPart;
     end
+
+    % Half step
+    xHalf = x + sqrt(kbT*dt/2)*Mhalf*W;
+    Mhalf = Mobility(xHalf);
+    Chalf = GradMat(xHalf);
     
     % Nonlinear system for the projection
     % x - xtilde + M*C(x)'*lambda = 0 
     % c(x) = 0
     % Newton solve
-    xg = x;
+    xg = xtilde;
     lam = zeros(nC,1);
-    er=1;
     tol = 1e-10;
     Allresids = zeros(MaxIts,1);
     for it=1:MaxIts
         % Compute the gradient and Hessian at x
         C = GradMat(xg);
-        Htot = sum(H.*reshape(lam,1,1,nC),3);
-        J = [eye(nX)+M*Htot M*C'; C zeros(nC)];
-        [~,ceqc]=c(xg,ds);
-        resid = [(xg-xtilde) + M *C'*lam;ceqc ];
+        J = [eye(nX) -Mhalf*Chalf'; C zeros(nC)];
+        ceqc=c(xg,ds);
+        resid = [(xg-xtilde) - Mhalf *Chalf'*lam;ceqc ];
         er=norm(resid);
         Allresids(it)=er;
         if (er > tol)
@@ -123,19 +105,16 @@ for iT=1:nSt
     if (it>=MaxIts)
         nFail=nFail+1;
         % Matlab default
-        Minv = M^(-1);
-        fun = @(xvar) ProjectionObjective(xvar,xtilde,Minv);
-        eqconstr = @(xvar) c(xvar,ds);
-        opts=optimoptions(@lsqnonlin,'OptimalityTolerance',1e-10,...
-            'SpecifyObjectiveGradient',true,'Display','off');
-        [xg,~,~,exitflag,~,~,~] = ...
-            lsqnonlin(fun,x,[],[],[],[],[],[],eqconstr,opts);
+        NLFcn = @(x) NonLinSys(x,xtilde,Mhalf,Chalf,ds);
+        [xnlsolve,fval,exitflag] = fsolve(NLFcn,[xtilde;zeros(nC,1)],opts);
+        xg = xnlsolve(1:nX);
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
         index = floor(1e-6+iT/saveEvery);
         NumIts(index)=it;
         eedists(index)=norm(x(1:3)-x(end-2:end));
+        Xpts=[Xpts;reshape(x,3,[])'];
         if (iT/nSt>1/2)
             % Tangent vector dot products
             x3 = reshape(x,3,[])';
@@ -155,49 +134,8 @@ FailureRates(iRun) = nFail/nSt;
 AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
-if (wrongdrift==0)
-    save(strcat('WLC25_dt',num2str(dt),'_',num2str(seed),'.mat'))
-elseif (wrongdrift==1)
-    save(strcat('NoDrWLC25_dt',num2str(dt),'_',num2str(seed),'.mat'))
-elseif (wrongdrift==2)
-    save(strcat('WrongDrWLC25_dt',num2str(dt),'_',num2str(seed),'.mat'))
+save(strcat('WLC',num2str(Nlinks),'_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
-end
-%end
-% dts = [2.5e-3 1e-3 2.5e-4 1e-4 1e-4];
-% for cIndex=4:5
-% nRuns=50;
-% nSave=2000;
-% Nlinks=10;
-% dt = dts(cIndex);
-% TotalTanVecDots = zeros(nRuns,Nlinks);
-% TotalFailureRates = zeros(nRuns,1);
-% TotalItCounts = zeros(nRuns,nSave);
-% TotalEE  = zeros(nRuns,nSave);
-% for kRun=1:nRuns
-%     if (cIndex==5)
-%         load(strcat('WrongDrConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
-%     else
-%         load(strcat('ConfinedWLC_dt',num2str(dt),'_',num2str(kRun),'.mat'))
-%     end
-%     TotalTanVecDots(kRun,:)=AllTanVecDots;
-%     TotalFailureRates(kRun)=FailureRates;
-%     TotalItCounts(kRun,:)=AllItCounts;
-%     TotalEE(kRun,:)=AllEE;
-% end
-% AllTanVecDots=TotalTanVecDots;
-% cIndex=1;
-% diffc = (0:Nlinks-1)*ds;
-% MC = mean(AllTanVecDots);
-% SC = 2*std(AllTanVecDots)/sqrt(nRuns);
-% Colors=get(gca,'ColorOrder');
-% fill([diffc, fliplr(diffc)], [MC-SC, fliplr(MC+SC)],...
-%     Colors(cIndex,:), 'FaceAlpha', 0.2, 'linestyle', 'none');
-% hold on
-% plot(diffc,MC,'-o','Color',Colors(cIndex,:),'LineWidth',2)
-% hold on
-% plot(diffc,exp(-diffc/lp))
-
 
 function EnergyMat = WLCEnergyMatrix(K_b,Nlinks,ds)
     N = Nlinks+1;
@@ -210,15 +148,16 @@ function EnergyMat = WLCEnergyMatrix(K_b,Nlinks,ds)
     EnergyMat = K_b*kron(sparse(EnergyMat),eye(3))/ds^3;
 end
 
-function [val,J] = ProjectionObjective(x,xtilde,Minv)
-    val = 1/2*(x-xtilde)'*Minv*(x-xtilde);
-    if nargout > 1  
-        J = Minv*(x-xtilde);
-        J = J';
-    end
+function [val,J] = NonLinSys(xin,xtilde,Mhalf,Chalf,ds)
+    nX = length(xtilde);
+    x = xin(1:nX);
+    lam = xin(nX+1:end);
+    val = [(x-xtilde) - Mhalf *Chalf'*lam; c(x,ds)];
+    C = GradMat(x);
+    J = [eye(length(x)) -Mhalf*Chalf'; C zeros(length(lam))];
 end
 
-function [cleq,cd] = c(x,ds)
+function cd = c(x,ds)
     if (size(x,2)==1)
         x=reshape(x,3,[])';
     end
@@ -227,7 +166,6 @@ function [cleq,cd] = c(x,ds)
     for j=1:Nx-1
         cd(j) = norm(x(j+1,:)-x(j,:)).^2-ds^2;
     end
-    cleq=[];
 end
 
 function C = GradMat(x)
