@@ -1,8 +1,8 @@
 % Projection method for spectral chain
 function SpectralChain(seed,Nx,dt)
 %seed=1;
-%Nx=16;
-%dt=1e-6;
+%Nx=8;
+%dt=1e-3;
 %if (0)
 addpath(genpath('../../'))
 nRuns = 1;
@@ -20,12 +20,13 @@ mu = 0.6;
 delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
-tf = 25;
+tf = 100;
 nSt = (tf/dt);
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 nSave = nSt/saveEvery;
 rng(seed);
-MaxIts = 25;
+MaxIts = 25; % Newton
+tol = 1e-10; % Newton
 x0=[0;0;0];
 tau0=[1;0;0];
 
@@ -38,6 +39,8 @@ DDtblocks = zeros(3*Nx,3*Nx,Nx-1);
 for j=1:Nx-1
     DDtblocks(:,:,j) = D(3*j-2:3*j,:)'*D(3*j-2:3*j,:);
 end
+CMat = @(x) GradMat(x,D,DDtblocks,clamp0);
+cfcn = @(x) c(x,D,clamp0,x0,tau0);
 
 % Energy matrix
 [s2Nx, w2x, ~] = chebpts(2*Nx, [0 L], 2);
@@ -60,12 +63,12 @@ eigThres = 1e-3;
 Mobility = @(Xt) RPYQuadMob(Xt,rtrue,L,mu,sX,bX,DX,AllbS_Np1,AllbD_Np1,...
     NForSmall,WTilde_Inv,eigThres);
 
-H = HessMat(Nx,D,clamp0);
 AllTanVecDots = zeros(nRuns,Nx-1);
 FailureRates = zeros(nRuns,1);
 AllItCounts = zeros(nRuns,nSave);
 AllEE  = zeros(nRuns,nSave);
 Xpts=[];
+
 
 % Gradient check
 % dx = rand(3*Nx,1);
@@ -89,82 +92,54 @@ nX = length(x);
 NumIts = zeros(nSave,1);
 eedists = zeros(nSave,1);
 nFail = 0;
+% For when Newton fails
+opts=optimoptions(@fsolve,'OptimalityTolerance',1e-10,...
+    'SpecifyObjectiveGradient',true,'Display','off');
+nReallyFail = 0;
 
 % Unconstrained step
 for iT=1:nSt
     M = Mobility(x);
     Mhalf = chol(M)';
-    C = GradMat(x,D,DDtblocks,clamp0);
-    GradU = EMat*x;
     
     divM = zeros(nX,1);
-    divMC = zeros(nX,1);
     for iP=1:nW
         w1 = randn(nX,1);
         xr = x + delta*w1;
         Mu = Mobility(xr);
         divM = divM + 1/(nW*delta)*(Mu-M)*w1;
-    
-        w2 = randn(nC,1);
-        xc = x + delta*(M*C'*((C*M*C') \ w2));
-        Mc = Mobility(xc);
-        Cc = GradMat(xc,D,DDtblocks,clamp0);
-        divMC = divMC + 1/(nW*delta)*(Mc*Cc'-M*C')*w2;
     end
     divMtru = divM;
-    divMctru = divMC;
-    if (wrongdrift==1)
-        divMtru=0*divMtru;
-        divMctru=0*divMctru;
-    elseif (wrongdrift==2)
-        divMctru=0*divMctru;
-    end
 
     % Take unconstrained step 
     W = randn(nX,1);
-    ExPart = dt*kbT*(divMtru-divMctru)+sqrt(2*dt*kbT)*Mhalf*W;
+    ExPart = dt*kbT*divMtru+sqrt(2*dt*kbT)*Mhalf*W;
     if (implicit)
         xtilde = (eye(3*Nx)+dt*M*EMat) \ (x+ExPart);
     else
         xtildeEx = x - dt*M*GradU + ExPart;
     end
-    
+
+    % Half step
+    xHalf = x + sqrt(kbT*dt/2)*Mhalf*W;
+    Mhalf = Mobility(xHalf);
+    Chalf = CMat(xHalf);
+
     % Nonlinear system for the projection
-    % x - xtilde + M*C(x)'*lambda = 0 
+    % x - xtilde + Mhalf*Chalf'*lambda = 0 
     % c(x) = 0
     % Newton solve
-    xg = xtilde;
-    lam = zeros(nC,1);
-    er=1;
-    tol = 1e-8;
-    Allresids = zeros(MaxIts,1);
-    for it=1:MaxIts
-        % Compute the gradient and Hessian at x
-        C = GradMat(xg,D,DDtblocks,clamp0);
-        Htot = sum(H.*reshape(lam,1,1,nC),3);
-        J = [eye(nX)+M*Htot M*C'; C zeros(nC)];
-        [~,ceqc]=c(xg,D,clamp0,x0,tau0);
-        resid = [(xg-xtilde) + M *C'*lam;ceqc ];
-        er=norm(resid);
-        Allresids(it)=er;
-        if (er > tol)
-            newsol = [xg;lam] - J \ resid;
-            xg = newsol(1:nX);
-            lam = newsol(nX+1:end);
-        else
-            break
-        end
-    end
+    [xg,it,~] = NewtonSolveProjection(xtilde,xtilde,CMat,cfcn,...
+        Mhalf,Chalf,MaxIts,tol,nC);
     if (it>=MaxIts)
         nFail=nFail+1;
         % Matlab default
-        Minv = M^(-1);
-        fun = @(xvar) ProjectionObjective(xvar,xtilde,Minv);
-        eqconstr = @(xvar) c(xvar,D,clamp0,x0,tau0);
-        opts=optimoptions(@lsqnonlin,'OptimalityTolerance',1e-10,...
-            'SpecifyObjectiveGradient',true,'Display','off');
-        [xg,~,~,exitflag,~,~,~] = ...
-            lsqnonlin(fun,xtilde,[],[],[],[],[],[],eqconstr,opts);
+        NLFcn = @(x) NonLinSys(x,xtilde,Mhalf,Chalf,CMat,cfcn);
+        [xnlsolve,~,exitflag] = fsolve(NLFcn,[x;zeros(nC,1)],opts);
+        xg = xnlsolve(1:nX);
+        if (exitflag<=0)
+            nReallyFail=nReallyFail+1;
+        end
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
@@ -178,26 +153,20 @@ AllEE(iRun,:)=eedists;
 FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 end
-if (wrongdrift==0)
-    save(strcat('ClmpRPYProj_Lp',num2str(lp),...
+save(strcat('ClmpRPYProj_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-elseif (wrongdrift==1)
-    save(strcat('NoDrSpectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
-elseif (wrongdrift==2)
-    save(strcat('WrongDrSpectral_dt',num2str(dt),'_',num2str(seed),'.mat'))
-end
 end
 
-
-function [val,J] = ProjectionObjective(x,xtilde,Minv)
-    val = 1/2*(x-xtilde)'*Minv*(x-xtilde);
-    if nargout > 1  
-        J = Minv*(x-xtilde);
-        J = J';
-    end
+function [val,J] = NonLinSys(xin,xtilde,Mhalf,Chalf,CMat,cfcn)
+    nX = length(xtilde);
+    x = xin(1:nX);
+    lam = xin(nX+1:end);
+    val = [(x-xtilde) - Mhalf *Chalf'*lam; cfcn(x)];
+    C = CMat(x);
+    J = [eye(length(x)) -Mhalf*Chalf'; C zeros(length(lam))];
 end
 
-function [cleq,cd] = c(x,D,clamp0,x0,tau0)
+function cd = c(x,D,clamp0,x0,tau0)
     if (size(x,2)==3)
         x=reshape(x',[],1);
     end
@@ -206,7 +175,6 @@ function [cleq,cd] = c(x,D,clamp0,x0,tau0)
     if (clamp0)
         cd = [cd(2:end); x(1:3)-x0; tau(1,:)'-tau0];
     end
-    cleq=[];
 end
 
 function C = GradMat(x,D,Dblk,clamp0)

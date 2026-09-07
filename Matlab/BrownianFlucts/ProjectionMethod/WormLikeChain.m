@@ -20,6 +20,8 @@ saveEvery = max(1e-2/dt,1);
 nSave = floor(1e-10+nSt/saveEvery);
 rng(seed);
 MaxIts = 10;
+tol = 1e-10;
+cfcn = @(x) c(x,ds);
 
 nW = 1;
 Mobility = @(x) MobRPY(x,a,mu,ds);
@@ -82,26 +84,8 @@ for iT=1:nSt
     % x - xtilde + M*C(x)'*lambda = 0 
     % c(x) = 0
     % Newton solve
-    xg = x;
-    lam = zeros(nC,1);
-    tol = 1e-10;
-    Allresids = zeros(MaxIts,1);
-    for it=1:MaxIts
-        % Compute the gradient and Hessian at x
-        C = GradMat(xg);
-        J = [eye(nX) -Mhalf*Chalf'; C zeros(nC)];
-        ceqc=c(xg,ds);
-        resid = [(xg-xtilde) - Mhalf *Chalf'*lam;ceqc ];
-        er=norm(resid);
-        Allresids(it)=er;
-        if (er > tol)
-            newsol = [xg;lam] - J \ resid;
-            xg = newsol(1:nX);
-            lam = newsol(nX+1:end);
-        else
-            break
-        end
-    end
+    [xg,it,~] = NewtonSolveProjection(x,xtilde,@(x) GradMat(x),cfcn,...
+        Mhalf,Chalf,MaxIts,tol,nC);
     if (it>=MaxIts)
         nFail=nFail+1;
         % Matlab default
@@ -134,7 +118,7 @@ FailureRates(iRun) = nFail/nSt;
 AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
-save(strcat('WLC',num2str(Nlinks),'_dt',num2str(dt),'_',num2str(seed),'.mat'))
+save(strcat('c2WLC',num2str(Nlinks),'_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 
 function EnergyMat = WLCEnergyMatrix(K_b,Nlinks,ds)
