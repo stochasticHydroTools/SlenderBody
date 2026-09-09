@@ -17,7 +17,6 @@ K_b = lp*kbT;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 mu = 0.6;
-delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
 tf = 100;
@@ -52,7 +51,6 @@ WTilde_Nx = stackMatrix(WTilde_1D);
 EMat = K_b*stackMatrix(DX^2)'*WTilde_Nx*...
     stackMatrix(DX^2);
 
-nW = 1;
 MobConst = -log(eps^2)/(8*pi*mu);
 %Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); 
 % Hydrodynamics
@@ -99,52 +97,19 @@ nReallyFail = 0;
 
 % Unconstrained step
 for iT=1:nSt
-    M = Mobility(x);
-    Mhalf = chol(M)';
-    
-    divM = zeros(nX,1);
-    for iP=1:nW
-        w1 = randn(nX,1);
-        xr = x + delta*w1;
-        Mu = Mobility(xr);
-        divM = divM + 1/(nW*delta)*(Mu-M)*w1;
-    end
-    divMtru = divM;
-
-    % Take unconstrained step 
-    W = randn(nX,1);
-    ExPart = dt*kbT*divMtru+sqrt(2*dt*kbT)*Mhalf*W;
-    if (implicit)
-        xtilde = (eye(3*Nx)+dt*M*EMat) \ (x+ExPart);
-    else
-        xtildeEx = x - dt*M*GradU + ExPart;
-    end
-
-    % Half step
-    xHalf = x + sqrt(kbT*dt/2)*Mhalf*W;
-    Mhalf = Mobility(xHalf);
-    Chalf = CMat(xHalf);
-
-    % Nonlinear system for the projection
-    % x - xtilde + Mhalf*Chalf'*lambda = 0 
-    % c(x) = 0
-    % Newton solve
-    [xg,it,~] = NewtonSolveProjection(xtilde,xtilde,CMat,cfcn,...
-        Mhalf,Chalf,MaxIts,tol,nC);
-    if (it>=MaxIts)
+    [xg,newtits,newtfail,matfail] = ...
+        AdvanceProjection(x,dt,kbT,EMat,Mobility,CMat,cfcn,...
+        MaxIts,tol,nC,implicit,opts);
+    if (newtfail)
         nFail=nFail+1;
-        % Matlab default
-        NLFcn = @(x) NonLinSys(x,xtilde,Mhalf,Chalf,CMat,cfcn);
-        [xnlsolve,~,exitflag] = fsolve(NLFcn,[x;zeros(nC,1)],opts);
-        xg = xnlsolve(1:nX);
-        if (exitflag<=0)
+        if (matfail)
             nReallyFail=nReallyFail+1;
         end
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
         index = floor(1e-10+iT/saveEvery);
-        NumIts(index)=it;
+        NumIts(index)=newtits;
         eedists(index)=norm(x(1:3)-x(end-2:end));
         Xpts=[Xpts;reshape(x,3,[])'];
     end
@@ -155,15 +120,6 @@ AllItCounts(iRun,:)=NumIts;
 end
 save(strcat('ClmpRPYProj_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-end
-
-function [val,J] = NonLinSys(xin,xtilde,Mhalf,Chalf,CMat,cfcn)
-    nX = length(xtilde);
-    x = xin(1:nX);
-    lam = xin(nX+1:end);
-    val = [(x-xtilde) - Mhalf *Chalf'*lam; cfcn(x)];
-    C = CMat(x);
-    J = [eye(length(x)) -Mhalf*Chalf'; C zeros(length(lam))];
 end
 
 function cd = c(x,D,clamp0,x0,tau0)
