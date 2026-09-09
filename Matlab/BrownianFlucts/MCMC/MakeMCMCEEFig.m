@@ -1,46 +1,43 @@
-names = ["SpecMCMCFreeL1_ConstKbT_N12_Lp2.mat" ];
+names = ["MCMC2_Nx8_Lp1.mat" "MCMC2_Nx16_Lp1.mat" "MCMC2_Nx24_Lp1.mat"];
+%tiledlayout(2,2,'Padding', 'none', 'TileSpacing', 'compact');
 for iName = 1:length(names)
 load(names(iName))
-plotIndex=iName;
-nbins = 100;
-%AllEndToEndDists = AllEndToQuarterDists;
-%L = L;
-histedges=(0:nbins)*L/nbins;
-NumPerBin = 1000/nbins;
-dshist = histedges(2)-histedges(1);
-histmps = (histedges(1:end-1)+histedges(2:end))/2;
-ChebHistCounts = zeros(nTrial,length(histedges)-1);
-nSaveSamples=sum(AllEndToEndDists(1,:));
-for iTrial=1:nTrial
-    if (NumPerBin > 1)
-        ChebHistCounts(iTrial,:) = sum(reshape(AllEndToEndDists(iTrial,:),NumPerBin,[]))/...
-            (nSaveSamples*dshist);
-    else
-        ChebHistCounts(iTrial,:) = AllEndToEndDists(iTrial,:)/(nSaveSamples*dshist);
-    end
-end
-if (plotIndex==length(names))
-h(length(h)+1)=plot(histmps/L,mean(L*ChebHistCounts),'k');
-else
-set(gca,'ColorOrderIndex',plotIndex)
-h(plotIndex)=plot(histmps/L,mean(L*ChebHistCounts));
-end
+MC = mean(AllTanVecDots);
+SC = 2*std(AllTanVecDots)/sqrt(nTrial);
+% Tangent vector correlations
+nexttile(3) 
+Colors=get(gca,'ColorOrder');
+fill([Deltas', fliplr(Deltas')], [MC-SC, fliplr(MC+SC)],...
+    Colors(iName,:), 'FaceAlpha', 0.2, 'linestyle', 'none');
 hold on
-errorBarEvery=2;
-if (plotIndex==length(names))
-errorbar(histmps(plotIndex:errorBarEvery:end)/L,...
-    mean(L*ChebHistCounts(:,plotIndex:errorBarEvery:end)),...
-    2*std(L*ChebHistCounts(:,plotIndex:errorBarEvery:end))/sqrt(nTrial),'ko','LineWidth',2.0,...
-    'MarkerSize',1);
-else
-set(gca,'ColorOrderIndex',plotIndex)
-errorbar(histmps(plotIndex:errorBarEvery:end)/L,...
-    mean(L*ChebHistCounts(:,plotIndex:errorBarEvery:end)),...
-    2*std(L*ChebHistCounts(:,plotIndex:errorBarEvery:end))/sqrt(nTrial),'o','LineWidth',2.0,...
-    'MarkerSize',1);
+plot(Deltas,MC,'-','Color',Colors(iName,:),'LineWidth',2)
+pbaspect([1 1 1])
+
+% End to end distance
+nBee = size(AllEndToEndDists,2);
+emp = (0.5:nBee)/size(AllEndToEndDists,2);
+AllEndToEndDists=AllEndToEndDists./(sum(AllEndToEndDists')'*1/nBee);
+MC = mean(AllEndToEndDists);
+SC = 2*std(AllEndToEndDists)/sqrt(nTrial);
+nexttile(4)
+fill([emp, fliplr(emp)], [MC-SC, fliplr(MC+SC)],...
+    Colors(iName,:), 'FaceAlpha', 0.2, 'linestyle', 'none');
 hold on
+plot(emp,MC,'-','Color',Colors(iName,:),'LineWidth',2)
+hold on
+xlabel('$r/L$','interpreter','latex')
+ylabel('PDF')
+title('End-to-end distance')
+pbaspect([1 1 1])
+
 end
-if (iName==length(names)-1 && L ==2)% Theory curve
+nexttile(3)
+diffc=(0:0.001:L);
+plot(diffc,exp(-diffc/lp),':k')
+xlabel('$\Delta s/L$','interpreter','latex')
+ylabel('$\langle \tau(s+\Delta s) \cdot \tau(s) \rangle$','interpreter','latex')
+title('Tangent vector correlation')
+nexttile(4)
 dr=1e-5;
 r = (0.5:1/dr)'*dr;
 G = zeros(length(r),1);
@@ -51,6 +48,8 @@ end
 % Estimate integral of G, normalize to 1
 G=G.*r.^2;
 G = G/sum(G*dr);
-h(length(h)+1)=plot(r,G);
-end
-end
+plot(r,G,':k');
+xlabel('$r/L$','interpreter','latex')
+ylabel('PDF')
+title('End-to-end distance')
+pbaspect([1 1 1])

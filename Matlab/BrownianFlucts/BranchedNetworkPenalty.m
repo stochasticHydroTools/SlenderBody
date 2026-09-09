@@ -4,9 +4,9 @@ function BranchedNetworkPenalty(seed,Nx,dt)
 %seed=1;
 %Nx=8;
 %dt=1e-3;
-Kstiff=0.01/dt;
-Kang=2e-6/dt;
-gtype=1;
+Kstiff=0.05/dt;
+Kang=1e-5/dt;
+gtype=2;
 addpath(genpath('../'))
 BranchLoc = 0.8;
 %close all;
@@ -21,21 +21,22 @@ L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 2*L;
+lp = L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 impcoeff = 1;
 makeMovie =0;
-tf = 25;
+tf = 100;
 Kcl=Kstiff;
 ell = 0;
 RotAng = 70/180*pi;
 
-[paths,DOFs,TangentVectorNodes,IntegrationMatrix,DiffMatrix,...
-    NodesByBranch,PairwiseXMats] = ...
-    InitializeConnectedNetwork(Connections,nFib,N,L,ell);
-X=XConnectedNetwork(Connections,nFib,N,L,ell,...
-    paths,DOFs,IntegrationMatrix,0);
+[DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
+  TangentVectorNodes,BranchIndices,IntegrationMatrix,...
+  DiffMatrix,RegGridMatrix,LeadIndicesByFib,clampedTau] = ...
+    InitializeConnectedNetwork(Connections,nFib,Nx,L,ell,RotAng/pi*180,0,[]);
+X=XConnectedNetwork(DOFs,MasterConnections,SlaveConnections,...
+    LeadIndicesByFib,Nx,nFib,L,RegGridMatrix,IntegrationMatrix,0,0);
 Xt = reshape(X',[],1);
 
 % Chebyshev grids
@@ -69,7 +70,15 @@ linkPt = find(su==BranchLoc);
 links = [Nuni*(0:nFib-2)'+linkPt Nuni*(1:nFib-1)'+1 zeros(nFib-1,3)];
 
 saveEvery=max(1,floor(1e-2/dt+1e-10));
+% Pre-computations for mobility
+% Hydrodynamics
+AllbS_Np1 = precomputeStokesletInts(sNx,L,rtrue,Nx,1);
+AllbD_Np1 = precomputeDoubletInts(sNx,L,rtrue,Nx,1);
+NForSmall = 8; % # of pts for R < 2a integrals for exact RPY
+eigThres = 1e-3;
 MobConst = -log(eps^2)/(8*pi*mu);
+Mobility = @(Xt) RPYQuadMob(Xt,rtrue,L,mu,sNx,bNx,DX,AllbS_Np1,AllbD_Np1,...
+    NForSmall,WTilde_Nx_Inverse,eigThres);
 
 %% Initialization 
 stopcount=floor(tf/dt+1e-5);
@@ -153,7 +162,7 @@ for count=0:stopcount
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
         XsXbar = reshape(InvXonNp1Mat*Xt(finds),3,Nx)';
         Xs3 = XsXbar(1:Nx-1,:);
-        MWsym = LocalDragMob(Xt(finds),DX,MobConst,WTilde_Nx_Inverse);
+        MWsym = Mobility(Xt(finds));
         MWsymHalf = chol(MWsym)';
         % Obtain Brownian velocity
         g = gAll(finds);
@@ -174,7 +183,7 @@ for count=0:stopcount
         Xdr = XsXbar(end,:)'+dt/2*AvgMat*RandomVelBM;
         Ktilde = KonNp1(Xstilde,XonNp1Mat,I);
         Xtilde = XonNp1Mat*[reshape(Xstilde',[],1);Xdr];
-        MWsymTilde = LocalDragMob(Xtilde,DX,MobConst,WTilde_Nx_Inverse);
+        MWsymTilde = Mobility(Xtilde);
  
         % Solve at midpoint
         %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
@@ -183,7 +192,7 @@ for count=0:stopcount
         delta = 1e-5;
         XsPlus = rotateTau(Xs3,reshape(OmRFD(1:3*N),3,[])',delta);
         XPlus = XonNp1Mat*[reshape(XsPlus',[],1); zeros(3,1)];
-        MWSymPlus = LocalDragMob(XPlus,DX,MobConst,WTilde_Nx_Inverse);
+        MWSymPlus = Mobility(XPlus);
         M_RFD = kbT/delta*(MWSymPlus-MWsym)*KInv'*g3;
         if (impcoeff==1)
             RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf*BEAll(finds);
@@ -203,5 +212,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('BranchK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','MDDist','LinkErs')
+save(strcat('BranchRPYK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end

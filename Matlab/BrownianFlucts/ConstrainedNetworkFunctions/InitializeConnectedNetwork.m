@@ -124,7 +124,8 @@ function [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
     
     % Default Chebyshev points for position and tangents 
     % (will be overwritten)
-    [s,~,~]=chebpts(N,[0 L],1);
+    gtype=2;
+    [s,~,~]=chebpts(N,[0 L],gtype);
     [sX,~,bX]=chebpts(Nx,[0 L],2);
     nTauReplaced = zeros(nFib,1);
     nXReplaced = zeros(nFib,1);

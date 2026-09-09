@@ -54,7 +54,7 @@ EMat = K_b*stackMatrix(DX^2)'*WTilde_Nx*...
 
 nW = 1;
 MobConst = -log(eps^2)/(8*pi*mu);
-Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); 
+%Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); 
 % Hydrodynamics
 AllbS_Np1 = precomputeStokesletInts(sX,L,rtrue,Nx,1);
 AllbD_Np1 = precomputeDoubletInts(sX,L,rtrue,Nx,1);

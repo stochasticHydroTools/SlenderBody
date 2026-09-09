@@ -52,12 +52,22 @@ BendMatHalf_Np1 = real(BendingEnergyMatrix_Np1^(1/2));
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 ee=[];
 MobConst = -log(eps^2)/(8*pi*mu);
-Mobility = @(x) LocalDragMob(x,DNp1,MobConst,WTilde_Np1_Inverse);
 Constr = @(alpha,x) c(alpha,x,XonNp1Mat,InvXonNp1Mat,PtEvalMat,BCs);
 JacC = @(alpha,x) GradMat(alpha,x,XonNp1Mat,InvXonNp1Mat,PtEvalMat);
 JacCNormals = @(alpha,x,NormalMat) GradMatNormals(alpha,x,NormalMat,XonNp1Mat,InvXonNp1Mat,PtEvalMat);
 Hess = @(alpha,x) HessMat(alpha,x,XonNp1Mat,InvXonNp1Mat,PtEvalMat);
 HessNormals = @(alpha,x,NormalMat) HessMatNormals(alpha,x,NormalMat,XonNp1Mat,InvXonNp1Mat,PtEvalMat);
+
+% Hydrodynamics
+AllbS_Np1 = precomputeStokesletInts(sX,L,rtrue,Nx,1);
+AllbD_Np1 = precomputeDoubletInts(sX,L,rtrue,Nx,1);
+NForSmall = 8; % # of pts for R < 2a integrals for exact RPY
+eigThres = 1e-3;
+Xt = XonNp1Mat*[reshape(Xs',[],1); XTrk];
+MobConst = -log(eps^2)/(8*pi*mu);
+%Mobility = @(x) LocalDragMob(x,DNp1,MobConst,WTilde_Np1_Inverse);
+Mobility = @(Xt) RPYQuadMob(Xt,rtrue,L,mu,sX,bX,DNp1,AllbS_Np1,AllbD_Np1,...
+    NForSmall,WTilde_Np1_Inverse,eigThres);
 
 % Gradient check (don't evaluate around 0)
 [~,NormalsXt] = KNoNullSpace(Xs,XonNp1Mat);
@@ -88,6 +98,7 @@ MeanOmTurn = zeros(stopcount,1);
 ConstrErs = zeros(stopcount,1);
 Xpts=[];
 ee=[];
+NumIts=[];
 Npl=100;
 [spl,wpl,bpl]=chebpts(Npl,[0 L]);
 RplNp1 = barymat(spl,sX,bX);
@@ -97,8 +108,8 @@ if (makeMovie)
     frameNum=0;
 end
 tStart=tic;
-NewtonTime=0;
 nFail =0;
+it = 0;
 %% Computations
 for count=0:stopcount
     t=count*dt;
@@ -120,6 +131,7 @@ for count=0:stopcount
         end
         Xpts=[Xpts;PtsThisT];
         ee=[ee;norm(PtsThisT(1,:)-PtsThisT(end,:))];
+        NumIts=[NumIts;it];
     end
     % Evolve system
     XsXTrk = reshape(InvXonNp1Mat*Xt,3,Nx)';
@@ -226,7 +238,7 @@ for count=0:stopcount
     Xt = RotateAndIntegrate(alphaCor,Xt,XonNp1Mat,InvXonNp1Mat);
 end
 Totaltime=toc(tStart);
-save(strcat('ClmpHybridRFD_Lp',num2str(lp),...
+save(strcat('ClmpRPYHybridRFD_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
 

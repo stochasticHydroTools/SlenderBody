@@ -1,14 +1,14 @@
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
-%function ConnectedNetworkBDDirect(seed,Nx,dt)
+function ConnectedNetworkBDDirect(seed,Nx,dt)
 %% Define constants 
 addpath(genpath('../'))
-seed=1;
-Nx = 8;
-L = 0.5;
+%seed=1;
+%Nx = 8;
+L = 1;
 ell = 0.25;
-clamp0 = 1;
-ConfineZ = 1;
+clamp0 = 0;
+ConfineZ = 0;
 CL = 0;
 nLayers=4;
 % List of connections between filaments (fiber1, s1, fiber2, s2,
@@ -18,7 +18,7 @@ nLayers=4;
 %     8 0.5 9 0 0; 2 1 3 1 1; 1 0.3 2 0.2 1; 2 0.3 3 0.2 1; 1 1 7 0.7 1; ...
 %     8 1 9 1 1];
 % nFib=9;
-anglebr=30;
+anglebr=70;
 Connections = [1 L*(0.8) 2 0 0];% 2 0.5 3 0 0];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
 nFib=2;
 if (CL)
@@ -66,15 +66,15 @@ end
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 10;
+lp = 1;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 
 %% Initialization
 rng(seed);
 impcoeff = 1;
-makeMovie = 1;
-dt=1e-4;
+makeMovie = 0;
+%dt=1e-4;
 tf=100;
 
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
@@ -133,8 +133,14 @@ for iFib=1:nFib
     BendMatHalfAll = blkdiag(BendMatHalfAll,BendMatHalf);
 end
 % Pre-computations for mobility
+% Hydrodynamics
+AllbS_Np1 = precomputeStokesletInts(sX,L,rtrue,Nx,1);
+AllbD_Np1 = precomputeDoubletInts(sX,L,rtrue,Nx,1);
+NForSmall = 8; % # of pts for R < 2a integrals for exact RPY
+eigThres = 1e-3;
 MobConst = -log(eps^2)/(8*pi*mu);
-MobFcn = @(x1d) LocalDragMob(x1d,DX,MobConst,WTilde_Nx_Inverse);
+Mobility = @(Xt) RPYQuadMob(Xt,rtrue,L,mu,sX,bX,DX,AllbS_Np1,AllbD_Np1,...
+    NForSmall,WTilde_Nx_Inverse,eigThres);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
@@ -211,7 +217,7 @@ for count=0:stopcount
     g = randn(3*Nx*nFib,1);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWsymOne = MobFcn(Xt(finds));
+        MWsymOne = Mobility(Xt(finds));
         MWsymHalfOne = chol(MWsymOne)';
         MWsym(finds,finds)=MWsymOne;
         % Obtain Brownian velocity
@@ -227,7 +233,7 @@ for count=0:stopcount
     MWsymTilde = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWsymTildeOne = MobFcn(Xtilde(finds));
+        MWsymTildeOne = Mobility(Xtilde(finds));
         MWsymTilde(finds,finds)=MWsymTildeOne;
     end
     
@@ -241,7 +247,7 @@ for count=0:stopcount
     MWSymPlus = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWPlusOne = MobFcn(XPlus(finds));
+        MWPlusOne = Mobility(XPlus(finds));
         MWSymPlus(finds,finds)=MWPlusOne;
     end
     M_RFD = kbT/delta*(MWSymPlus*KInvPlus'-MWsym*KInv')*g3;
@@ -278,7 +284,7 @@ end
 %FDAll=FDAll/(count+1);
 %SDAll=SDAll/(count+1);
 Totaltime=toc(tStart);
-%save(strcat('BranchedP_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('BranchedRPYPar_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 % if (~CL)
 % save(strcat('ConfBranched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 % else
@@ -286,7 +292,7 @@ Totaltime=toc(tStart);
 % end
 % %end
 % end
-%end
+end
 
 function XNew = updateByRotate(Xt,alphaU,XMat,InvXMat,dt,clamp0)
     TausXBar = InvXMat*Xt;
