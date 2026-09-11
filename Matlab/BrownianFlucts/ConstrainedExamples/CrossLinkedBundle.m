@@ -1,4 +1,4 @@
-function CrossLinkedBundle(seed,Nx,dt,Nlinks)
+function CrossLinkedBundle(seed,Nx,dt)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 
@@ -6,7 +6,8 @@ function CrossLinkedBundle(seed,Nx,dt,Nlinks)
 %seed=1;
 %Nx=16;
 %dt=1e-3;
-gtype=1;
+Nlinks=1;
+gtype=2;
 addpath(genpath('../../'))
 if (Nlinks==1)
     LinkLocs = [0.5 0.5];
@@ -15,13 +16,11 @@ else
 end
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
-eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 2*L;
+lp = L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
 mu = 0.6;
 ell = 0.1;
-kbT=0;
 
 %% Initialization
 Nlinks = size(LinkLocs,1);
@@ -39,8 +38,8 @@ end
 NLink1 = (Nx-1)-N1;
 NLink2 = (Nx-1)-N2;
 impcoeff = 1;
-makeMovie = 1;
-tf = 1;
+makeMovie = 0;
+tf = 100;
 Tau0 = [0 1 0];
 Xbar = [0 0 0];
 Locs10 = [-ell/2 -L/2 0]+LinkLocs(:,1)*Tau0;
@@ -139,8 +138,14 @@ BendForceMat = -BendingEnergyMatrix_Nx;
 BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
 BendMatAll = blkdiag(BendForceMat,BendForceMat);
 BendMatHalfAll = blkdiag(BendMatHalf,BendMatHalf);
-% Pre-computations for mobility
-MobConst = -log(eps^2)/(8*pi*mu);
+
+% Mobility
+AllbS_Np1 = precomputeStokesletInts(sX,L,rtrue,Nx,1);
+AllbD_Np1 = precomputeDoubletInts(sX,L,rtrue,Nx,1);
+NForSmall = 8; % # of pts for R < 2a integrals for exact RPY
+eigThres = 1e-3;
+Mobility = @(x) RPYQuadMob(x,rtrue,L,mu,sX,bX,DX,AllbS_Np1,AllbD_Np1,...
+    NForSmall,WTilde_Nx_Inverse,eigThres);
 
 %% Initialize arrays to save 
 stopcount=floor(tf/dt+1e-5);
@@ -206,7 +211,7 @@ for count=0:stopcount
     MWsymHalf = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWsymOne = LocalDragMob(Xt(finds),DX,MobConst,WTilde_Nx_Inverse);
+        MWsymOne = Mobility(Xt(finds));
         MWsymHalfOne = chol(MWsymOne)';
         MWsym(finds,finds)=MWsymOne;
         MWsymHalf(finds,finds)=MWsymHalfOne;
@@ -222,7 +227,7 @@ for count=0:stopcount
     MWsymTilde = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWsymTildeOne = LocalDragMob(Xtilde(finds),DX,MobConst,WTilde_Nx_Inverse);
+        MWsymTildeOne = Mobility(Xtilde(finds));
         MWsymTilde(finds,finds)=MWsymTildeOne;
     end
     
@@ -236,7 +241,7 @@ for count=0:stopcount
     MWSymPlus = zeros(nFib*3*Nx);
     for iFib=1:nFib
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
-        MWPlusOne = LocalDragMob(XPlus(finds),DX,MobConst,WTilde_Nx_Inverse);
+        MWPlusOne = Mobility(XPlus(finds));
         MWSymPlus(finds,finds)=MWPlusOne;
     end
     M_RFD = kbT/delta*(MWSymPlus*KInvPlus'-MWsym*KInv')*g3;
@@ -244,8 +249,6 @@ for count=0:stopcount
     RandomVel = RandomVelBM + M_RFD + RandomVelBE;
     KWithImp=Ktilde-impcoeff*dt*MWsymTilde*BendMatAll*Ktilde;
     U0 = zeros(3*Nx*nFib,1);
-    U0(1:3:end)=Xt(1:3:end);
-    U0(2:3:end)=-Xt(2:3:end);
     Fext = zeros(3*Nx*nFib,1);
     MobK = pinv(Ktilde'*(MWsymTilde \ KWithImp));
     alphaU = MobK*Ktilde'*(BendMatAll*Xt+ Fext + MWsymTilde \ (RandomVel + U0));
@@ -255,9 +258,9 @@ for count=0:stopcount
 end
 Totaltime=toc(tStart);
 if (Nlinks==2)
-save(strcat('DetBundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('Bundle_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 else
-save(strcat('ConstrLink_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts')
+save(strcat('OneLinkRPYPar_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
 end
 

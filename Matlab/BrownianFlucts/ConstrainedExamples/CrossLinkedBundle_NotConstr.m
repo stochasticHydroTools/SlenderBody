@@ -1,11 +1,12 @@
-function CrossLinkedBundle_NotConstr(seed,Nx,dt,Nlinks)
+function CrossLinkedBundle_NotConstr(seed,Nx,dt)
 % Fluctuating bundle of cross-linked filaments with Nlinks at arbitrary
 % locations
 %seed=1;
-%Nx=16;
-%dt=1e-5;
-Kstiff=0.01/dt;
-gtype=1;
+%Nx=8;
+%dt=1e-2;
+Nlinks=1;
+Kstiff=0.05/dt;
+gtype=2;
 addpath(genpath('../../'))
 ell = 0.1;
 if (Nlinks==1)
@@ -19,15 +20,13 @@ nFib = 2;
 N = Nx - 1; % Number of off-grid tangent vector constraints 
 L = 1;   % microns
 rtrue = 4e-3; % 4 nm radius
-eps = rtrue/L;
 kbT = 4.1e-3;
-lp = 2*L;
+lp = L;
 Eb = lp*kbT; % pN*um^2 (Lp=17 um)
-kbT = 0;
 mu = 0.6;
 impcoeff = 1;
-makeMovie = 1;
-tf = 1;
+makeMovie = 0;
+tf = 100;
 Kcl=Kstiff;
 Tau0 = [0;1;0];
 Xbar=[-ell/2 ell/2;0 0; 0 0];
@@ -60,14 +59,22 @@ BendMatHalf = real(BendingEnergyMatrix_Nx^(1/2));
 Nuni=11;
 su=(0:Nuni-1)'/(Nuni-1)*L;
 Runi = barymat(su,sNx,bNx);
-links = [2 2+Nuni zeros(1,3); 10 10+Nuni zeros(1,3)];
+if (Nlinks==1)
+    links = [6 6+Nuni zeros(1,3)];
+end
 
 Xt = zeros(3*nFib*Nx,1);
 for iFib=1:nFib
     Xt(3*Nx*(iFib-1)+1:3*Nx*iFib) = XonNp1Mat* [reshape(Xs3(N*(iFib-1)+1:N*iFib,:)',[],1);Xbar(:,iFib)];
 end
 saveEvery=max(1,floor(1e-2/dt+1e-10));
-MobConst = -log(eps^2)/(8*pi*mu);
+% Mobility
+AllbS_Np1 = precomputeStokesletInts(sNx,L,rtrue,Nx,1);
+AllbD_Np1 = precomputeDoubletInts(sNx,L,rtrue,Nx,1);
+NForSmall = 8; % # of pts for R < 2a integrals for exact RPY
+eigThres = 1e-3;
+Mobility = @(x) RPYQuadMob(x,rtrue,L,mu,sNx,bNx,DX,AllbS_Np1,AllbD_Np1,...
+    NForSmall,WTilde_Nx_Inverse,eigThres);
 
 %% Initialization 
 stopcount=floor(tf/dt+1e-5);
@@ -129,8 +136,6 @@ for count=0:stopcount
     [CLForce,~,~] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(Nlinks,1),0,0);
     Xp1=Xt;
     U0 = zeros(3*Nx*nFib,1);
-    U0(1:3:end)=Xt(1:3:end);
-    U0(2:3:end)=-Xt(2:3:end);
     Fext = reshape(CLForce',[],1);
     % Matrices at time step n 
     gAll = randn(3*Nx*nFib,1);
@@ -139,7 +144,7 @@ for count=0:stopcount
         finds = 3*Nx*(iFib-1)+1:3*Nx*iFib;
         XsXbar = reshape(InvXonNp1Mat*Xt(finds),3,Nx)';
         Xs3 = XsXbar(1:Nx-1,:);
-        MWsym = LocalDragMob(Xt(finds),DX,MobConst,WTilde_Nx_Inverse);
+        MWsym = Mobility(Xt(finds));
         MWsymHalf = chol(MWsym)';
         
         % Obtain Brownian velocity
@@ -160,7 +165,7 @@ for count=0:stopcount
         Xdr = XsXbar(end,:)'+dt/2*AvgMat*RandomVelBM;
         Ktilde = KonNp1(Xstilde,XonNp1Mat,I);
         Xtilde = XonNp1Mat*[reshape(Xstilde',[],1);Xdr];
-        MWsymTilde = LocalDragMob(Xtilde,DX,MobConst,WTilde_Nx_Inverse);
+        MWsymTilde = Mobility(Xtilde);
  
         % Solve at midpoint
         %M_RFD = (MWsymTilde-MWsym)*(MWsym \ RandomVelBM);
@@ -169,7 +174,7 @@ for count=0:stopcount
         delta = 1e-5;
         XsPlus = rotateTau(Xs3,reshape(OmRFD(1:3*N),3,[])',delta);
         XPlus = XonNp1Mat*[reshape(XsPlus',[],1); zeros(3,1)];
-        MWSymPlus = LocalDragMob(XPlus,DX,MobConst,WTilde_Nx_Inverse);
+        MWSymPlus = Mobility(XPlus);
         M_RFD = kbT/delta*(MWSymPlus-MWsym)*KInv'*g3;
         if (impcoeff==1)
             RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf*BEAll(finds);
@@ -192,6 +197,6 @@ Totaltime=toc(tStart);
 if (Nlinks==2)
 save(strcat('DetK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
 else
-save(strcat('OneLinkK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'),'Xpts','mpdist')
+save(strcat('OneLinkRPYK',num2str(Kcl),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
 end
