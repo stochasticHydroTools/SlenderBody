@@ -4,8 +4,13 @@ function BranchedNetworkPenalty(seed,Nx,dt)
 %seed=1;
 %Nx=8;
 %dt=1e-3;
-Kstiff=0.05/dt;
-Kang=1e-5/dt;
+if (Nx==16)
+    Kstiff=0.02/dt;
+    Kang=2e-6/dt;
+else % Nx = 8 settings
+    Kstiff=0.05/dt;
+    Kang=1e-5/dt;
+end
 gtype=2;
 addpath(genpath('../'))
 BranchLoc = 0.8;
