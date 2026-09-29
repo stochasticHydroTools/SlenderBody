@@ -147,7 +147,7 @@ for count=0:stopcount
     XPlus = Xt + deltaRFD*WRFD;
     MWsymPlus = Mobility(XPlus);
     M_RFD = 1/deltaRFD*(MWsymPlus-MWsym)*WRFD;
-    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf_Np1*gb;
+    RandomVelBE = sqrt(kbT)*MWsym*BendMatHalf_Np1*gb;
 
     RandomVel = RandomVelBM + kbT*M_RFD + RandomVelBE;
     U0 = zeros(3*Nx,1);
