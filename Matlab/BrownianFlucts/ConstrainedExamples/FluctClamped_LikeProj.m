@@ -1,4 +1,4 @@
-function FluctClamped(seed,Nx,dt)
+function FluctClamped_LikeProj(seed,Nx,dt)
 % Single fluctuating clamped filament
 %for seed=1:30
 ForceRt=0;
@@ -124,35 +124,14 @@ for count=0:stopcount
     Xs3 = reshape(InvXonNp1Mat*Xt,3,[])';
     MWsym = Mobility(Xt);
     MWsymHalf = chol(MWsym)';
-    TauVelocity = zeros(3*N);
-    % The matrix for all the taus to evolve
-    for iR =1:size(Xs3,1)
-        inds = (iR-1)*3+1:iR*3;
-        CMat = CPMatrix(Xs3(iR,:));
-        TauVelocity(inds,inds) =  -CMat;
-    end
-    % The COM
-    KInv = -TauVelocity*InvXonNp1Mat;
-    if (clampL)
-        KInv([1:3;3*N-2:3*N],:)=[];
-    else
-        KInv(1:3,:)=[];
-    end
 
     % Obtain Brownian velocity
     g = randn(3*Nx,1);
     RandomVelBM = sqrt(2*kbT/dt)*MWsymHalf*g;
 
     % Advance to midpoint
-    OmegaTilde = cross(Xs3,ChebToConstr*RNp1ToN*DNp1*reshape(RandomVelBM,3,[])');
-    % Fix constrained variables
-    if (clampL)
-        OmegaTilde([1;N],:)=0;
-    else
-        OmegaTilde(1,:)=0;
-    end
-    Xstilde = rotateTau(Xs3,OmegaTilde,dt/2);
-    Xtilde = XonNp1Mat*reshape(Xstilde',[],1);
+    Xtilde = Xt + dt/2*RandomVelBM;
+    Xstilde = reshape(InvXonNp1Mat*Xtilde,3,[])';
     MWsymTilde = Mobility(Xtilde);
     Ktilde = KonNp1(Xstilde,XonNp1Mat,[]);
     if (clampL)
@@ -161,22 +140,16 @@ for count=0:stopcount
         Ktilde(:,1:3)=[];
     end
 
-    % Set up and solve system
+    % MRFD part 
     deltaRFD = 1e-5;
-    if (clampL)
-        WRFD = randn(3*(N-2),1); % This is Delta X on the N+1 grid
-        WRFDom= [zeros(3,1); WRFD; zeros(3,1)];
-    else
-        WRFD = randn(3*(N-1),1); % This is Delta X on the N+1 grid
-        WRFDom= [zeros(3,1); WRFD];
-    end
-    TauPlus = rotateTau(Xs3,reshape(WRFDom(1:3*N),3,[])',deltaRFD);
-    XPlus = XonNp1Mat*reshape(TauPlus',[],1);
+    WRFD = randn(3*Nx,1);
+    gb = randn(3*Nx,1);
+    XPlus = Xt + deltaRFD*WRFD;
     MWsymPlus = Mobility(XPlus);
-    M_RFD = kbT/deltaRFD*(MWsymPlus-MWsym)*KInv'*WRFD;
+    M_RFD = 1/deltaRFD*(MWsymPlus-MWsym)*WRFD;
+    %RandomVelBE = sqrt(kbT)*MWsym*BendMatHalf_Np1*gb;
 
-    RandomVelBE = sqrt(kbT)*MWsymTilde*BendMatHalf_Np1*randn(3*Nx,1);
-    RandomVel = RandomVelBM + M_RFD + RandomVelBE;
+    RandomVel = RandomVelBM + kbT*M_RFD;% + RandomVelBE;
     U0 = zeros(3*Nx,1);
     Fext = zeros(3*Nx,1);
     Fext(end-2) = ForceRt^2*Eb;
@@ -198,6 +171,6 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ClmpRPYPar_Lp',num2str(lp),...
+save(strcat('ClmpRPYParB_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
