@@ -147,9 +147,9 @@ for count=0:stopcount
     XPlus = Xt + deltaRFD*WRFD;
     MWsymPlus = Mobility(XPlus);
     M_RFD = 1/deltaRFD*(MWsymPlus-MWsym)*WRFD;
-    %RandomVelBE = sqrt(kbT)*MWsym*BendMatHalf_Np1*gb;
+    RandomVelBE = sqrt(kbT)*MWsym*BendMatHalf_Np1*gb;
 
-    RandomVel = RandomVelBM + kbT*M_RFD;% + RandomVelBE;
+    RandomVel = RandomVelBM + kbT*M_RFD + RandomVelBE;
     U0 = zeros(3*Nx,1);
     Fext = zeros(3*Nx,1);
     Fext(end-2) = ForceRt^2*Eb;
@@ -171,6 +171,6 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('ClmpRPYParB_Lp',num2str(lp),...
+save(strcat('ClmpRPYParBE_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end

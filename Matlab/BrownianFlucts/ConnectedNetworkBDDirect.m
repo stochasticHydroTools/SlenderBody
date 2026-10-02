@@ -19,7 +19,7 @@ nLayers=4;
 %     8 1 9 1 1];
 % nFib=9;
 anglebr=70;
-Connections = [1 L*(0.8) 2 0 0];% 2 0.5 3 0 0];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
+Connections = [1 L*(0.8) 2 0 0 ; 1 L 2 0.2 1];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
 nFib=2;
 if (CL)
     Connections =[Connections; 1 L 2 L 1];
@@ -284,7 +284,7 @@ end
 %FDAll=FDAll/(count+1);
 %SDAll=SDAll/(count+1);
 Totaltime=toc(tStart);
-save(strcat('BranchedRPYPar_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('BrCLRPYPar_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 % if (~CL)
 % save(strcat('ConfBranched_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 % else

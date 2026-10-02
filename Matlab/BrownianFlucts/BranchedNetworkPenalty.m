@@ -17,7 +17,8 @@ BranchLoc = 0.8;
 %close all;
 rng(seed);
 nFib=2;
-Connections = [(1:nFib-1)' BranchLoc*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)];
+Connections = [(1:nFib-1)' BranchLoc*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2) ; ...
+    1 1 2 0.2 1];
 %Connections(3:3:end,5)=Connections(3:3:end,5)+1;
 NLinks = sum(Connections(:,5));
 NBranch = length(Connections(:,5))-NLinks;
@@ -72,7 +73,12 @@ Nuni=11;
 su=(0:0.1:1)'*L;
 Runi = barymat(su,sNx,bNx);
 linkPt = find(su==BranchLoc);
-links = [Nuni*(0:nFib-2)'+linkPt Nuni*(1:nFib-1)'+1 zeros(nFib-1,3)];
+links = [Nuni*(0:nFib-2)'+linkPt Nuni*(1:nFib-1)'+1 zeros(nFib-1,3); ...
+    Nuni Nuni+3 0 0 0];
+[~,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, ...
+    Kcl, ell*ones(NBranch+NLinks,1),0,0);
+Diff = X1stars - X2stars;
+ells = sqrt(sum(Diff.*Diff,2));
 
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 % Pre-computations for mobility
@@ -109,7 +115,7 @@ for count=0:stopcount
     if (mod(count,saveEvery)==0)
         %t
         PtsThisT = reshape(Xt,3,Nx*nFib)';
-        [~,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl, ell*ones(NBranch,1),0,0);
+        [~,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, Kcl,ells,0,0);
         if (makeMovie)
             clf;
             %nexttile
@@ -119,7 +125,7 @@ for count=0:stopcount
                     RplNp1*PtsThisT((iFib-1)*Nx+1:iFib*Nx,3));
                 hold on
             end
-            for pL = 1:NBranch
+            for pL = 1:NBranch+NLinks
                linkPts=[X1stars(pL,:); X2stars(pL,:)];
                plot3(linkPts(:,1),linkPts(:,2),linkPts(:,3),':ko')
             end
@@ -143,9 +149,10 @@ for count=0:stopcount
     
     % Cross linking force
     X3 = reshape(Xt,3,Nx*nFib)';
-    [CLForce,~,~] = getCLforceEn(links,X3,Runi, Kcl, ell*ones(NBranch,1),0,0);
+    [CLForce,~,~] = getCLforceEn(links,X3,Runi, Kcl, ells,0,0);
     AngCLForce=0*X3;
     for iBr=1:size(Connections,1)
+        if (Connections(iBr,end)==0)
         iFib = Connections(iBr,1);
         iInds=(iFib-1)*Nx+1:iFib*Nx;
         iS = Connections(iBr,2);
@@ -155,6 +162,7 @@ for count=0:stopcount
         [ThisAngCLForce,~] = AngularSpringForce(Xpair,Kang,RotAng,...
             barymat(iS,sNx,bNx),barymat(0,sNx,bNx),DX);
         AngCLForce([iInds';jInds'],:)=AngCLForce([iInds';jInds'],:)+ThisAngCLForce;
+        end
     end
 
     Xp1=Xt;
@@ -217,5 +225,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('BranchRPYK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('BrCLRPYK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
