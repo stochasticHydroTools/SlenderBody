@@ -6,17 +6,16 @@ function SpectralBranchedFilament(seed,Nx,dt)
 addpath(genpath('../../'))
 nRuns = 1;
 %seed=1;
-clamp0=0;
+clamp0=1;
 nFib=2;
+ConfineZ = 1;
 
-L = 1;
+L = 0.5;
 kbT = 4.1e-3; % pN * um
-lp = L;
+lp = 10;
 K_b = lp*kbT;
 rtrue = 4e-3; % 4 nm radius
-eps = rtrue/L;
 mu = 0.6;
-delta = 1e-5;
 %dt=2.5e-4;
 implicit=1;
 tf = 100;
@@ -27,11 +26,11 @@ rng(seed);
 MaxIts = 25;
 tol = 1e-10;
 x0=[0;0;0];
-tau0=[1;0;0];
+tau0=[0;1;0];
 
-rotvec = 70/180*pi*[0 0  1]; % rotation vector for the branch
+rotvec = -70/180*pi*[0 0  1]; % rotation vector for the branch
 dotprod = cos(norm(rotvec));
-branchpt = 0.8;
+branchpt = L*(1-cos(rotvec(3)));
 taubr = rotateTau(tau0',rotvec,1);
 
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
@@ -57,6 +56,11 @@ EMat = K_b*stackMatrix(DX^2)'*WTilde_Nx*...
     stackMatrix(DX^2);
 EMat = blkdiag(EMat,EMat);
 
+if (ConfineZ)
+    ConfMat = 20*kron(WTilde_1D,[0 0 0; 0 0 0; 0 0 1]);
+    EMat = EMat + blkdiag(ConfMat,ConfMat);
+end
+
 % Hydrodynamics
 AllbS_Np1 = precomputeStokesletInts(sX,L,rtrue,Nx,1);
 AllbD_Np1 = precomputeDoubletInts(sX,L,rtrue,Nx,1);
@@ -66,8 +70,6 @@ MobilityOne = @(x1) RPYQuadMob(x1,rtrue,L,mu,sX,bX,DX,AllbS_Np1,AllbD_Np1,...
     NForSmall,WTilde_Inv,eigThres);
 Mobility = @(x) blkdiag(MobilityOne(x(1:3*Nx)),MobilityOne(x(3*Nx+1:end)));
 
-nW = 1;
-AllTanVecDots = zeros(nRuns,Nx-1);
 FailureRates = zeros(nRuns,1);
 AllItCounts = zeros(nRuns,nSave);
 AllEE  = zeros(nRuns,2*nSave);
@@ -134,8 +136,9 @@ FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 MDDist(iRun,:)=MDDist;
 end
-save(strcat('BranchRPYProj_Lp',num2str(lp),...
-    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+%save(strcat('BranchRPYProj_Lp',num2str(lp),...
+%    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('BranchedRatch_Seed',num2str(seed),'.mat'))
 end
 
 function cd = c(x,D,BranchEvalMat,dotprod,clamp0,x0,tau0)
@@ -172,7 +175,7 @@ function C = GradMatrix(x,D,BranchEvalMat,clamp0)
         end
     end
     if (clamp0)
-        Ct = zeros(2*Nx+4,3*Nx*nFib);
+        Ct = zeros(2*Nx+3,3*Nx*nFib);
         Ct(1:2*Nx-3,:)=C(2:end,:);
         Ct(2*Nx-2:2*Nx,1:3)=eye(3);
         Ct(2*Nx+1:2*Nx+3,1:3*Nx)=D(1:3,:);

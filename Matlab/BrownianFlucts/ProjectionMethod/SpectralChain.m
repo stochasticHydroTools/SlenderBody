@@ -7,12 +7,13 @@ function SpectralChain(seed,Nx,dt)
 addpath(genpath('../../'))
 nRuns = 1;
 %seed=1;
-wrongdrift=0;
 clamp0=1;
+ConfineZ = 1;
+RotateFil = 1;
 
-L = 1;
+L = 0.5;
 kbT = 4.1e-3; % pN * um
-lp = L;
+lp = 10;
 K_b = lp*kbT;
 rtrue = 4e-3; % 4 nm radius
 eps = rtrue/L;
@@ -27,7 +28,12 @@ rng(seed);
 MaxIts = 25; % Newton
 tol = 1e-10; % Newton
 x0=[0;0;0];
-tau0=[1;0;0];
+tau0=[0;1;0];
+if (RotateFil)
+    rotvec = -70/180*pi*[0 0  1]; % rotation vector for the branch
+    x0(2) = L*(1-cos(rotvec(3)));
+    tau0 = rotateTau(tau0',rotvec,1)';
+end   
 
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
 s = chebpts(Nx-1,[0 L],2);
@@ -50,6 +56,10 @@ WTilde_Inv = kron(WTilde_1D^(-1),eye(3));
 WTilde_Nx = stackMatrix(WTilde_1D);
 EMat = K_b*stackMatrix(DX^2)'*WTilde_Nx*...
     stackMatrix(DX^2);
+
+if (ConfineZ)
+    EMat = EMat + 20*kron(WTilde_1D,[0 0 0; 0 0 0; 0 0 1]);
+end
 
 MobConst = -log(eps^2)/(8*pi*mu);
 %Mobility = @(x) LocalDragMob(x,DX,MobConst,WTilde_Inv); 
@@ -118,8 +128,13 @@ AllEE(iRun,:)=eedists;
 FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 end
-save(strcat('ClmpRPYProj_Lp',num2str(lp),...
-    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+if (~RotateFil)
+    save(strcat('StraightRatchOne_Seed',num2str(seed),'.mat'))
+else
+    save(strcat('RotRatchOne_Seed',num2str(seed),'.mat'))
+end
+%save(strcat('ClmpRPYProj_Lp',num2str(lp),...
+%    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end
 
 function cd = c(x,D,clamp0,x0,tau0)
