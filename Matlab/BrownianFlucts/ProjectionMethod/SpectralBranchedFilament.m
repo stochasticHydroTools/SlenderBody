@@ -138,7 +138,7 @@ MDDist(iRun,:)=MDDist;
 end
 %save(strcat('BranchRPYProj_Lp',num2str(lp),...
 %    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-save(strcat('BranchedRatch_Seed',num2str(seed),'.mat'))
+save(strcat('BranchedRatch_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
 end
 
 function cd = c(x,D,BranchEvalMat,dotprod,clamp0,x0,tau0)

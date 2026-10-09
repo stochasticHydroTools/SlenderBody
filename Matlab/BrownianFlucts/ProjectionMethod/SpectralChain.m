@@ -1,5 +1,5 @@
 % Projection method for spectral chain
-function SpectralChain(seed,Nx,dt)
+function SpectralChain(seed,Nx,dt,RotateFil)
 %seed=1;
 %Nx=8;
 %dt=1e-3;
@@ -9,7 +9,7 @@ nRuns = 1;
 %seed=1;
 clamp0=1;
 ConfineZ = 1;
-RotateFil = 1;
+% = 1;
 
 L = 0.5;
 kbT = 4.1e-3; % pN * um
@@ -129,9 +129,9 @@ FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 end
 if (~RotateFil)
-    save(strcat('StraightRatchOne_Seed',num2str(seed),'.mat'))
+    save(strcat('StraightRatchOne_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
 else
-    save(strcat('RotRatchOne_Seed',num2str(seed),'.mat'))
+    save(strcat('RotRatchOne_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
 end
 %save(strcat('ClmpRPYProj_Lp',num2str(lp),...
 %    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
