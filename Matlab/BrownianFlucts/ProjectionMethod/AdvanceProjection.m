@@ -22,7 +22,7 @@ function [xg,newtits,newtfail,matfail] = ...
     if (implicit)
         xtilde = (eye(nX)+dt*M*EMat) \ (x+ExPart);
     else
-        xtildeEx = x - dt*M*EMat*x + ExPart;
+        xtilde = x - dt*M*EMat*x + ExPart;
     end
 
     % Half step

@@ -12,7 +12,6 @@ lp = 1*L;
 K_b = lp*kbT;
 a = 1e-2;
 mu = 1;
-delta = 1e-5;
 implicit=1;
 tf = 25;
 nSt = (tf/dt);
@@ -21,12 +20,8 @@ nSave = floor(1e-10+nSt/saveEvery);
 rng(seed);
 MaxIts = 10;
 tol = 1e-10;
-cfcn = @(x) c(x,ds);
 
-nW = 1;
 Mobility = @(x) MobRPY(x,a,mu,ds);
-% Hessians are constant
-H = HessMat(Nlinks);
 AllTanVecDots = zeros(nRuns,Nlinks);
 FailureRates = zeros(nRuns,1);
 AllItCounts = zeros(nRuns,nSave);
@@ -49,54 +44,25 @@ nSamplesDs = zeros(Nlinks,1);
 NumIts = zeros(nSave,1);
 eedists = zeros(nSave,1);
 nFail = 0;
+nReallyFail = 0;
 % For when Newton fails
 opts=optimoptions(@fsolve,'OptimalityTolerance',1e-10,...
     'SpecifyObjectiveGradient',true,'Display','off');
+NLSolve=1;
 
 % Unconstrained step
 for iT=1:nSt
-    M = Mobility(x);
-    Mhalf = chol(M)';
-    
-    divM = zeros(nX,1);
-    for iP=1:nW
-        w1 = randn(nX,1);
-        xr = x + delta*w1;
-        Mu = Mobility(xr);
-        divM = divM + 1/(nW*delta)*(Mu-M)*w1;
-    end
-
-    % Take unconstrained step 
-    W = randn(nX,1);
-    ExPart = dt*kbT*divM+sqrt(2*dt*kbT)*Mhalf*W;
-    if (implicit)
-        xtilde = (eye(3*(Nlinks+1))+dt*M*EMat) \ (x+ExPart);
-    else
-        xtildeEx = x - dt*M*GradU + ExPart;
-    end
-
-    % Half step
-    xHalf = x + sqrt(kbT*dt/2)*Mhalf*W;
-    Mhalf = Mobility(xHalf);
-    Chalf = GradMat(xHalf);
-    
-    % Nonlinear system for the projection
-    % x - xtilde + M*C(x)'*lambda = 0 
-    % c(x) = 0
-    % Newton solve
-    [xg,it,~] = NewtonSolveProjection(x,xtilde,@(x) GradMat(x),cfcn,...
-        Mhalf,Chalf,MaxIts,tol,nC);
-    if (it>=MaxIts)
+    [xg,newtits,newtfail,allfail] = ...
+        AdvanceProjection(x,dt,kbT,EMat,@(x)Mobility(x),@(x) GradMat(x),@(x) c(x,ds),...
+        MaxIts,tol,nC,implicit,opts,NLSolve);
+    if (newtfail)
         nFail=nFail+1;
-        % Matlab default
-        NLFcn = @(x) NonLinSys(x,xtilde,Mhalf,Chalf,ds);
-        [xnlsolve,fval,exitflag] = fsolve(NLFcn,[x;zeros(nC,1)],opts);
-        xg = xnlsolve(1:nX);
+        nReallyFail=nReallyFail+allfail;
     end
     x = xg;
     if (mod(iT,saveEvery)==0)
         index = floor(1e-6+iT/saveEvery);
-        NumIts(index)=it;
+        NumIts(index)=newtits;
         eedists(index)=norm(x(1:3)-x(end-2:end));
         Xpts=[Xpts;reshape(x,3,[])'];
         if (iT/nSt>1/2)
@@ -118,7 +84,7 @@ FailureRates(iRun) = nFail/nSt;
 AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
-save(strcat('c2WLC',num2str(Nlinks),'_dt',num2str(dt),'_',num2str(seed),'.mat'))
+save(strcat('WLC',num2str(Nlinks),'_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 
 function EnergyMat = WLCEnergyMatrix(K_b,Nlinks,ds)
@@ -130,15 +96,6 @@ function EnergyMat = WLCEnergyMatrix(K_b,Nlinks,ds)
     EnergyMat(end,end:-1:end-2) = -1*[-1 2 -1];
     EnergyMat(end-1,end:-1:end-3) = -1*[2 -5 4 -1];
     EnergyMat = K_b*kron(sparse(EnergyMat),eye(3))/ds^3;
-end
-
-function [val,J] = NonLinSys(xin,xtilde,Mhalf,Chalf,ds)
-    nX = length(xtilde);
-    x = xin(1:nX);
-    lam = xin(nX+1:end);
-    val = [(x-xtilde) - Mhalf *Chalf'*lam; c(x,ds)];
-    C = GradMat(x);
-    J = [eye(length(x)) -Mhalf*Chalf'; C zeros(length(lam))];
 end
 
 function cd = c(x,ds)

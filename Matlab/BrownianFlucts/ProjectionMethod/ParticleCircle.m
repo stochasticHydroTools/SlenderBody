@@ -2,6 +2,10 @@
 % x = (x,y) 
 % c(x) = x^2+(y-yc)^2-R^2
 % M(x) = [1 0; 0 y]
+Dts = [0.5 0.2 0.1 0.05];
+MeansByDt = zeros(length(Dts),1);
+StdsByDt = zeros(length(Dts),1);
+for iDt=1:length(Dts)
 rng(0);
 doplot=0;
 R = 1;
@@ -12,21 +16,30 @@ nX = 2;
 nC = 1;
 delta=1e-5;
 nW=1; % number to average over for RFD
-dt=1e-2;
-tf = 400;
+dt=Dts(iDt)
+tf = 2;
 nSt = (tf/dt);
+tol = 1e-10;
+MaxIts = 20;
 saveEvery = max(1e-1/dt,1);
 nSave = nSt/saveEvery;
+nRepeats=floor(1e-6+100*0.25/dt^2);
+MeanfStats= zeros(nRepeats,1);
+nFail=0;
+for kRep=1:nRepeats
 
-nRuns = 100;
+nRuns = 1000;
 dxh = pi/20;
 edges = -pi:dxh:pi;
 mps = (edges(1:end-1)+edges(2:end))/2;
 PosCounts = zeros(nRuns,length(mps));
+fStats = zeros(nRuns,1);
+opts=optimoptions(@fsolve,'OptimalityTolerance',tol,...
+    'SpecifyObjectiveGradient',true,'Display','off');
 
 for iRun=1:nRuns
 % Start at a random place on the circle
-tst = rand*2*pi;
+tst = 0;%rand*2*pi;
 x = [cos(tst); yc+sin(tst)];
 NumIts = zeros(nSave,1);
 Allx = zeros(nSave,2);
@@ -44,92 +57,42 @@ Colors=get(gca,'ColorOrder');
 end
 
 for iT=1:nSt
-M = Mobility(x);
-Mhalf = chol(M)';
-C = GradMat(x,yc);
-prefac = M*C'*(C*M*C')^(-1);
-GradU = EMat*x;
+    [xg,newtits,newtfail,matfail] = ...
+        AdvanceProjection(x,dt,kbT,EMat,@(x)Mobility(x),@(x) GradMat(x,yc),@(x) c(x,yc,R),...
+        MaxIts,tol,nC,0,opts);
 
-if (nW>0)
-divM = zeros(nX,1);
-divMC = zeros(nX,1);
-for iP=1:nW
-    w1 = randn(nX,1);
-    xr = x + delta*w1;
-    Mu = Mobility(xr);
-    divM = divM + 1/(nW*delta)*(Mu-M)*w1;
-
-    w2 = randn(nC,1);
-    xc = x + delta*prefac*w2;
-    Mc = Mobility(xc);
-    Cc = GradMat(xc,yc);
-    divMC = divMC + 1/(nW*delta)*(Mc*Cc'-M*C')*w2;
-end
-divMtru = divM;
-divMctru = divMC;
-else
-divMtru = [0;1];
-divMctru = 1/(x(1)^2+x(2)*(x(2)-yc)^2)*[x(1);x(2)*(x(2)-yc)*(2*x(2)-yc)];
-end
-
-% Take unconstrained step
-W = randn(nX,1);
-xtilde = x - dt*M*GradU + dt*kbT*divMtru+sqrt(2*dt*kbT)*Mhalf*W;
-
-% Half step and evaluate projection matrices
-xHalf = x + sqrt(kbT*dt/2)*Mhalf*W;
-Mhalf = Mobility(xHalf);
-Chalf = GradMat(xHalf,yc);
-
-% Nonlinear system for the projection
-% x - xtilde + Mhalf*Chalf'*lambda = 0 
-% c(x) = 0
-% Newton solve
-xg = x;
-lam = 0;
-er=1;
-tol = 1e-10;
-MaxIts = 20;
-Allresids = zeros(MaxIts,1);
-for it=1:MaxIts
-    % Compute the gradient and Hessian at x
-    C = GradMat(xg,yc);
-    J = [eye(nX) -Mhalf*Chalf'; C zeros(nC)];
-    resid = [(xg-xtilde) - Mhalf *Chalf'*lam; c(xg,yc,R)];
-    er=norm(resid);
-    Allresids(it)=er;
-    if (er > tol)
-        newsol = [xg;lam] - J \ resid;
-        xg = newsol(1:nX);
-        lam = newsol(nX+1:end);
-    else
-        break
+    if (doplot)
+        PlotPtsDirection(x,xtilde,Colors(3,:),0)
+        PlotPtsDirection(xtilde,xg,Colors(3,:),0)
+        plot([x(1) xg(1)],[x(2) xg(2)],':o','Color',Colors(1,:),'MarkerFaceColor',Colors(1,:))
     end
-end
-if (it>=MaxIts)
-    keyboard
-end
-if (doplot)
-PlotPtsDirection(x,xtilde,Colors(3,:),0)
-PlotPtsDirection(xtilde,xg,Colors(3,:),0)
-plot([x(1) xg(1)],[x(2) xg(2)],':o','Color',Colors(1,:),'MarkerFaceColor',Colors(1,:))
-end
-x = xg;
+    x = xg;
 
-if (mod(iT,saveEvery)==0)
-    index = iT/saveEvery;
-    Allx(index,:)=x;
-    NumIts(index)=it;
-end
+    if (mod(iT,saveEvery)==0)
+        index = iT/saveEvery;
+        Allx(index,:)=x;
+        NumIts(index)=newtits;
+    end
+    if (newtfail)
+        nFail=nFail+1;
+    end
 end
 if (doplot)
     figure(2);
 end
-t=atan2(Allx(:,2)-yc,Allx(:,1));
-t=t(end/2+1:end);
-PosCounts(iRun,:)=histcounts(t,edges)/(nSave/2*dxh);
-ItCounts(iRun,:)=histcounts(NumIts,0:MaxIts)/(nSave/2);
+%t=atan2(Allx(:,2)-yc,Allx(:,1));
+%t=t(end/2+1:end);
+tend = atan2(x(2)-yc,x(1));
+fStats(iRun)=cos(tend)^2;
+%PosCounts(iRun,:)=histcounts(t,edges)/(nSave/2*dxh);
+%ItCounts(iRun,:)=histcounts(NumIts,0:MaxIts)/(nSave/2);
 end
+MeanfStats(kRep)=mean(fStats);
+end
+MeansByDt(iDt) = mean(MeanfStats)
+StdsByDt(iDt) = 2*std(MeanfStats)/sqrt(nRepeats)
+end
+return
 MC = mean(PosCounts);
 SC = 2*std(PosCounts)/sqrt(nRuns);
 Colors=get(gca,'ColorOrder');

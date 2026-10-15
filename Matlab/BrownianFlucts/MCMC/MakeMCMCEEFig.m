@@ -1,4 +1,4 @@
-names = ["MCMC2_Nx8_Lp1.mat" "MCMC2_Nx16_Lp1.mat" "MCMC2_Nx24_Lp1.mat"];
+names = ["MCMC2_Nx8_Lp1.mat"];% "MCMCu_Nx8_Lp1.mat"];% "MCMC2_Nx24_Lp1.mat"];
 %tiledlayout(2,2,'Padding', 'none', 'TileSpacing', 'compact');
 for iName = 1:length(names)
 load(names(iName))
