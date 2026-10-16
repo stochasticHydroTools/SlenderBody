@@ -17,8 +17,8 @@ BranchLoc = 0.8;
 %close all;
 rng(seed);
 nFib=2;
-Connections = [(1:nFib-1)' BranchLoc*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2) ; ...
-    1 1 2 0.2 1];
+Connections = [(1:nFib-1)' BranchLoc*ones(nFib-1,1) (2:nFib)' zeros(nFib-1,2)] ;% ...
+%    1 1 2 0.2 1];
 %Connections(3:3:end,5)=Connections(3:3:end,5)+1;
 NLinks = sum(Connections(:,5));
 NBranch = length(Connections(:,5))-NLinks;
@@ -73,8 +73,8 @@ Nuni=11;
 su=(0:0.1:1)'*L;
 Runi = barymat(su,sNx,bNx);
 linkPt = find(su==BranchLoc);
-links = [Nuni*(0:nFib-2)'+linkPt Nuni*(1:nFib-1)'+1 zeros(nFib-1,3); ...
-    Nuni Nuni+3 0 0 0];
+links = [Nuni*(0:nFib-2)'+linkPt Nuni*(1:nFib-1)'+1 zeros(nFib-1,3)];% ...
+%    Nuni Nuni+3 0 0 0];
 [~,X1stars,X2stars] = getCLforceEn(links,reshape(Xt,3,Nx*nFib)',Runi, ...
     Kcl, ell*ones(NBranch+NLinks,1),0,0);
 Diff = X1stars - X2stars;

@@ -19,7 +19,7 @@ nLayers=4;
 %     8 1 9 1 1];
 % nFib=9;
 anglebr=70;
-Connections = [1 L*(0.8) 2 0 0 ; 1 L 2 0.2 1];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
+Connections = [1 L*(0.8) 2 0 0];% 1 L 2 0.2 1];% 1 0.1 2 0.9 1; 2 0.6 1 0.05 1];
 nFib=2;
 if (CL)
     Connections =[Connections; 1 L 2 L 1];
