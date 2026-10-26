@@ -6,19 +6,19 @@ function SpectralBranchedFilament(seed,Nx,dt)
 addpath(genpath('../../'))
 nRuns = 1;
 %seed=1;
-clamp0=0;
+clamp0=1;
 nFib=2;
-ConfineZ = 0;
+ConfineZ = 1;
 
-L = 1;
+L = 0.5;
 kbT = 4.1e-3; % pN * um
-lp = L;
+lp = 10;
 K_b = lp*kbT;
 rtrue = 4e-3; % 4 nm radius
 mu = 0.6;
 %dt=2.5e-4;
 implicit=1;
-tf = 10;
+tf = 100;
 nSt = (tf/dt);
 saveEvery=max(1,floor(1e-2/dt+1e-10));
 nSave = floor(1e-6+nSt/saveEvery);
@@ -28,16 +28,9 @@ tol = 1e-10;
 x0=[0;0;0];
 tau0=[0;1;0];
 
-% For the ratchet
-% rotvec = -70/180*pi*[0 0  1]; % rotation vector for the branch
-% dotprod = cos(norm(rotvec));
-% branchpt = L*(1-cos(rotvec(3)));
-% taubr = rotateTau(tau0',rotvec,1);
-% tau0=[1;0;0];
-
-rotvec = 30/180*pi*[0 0  1] % rotation vector for the branch
+rotvec = -70/180*pi*[0 0  1]; % rotation vector for the branch
 dotprod = cos(norm(rotvec));
-branchpt = 0.8;
+branchpt = L*(1-cos(rotvec(3)));
 taubr = rotateTau(tau0',rotvec,1);
 
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
@@ -136,10 +129,6 @@ for iT=1:nSt
         dispMD = DaughterPts - MotherEnd;
         [dispMDT,cpt] = min(sqrt(sum(dispMD.*dispMD,2)));
         mdrun(index)= dispMDT;
-        % rx=reshape(x,3,[])';
-        % plot3(rx(:,1),rx(:,2),rx(:,3))
-        % PlotAspect
-        % drawnow
     end
 end
 AllEE(iRun,:)=ee;
@@ -147,9 +136,9 @@ FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 MDDist(iRun,:)=MDDist;
 end
-save(strcat('Branch30RPYProj_Lp',num2str(lp),...
-    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-%save(strcat('BranchedRatch_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
+%save(strcat('BranchRPYProj_Lp',num2str(lp),...
+%    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('BranchedRatch_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
 end
 
 function cd = c(x,D,BranchEvalMat,dotprod,clamp0,x0,tau0)
