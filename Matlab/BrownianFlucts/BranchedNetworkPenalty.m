@@ -35,7 +35,7 @@ makeMovie =0;
 tf = 100;
 Kcl=Kstiff;
 ell = 0;
-RotAng = 70/180*pi;
+RotAng = 15/180*pi;
 
 [DOFs,MasterConnections,SlaveConnections, ConstrainedPosNodes,...
   TangentVectorNodes,BranchIndices,IntegrationMatrix,...
@@ -225,5 +225,5 @@ for count=0:stopcount
     Xt=Xp1;
 end
 Totaltime=toc(tStart);
-save(strcat('BrCLRPYK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+save(strcat('Branch15DegRPYK',num2str(Kcl),'Kang',num2str(Kang),'_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 end

@@ -8,11 +8,11 @@ nRuns = 1;
 %seed=1;
 clamp0=1;
 nFib=2;
-ConfineZ = 1;
+ConfineZ = 0;
 
-L = 0.5;
+L = 1;
 kbT = 4.1e-3; % pN * um
-lp = 10;
+lp = L;
 K_b = lp*kbT;
 rtrue = 4e-3; % 4 nm radius
 mu = 0.6;
@@ -28,9 +28,16 @@ tol = 1e-10;
 x0=[0;0;0];
 tau0=[0;1;0];
 
-rotvec = -70/180*pi*[0 0  1]; % rotation vector for the branch
+% For the ratchet
+% rotvec = -70/180*pi*[0 0  1]; % rotation vector for the branch
+% dotprod = cos(norm(rotvec));
+% branchpt = L*(1-cos(rotvec(3)));
+% taubr = rotateTau(tau0',rotvec,1);
+% tau0=[1;0;0];
+
+rotvec = -15/180*pi*[0 0  1]; % rotation vector for the branch
 dotprod = cos(norm(rotvec));
-branchpt = L*(1-cos(rotvec(3)));
+branchpt = 0.8;
 taubr = rotateTau(tau0',rotvec,1);
 
 [sX,wX,bX]=chebpts(Nx,[0 L],2);
@@ -136,9 +143,9 @@ FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 MDDist(iRun,:)=MDDist;
 end
-%save(strcat('BranchRPYProj_Lp',num2str(lp),...
-%    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
-save(strcat('BranchedRatch_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
+save(strcat('Branch15DegRPYProj_Lp',num2str(lp),...
+    '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
+%save(strcat('BranchedRatch_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
 end
 
 function cd = c(x,D,BranchEvalMat,dotprod,clamp0,x0,tau0)
