@@ -1,12 +1,12 @@
 % Projection method for spectral chain
-function SpectralBranchedFilament(seed,Nx,dt)
+function SpectralBranchedFilament(seed,Nx,dt,Angle)
 %if (0)
 %dt=1e-3;
 %Nx=8;
 addpath(genpath('../../'))
 nRuns = 1;
 %seed=1;
-clamp0=1;
+clamp0=0;
 nFib=2;
 ConfineZ = 0;
 
@@ -35,7 +35,7 @@ tau0=[0;1;0];
 % taubr = rotateTau(tau0',rotvec,1);
 % tau0=[1;0;0];
 
-rotvec = -15/180*pi*[0 0  1]; % rotation vector for the branch
+rotvec = -Angle/180*pi*[0 0  1]; % rotation vector for the branch
 dotprod = cos(norm(rotvec));
 branchpt = 0.8;
 taubr = rotateTau(tau0',rotvec,1);
@@ -143,7 +143,7 @@ FailureRates(iRun) = nFail/nSt;
 AllItCounts(iRun,:)=NumIts;
 MDDist(iRun,:)=MDDist;
 end
-save(strcat('Branch15DegRPYProj_Lp',num2str(lp),...
+save(strcat('Branch',num2str(Angle),'DegRPYProj_Lp',num2str(lp),...
     '_Nx',num2str(Nx),'_Dt',num2str(dt),'_Seed',num2str(seed),'.mat'))
 %save(strcat('BranchedRatch_N',num2str(Nx),'Seed',num2str(seed),'.mat'))
 end
