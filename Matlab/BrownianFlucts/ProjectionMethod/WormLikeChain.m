@@ -13,7 +13,7 @@ K_b = lp*kbT;
 a = 1e-2;
 mu = 1;
 implicit=1;
-tf = 25;
+tf = 100;
 nSt = (tf/dt);
 saveEvery = max(1e-2/dt,1);
 nSave = floor(1e-10+nSt/saveEvery);
@@ -48,13 +48,12 @@ nReallyFail = 0;
 % For when Newton fails
 opts=optimoptions(@fsolve,'OptimalityTolerance',1e-10,...
     'SpecifyObjectiveGradient',true,'Display','off');
-NLSolve=1;
 
 % Unconstrained step
 for iT=1:nSt
     [xg,newtits,newtfail,allfail] = ...
         AdvanceProjection(x,dt,kbT,EMat,@(x)Mobility(x),@(x) GradMat(x),@(x) c(x,ds),...
-        MaxIts,tol,nC,implicit,opts,NLSolve);
+        MaxIts,tol,nC,implicit,opts);
     if (newtfail)
         nFail=nFail+1;
         nReallyFail=nReallyFail+allfail;
@@ -84,7 +83,7 @@ FailureRates(iRun) = nFail/nSt;
 AllTanVecDots(iRun,:) = TanVecDots./nSamplesDs;
 AllItCounts(iRun,:)=NumIts;
 end
-save(strcat('WLC',num2str(Nlinks),'_dt',num2str(dt),'_',num2str(seed),'.mat'))
+save(strcat('WLCRPY',num2str(Nlinks),'_dt',num2str(dt),'_',num2str(seed),'.mat'))
 end
 
 function EnergyMat = WLCEnergyMatrix(K_b,Nlinks,ds)
@@ -137,26 +136,26 @@ function M = MobRPY(x,a,mu,ds)
         x=reshape(x,3,[])';
     end
     Nx = size(x,1);
-    tauavg = zeros(Nx,3);
-    for j=2:Nx-1
-        tauavg(j,:)=(x(j+1,:)-x(j-1,:));
-    end
-    tauavg(1,:)=x(2,:)-x(1,:);
-    tauavg(Nx,:)=x(Nx,:)-x(end-1,:);
-    tauavg = tauavg./sqrt(sum(tauavg.*tauavg,2));
-    M = zeros(3*Nx);
-    for j=1:Nx
-        M(3*j-2:3*j,3*j-2:3*j)=...
-            log(a^(-2))/(8*pi*mu*ds)*(eye(3)+tauavg(j,:)'*tauavg(j,:));
-    end
-    % M = 1/(6*pi*mu*a)*eye(3*Nx);
-    % for i=1:Nx
-    %     for j=i:Nx
-    %         rvec = x(i,:)-x(j,:);
-    %         mij =  RPYTot(rvec,a,mu);
-    %         M(3*i-2:3*i,3*j-2:3*j) =mij;
-    %         M(3*j-2:3*j,3*i-2:3*i) =mij;
-    %     end
+    % tauavg = zeros(Nx,3);
+    % for j=2:Nx-1
+    %     tauavg(j,:)=(x(j+1,:)-x(j-1,:));
     % end
+    % tauavg(1,:)=x(2,:)-x(1,:);
+    % tauavg(Nx,:)=x(Nx,:)-x(end-1,:);
+    % tauavg = tauavg./sqrt(sum(tauavg.*tauavg,2));
+    % M = zeros(3*Nx);
+    % for j=1:Nx
+    %     M(3*j-2:3*j,3*j-2:3*j)=...
+    %         log(a^(-2))/(8*pi*mu*ds)*(eye(3)+tauavg(j,:)'*tauavg(j,:));
+    % end
+    M = 1/(6*pi*mu*a)*eye(3*Nx);
+    for i=1:Nx
+        for j=i+1:Nx
+            rvec = x(i,:)-x(j,:);
+            mij =  RPYTot(rvec,a,mu);
+            M(3*i-2:3*i,3*j-2:3*j) =mij;
+            M(3*j-2:3*j,3*i-2:3*i) =mij;
+        end
+    end
    % M = RPYMatrixWithWall(x,mu, a);
 end
