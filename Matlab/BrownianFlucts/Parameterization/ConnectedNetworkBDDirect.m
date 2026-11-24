@@ -2,7 +2,7 @@
 % locations
 function ConnectedNetworkBDDirect(seed,Nx,dt)
 %% Define constants 
-%addpath(genpath('../'))
+addpath(genpath('../'))
 %seed=1;
 %Nx = 8;
 L = 1;
